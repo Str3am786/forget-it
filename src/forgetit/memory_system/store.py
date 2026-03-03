@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Iterable
 
-from forgetit.core.schema import MemRecord, Query
+from forgetit.core.schema import MemRecord, Query, MemFeatures
 from forgetit.backend.backend import Backend
 
 
@@ -16,7 +16,6 @@ def estimate_bytes(item: MemRecord) -> int:
 # TODO maybe look at calling it "ForgettingController"
 class RetentionManager:
 
-
     def __init__(self, budget_bytes: int, backend: Backend, policy, logger):
         self.budget_bytes = budget_bytes
         self.backend = backend
@@ -28,7 +27,10 @@ class RetentionManager:
 
     def connect(self) -> None:
         self.backend.connect()
-
+        # TODO remove once cheap
+        if self.backend.is_persistent:
+            self.rebuild_accounting()
+        
     def close(self) -> None:
         self.backend.close()
 
@@ -89,6 +91,8 @@ class RetentionManager:
     def _evict_until_fits(self, incoming_bytes: int) -> None:
         while self.used_bytes + incoming_bytes > self.budget_bytes:
             victim_id = self.policy.select_victim(store=self)
+            if victim_id is None:
+                raise RuntimeError("Policy returned None victim while budget exceeded.")
             self._evict(victim_id)
 
     def _evict(self, victim_id: str) -> None:
@@ -103,17 +107,25 @@ class RetentionManager:
 
         self.logger.event("evict", {"id": victim_id, "bytes": b, "used_bytes": self.used_bytes})
 
-    # ---- Backend-agnostic iteration helpers for policies ----
+    def rebuild_accounting(self) -> None:
+        self.used_bytes = 0
+        self._bytes_by_id.clear()
 
+        for item_id, b in self.backend.scan_accounting():
+            self._bytes_by_id[item_id] = b
+            self.used_bytes += b
+
+    
     def iter_ids(self):
         return self.backend.iter_ids()
 
+
+    def iter_features(self) -> Iterable[MemFeatures]:
+        return self.backend.scan_features()
+    
+
     def iter_items(self):
-        """
-        Policies often need item attributes.
-        This is backend-agnostic but can be expensive for DB backends.
-        For now, fine. Later you can add a 'feature cache' or policy-specific indexes.
-        """
+        # TODO add 'feature cache' or policy-specific indexes.
         for item_id in self.backend.iter_ids():
             it = self.backend.get(item_id)
             if it is not None:

@@ -5,7 +5,7 @@ from typing import Dict, Iterable, Optional, List
 
 from forgetit.retrieval import Retriever
 from forgetit.backend import Backend
-from forgetit.core.schema import MemRecord, Query
+from forgetit.core.schema import MemRecord, Query, MemFeatures
 
 
 class InMemoryBackend(Backend):
@@ -31,7 +31,6 @@ class InMemoryBackend(Backend):
         self._connected = False
 
     def upsert(self, item: MemRecord) -> None:
-        # Store as-is. If you want immutability, store a copy via replace(...).
         self._items[item.id] = item
 
     def get(self, item_id: str) -> Optional[MemRecord]:
@@ -51,3 +50,21 @@ class InMemoryBackend(Backend):
 
     def all_items(self) -> Dict[str, MemRecord]:
         return self._items
+    
+    def scan_accounting(self) -> list[tuple[str, int]]:
+        out: list[tuple[str, int]] = []
+        for it in self._items.values():
+            b = it.bytes if it.bytes and it.bytes > 0 else len(it.text.encode("utf-8"))
+            out.append((it.id, b))
+        return out
+
+    def scan_features(self):
+        for it in self._items.values():
+            b = it.bytes if it.bytes and it.bytes > 0 else len(it.text.encode("utf-8"))
+            yield MemFeatures(
+                id=it.id,
+                bytes=b,
+                last_access=it.last_access,
+                access_count=it.access_count,
+                created_at=it.created_at,
+            )

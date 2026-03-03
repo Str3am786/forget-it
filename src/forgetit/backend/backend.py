@@ -1,7 +1,7 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Optional, Iterable
-from forgetit.core.schema import MemRecord, Query
+from forgetit.core.schema import MemRecord, Query, MemFeatures
 
 # class Backend(Protocol):
 #     def connect(self) -> None: ...
@@ -13,10 +13,15 @@ from forgetit.core.schema import MemRecord, Query
 
 #     def search(self, query: Query, k: int) -> list[MemRecord]: ...
 #     def iter_ids(self) -> Iterable[str]: ...
-# src/forgetit/core/backend.py
+
 
 
 class Backend(ABC):
+
+    @property
+    def is_persistent(self) -> bool:
+        return False
+    
     @abstractmethod
     def connect(self) -> None: ...
     @abstractmethod
@@ -34,3 +39,15 @@ class Backend(ABC):
 
     @abstractmethod
     def iter_ids(self) -> Iterable[str]: ...
+
+    @abstractmethod
+    def scan_accounting(self) -> list[tuple[str, int]]:
+        """Return (id, bytes) for all items."""
+        ...
+    
+    @abstractmethod
+    def scan_features(self) -> Iterable[MemFeatures]:
+        """
+        Yield eviction-relevant features for all items.
+        """
+        ...
