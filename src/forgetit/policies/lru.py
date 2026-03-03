@@ -1,18 +1,19 @@
 from __future__ import annotations
+from forgetit.memory_system import RetentionManager
 
 class LRUPolicy:
     name = "lru"
 
 
-    def select_victim(self, store) -> str:
+    def select_victim(self, store: RetentionManager) -> str:
 
         if not store:
             raise ValueError("Invalid Storage given to evict")
         
-        victim_id = ""
+        victim_id: str | None = None
         best = float("inf")
 
-        for it in store.iter_items():
+        for it in store.iter_features():
             score = it.last_access
 
             if score < best:

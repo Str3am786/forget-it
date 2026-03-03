@@ -1,16 +1,17 @@
 from __future__ import annotations
 
+from forgetit.memory_system import RetentionManager
 
 class LFUPolicy:
     name = "lfu"
 
-    def select_victim(self, store) -> str:
+    def select_victim(self, store: RetentionManager) -> str:
 
         victim_id = None
 
         best = (float("inf"), float("inf"))
 
-        for it in store.iter_items():
+        for it in store.iter_features():
             score = (it.access_count, it.last_access)
 
             if score < best:
