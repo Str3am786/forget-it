@@ -87,7 +87,7 @@ def _plot_lines_with_errorbars(sub: pd.DataFrame, metric: str, ylabel: str, out_
 
 
 def _plot_bars_with_errorbars(sub: pd.DataFrame, metric: str, ylabel: str, out_path: Path) -> None:
-    # side-by-side bars per budget so lines don’t hide each other
+
     budgets = sorted(sub["budget_bytes"].unique())
     policies = sorted(sub["policy"].unique())
 
@@ -115,8 +115,8 @@ def _plot_bars_with_errorbars(sub: pd.DataFrame, metric: str, ylabel: str, out_p
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--results-dir", default="results/longmemeval")
-    ap.add_argument("--out-dir", default="results/longmemeval/plots")
+    ap.add_argument("--results-dir", default="results/longmemeval_lru_lfu_rerun_limit200")
+    ap.add_argument("--out-dir", default="results/longmemeval_lru_lfu_rerun_limit200/plots")
     args = ap.parse_args()
 
     results_dir = Path(args.results_dir)
