@@ -15,7 +15,7 @@ from forgetit.core.schema import MemFeatures, MemRecord, Query
 logger = logging.getLogger(__name__)
 
 
-class Falkor(Backend):
+class FalkorBackend(Backend):
     def __init__(self, cfg: FalkorConfig):
         self.cfg = cfg
         self._db: Optional[FalkorDB] = None
