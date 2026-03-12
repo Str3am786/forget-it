@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from forgetit.memory_system import RetentionManager
 
 class LFUPolicy:
     name = "lfu"
@@ -10,7 +9,8 @@ class LFUPolicy:
         best = None
 
         for it in store.iter_features():
-            score = (it.access_count, it.last_access, it.created_at, it.id)
+            created = it.created_at if it.created_at is not None else 0.0
+            score = (it.access_count, it.last_access, created, it.id)
             if best is None or score < best:
                 best = score
                 victim_id = it.id

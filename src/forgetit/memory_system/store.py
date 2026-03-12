@@ -49,7 +49,11 @@ class RetentionManager:
             self._bytes_by_id.pop(item.id, None)
 
         self._evict_until_fits(incoming_bytes=b)
+        
+        # if new put the creation time as last access LRU vs LFU differentiation.
 
+        if item.last_access == 0.0:
+            item.last_access = item.created_at
         self.backend.upsert(item)
         self._bytes_by_id[item.id] = b
         self.used_bytes += b
@@ -63,7 +67,7 @@ class RetentionManager:
         results = self.backend.search(query, k)
         now = query.timestamp
 
-        # Update access stats in backend
+        # TODO change to a multiple upsert
         for it in results:
             it.access_count += 1
             it.last_access = now
