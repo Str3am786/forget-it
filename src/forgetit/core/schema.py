@@ -35,3 +35,35 @@ class Query:
     timestamp: float = field(default_factory=lambda: time.time())
     embedding: Optional[list[float]] = None
     meta: Dict[str, Any] = field(default_factory=dict)
+
+@dataclass
+class SessionTurn:
+    role: str
+    content: str
+    meta: Dict[str, Any] = field(default_factory=dict)
+    
+
+
+@dataclass
+class Session:
+    id: str
+    turns: list[SessionTurn]
+    created_at: float = field(default_factory=lambda: time.time())
+    meta: Dict[str, Any] = field(default_factory=dict)
+
+@dataclass
+class Question:
+    id: str
+    text: str
+    timestamp: float = field(default_factory=lambda: time.time())
+    meta: Dict[str, Any] = field(default_factory=dict)
+
+@dataclass
+class AnswerResult:
+    query_id: str
+    answer: str
+    abstained: bool
+    latency_sec: float
+    meta: Dict[str, Any] = field(default_factory=dict)
+
+

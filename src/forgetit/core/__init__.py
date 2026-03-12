@@ -1,4 +1,16 @@
-# domain objects + interfaces (things that define “what the system is”)
-from .schema import Query, MemRecord, MemFeatures
+"""Public core data models for forgetit.
 
-__all__ = ["Query", "MemRecord", "MemFeatures"]
+This module re-exports the primary schema types used across the core API so
+they can be imported from a single, stable location.
+"""
+from .schema import Query, MemRecord, MemFeatures, Session, SessionTurn, Question, AnswerResult
+
+__all__ = [
+    "Query", 
+    "MemRecord", 
+    "MemFeatures", 
+    "Session", 
+    "SessionTurn", 
+    "Question", 
+    "AnswerResult"
+]

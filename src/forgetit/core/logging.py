@@ -1,4 +1,3 @@
-# core/logging.py
 import json, time
 
 class JsonlLogger:
@@ -7,5 +6,5 @@ class JsonlLogger:
 
     def event(self, kind: str, payload: dict):
         rec = {"t": time.time(), "kind": kind, **payload}
-        with open(self.path, "a") as f:
+        with open(self.path, "a", encoding="utf-8") as f:
             f.write(json.dumps(rec) + "\n")
