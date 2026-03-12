@@ -9,7 +9,7 @@ class OpenAiLLM(LLM):
         self,
         base_url: str = "http://localhost:8000/v1",
         api_key: str = "sk-noauth",
-        model: str = "local",          # or whatever alias you used
+        model: str = "local",
     ):
         self.client = OpenAI(
             base_url=base_url,
@@ -31,7 +31,6 @@ class OpenAiLLM(LLM):
         last_err = None
         for attempt in range(max_retries):
             try:
-                ...
                 r = self.client.chat.completions.create(
                     model=self.model,
                     messages=[{"role": "user", "content": prompt}],
@@ -47,9 +46,6 @@ class OpenAiLLM(LLM):
                 time.sleep(sleep_s)
 
         raise last_err
-
-
-        
 
     def stream(
         self,

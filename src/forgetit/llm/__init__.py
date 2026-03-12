@@ -1,4 +1,7 @@
+from .base import LLM
 from .openai_llm import OpenAiLLM
+from .readers import Reader, JsonMemoryReader
+
 from forgetit.settings import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 
 def get_llm() -> OpenAiLLM:
@@ -7,4 +10,11 @@ def get_llm() -> OpenAiLLM:
         api_key=LLM_API_KEY,
         model=LLM_MODEL
     )
-__all__ = ["OpenAiLLM", "get_llm"]
+
+__all__ = [
+    "LLM",
+    "OpenAiLLM",
+    "get_llm",
+    "Reader",
+    "JsonMemoryReader",
+]
