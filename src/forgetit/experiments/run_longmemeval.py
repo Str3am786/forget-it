@@ -83,6 +83,7 @@ def build_store(policy_name: str, budget_bytes: int) -> RetentionManager:
     For now we run non-persistent: InMemoryBackend + lexical retriever.
     """
     retriever = LexicalOverlapRetriever()
+    # TODO possibly change to make it selectable
     backend = InMemoryBackend(retriever=retriever)
     policy = build_policy(policy_name)
 
