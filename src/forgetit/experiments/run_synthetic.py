@@ -29,6 +29,7 @@ def main() -> None:
         for budget in budgets:
             results, summary = run_pipeline(
                 dataset="synthetic",
+                workload=workload,
                 budget_bytes=budget,
                 policy=policy,
                 policy_name=policy_name,

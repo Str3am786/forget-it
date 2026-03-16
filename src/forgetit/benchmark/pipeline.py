@@ -7,6 +7,7 @@ from typing import Callable
 
 from forgetit.benchmark.metrics import summarize
 from forgetit.benchmark.runner import run
+from forgetit.benchmark.workloads.base import Workload
 from forgetit.benchmark.workloads.synthetic import SyntheticWorkload
 from forgetit.backend.in_memory import InMemoryBackend
 from forgetit.core.logging import BenchmarkLogger
@@ -38,16 +39,10 @@ def save_summary_csv(summary: dict[str, float], path: str | Path) -> None:
         writer.writerow(summary)
 
 
-def make_workload(dataset: str):
-    if dataset == "synthetic":
-        return SyntheticWorkload()
-
-    raise ValueError(f"Unknown dataset: {dataset}")
-
-
 def run_pipeline(
     *,
     dataset: str,
+    workload: Workload,
     budget_bytes: int,
     policy,
     policy_name: str,
@@ -57,7 +52,7 @@ def run_pipeline(
     reader: str = "",
     out_dir: str = "artifacts/benchmark",
 ):
-    workload = make_workload(dataset)
+
 
     retriever = LexicalOverlapRetriever()
     backend = InMemoryBackend(retriever=retriever)
