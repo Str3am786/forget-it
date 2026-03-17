@@ -9,11 +9,16 @@ The core question: when an agent's memory is bounded by a fixed byte budget, whi
 ## Current State (March 2026)
 
 **What works:**
-- LRU and LFU policies running end-to-end against LongMemEval
+
+- Benchmark pipeline: workload → runner → metrics → CSV, with pluggable policies, backends, and retrievers
+- LRU and LFU eviction policies running end-to-end
+- Synthetic workload for framework validation (controlled gold items, mid-stream access signal)
+- LongMemEval workload with pluggable itemisers (session-level and turn-pair granularity)
 - Hard byte-budget enforcement with per-item byte accounting
-- Lexical retrieval baseline (`LexicalOverlapRetriever`)
-- In-memory backend suitable for all experiments
-- Retrieval-only evaluation via `run_longmemeval.py` — results are valid and reproducible
+- Lexical retrieval baseline (token overlap, deterministic)
+- Three-layer evaluation: policy verdict → retriever verdict → reader verdict (reader is placeholder)
+- Full audit logging with per-event traceability (BenchmarkLogger)
+- Structured output: per-query CSVs and aggregated summaries
 
 
 **Known issues / not yet stable:**
@@ -22,78 +27,119 @@ The core question: when an agent's memory is bounded by a fixed byte budget, whi
 
 ---
 
+
 ## Architecture
 
 ```
-forgetit/
-├── core/
-│   └── schema.py          # All domain dataclasses: MemRecord, Query, Session, etc.
+forget-it/
+├── data/                          # Datasets (not in package)
+│   └── longmemeval_s_cleaned.json
 │
-├── memory_system/
-│   └── store.py           # RetentionManager — the budget enforcer
-│                          # Owns: insert, retrieve, evict, byte accounting
+├── artifacts/                     # Pipeline output (CSVs, summaries)
+│   └── benchmark/
+│       └── <dataset>/<policy>/budget_<N>/
+│           ├── results.csv        # Per-query EvalResult rows
+│           └── summary.csv        # Aggregated metrics
 │
-├── policies/
-│   ├── base.py            # EvictionPolicy Protocol
-│   ├── lru.py             # Least Recently Used
-│   ├── lfu.py             # Least Frequently Used
-│   └── compress.py        # LLM compression (stub — not functional)
+├── results/                       # Legacy experiment outputs
 │
-├── backend/
-│   ├── backend.py         # Abstract Backend base class
-│   ├── in_memory.py       # Dict-based backend (used for all experiments)
-│   └── falkor.py          # FalkorDB backend (partial — not ready)
+├── src/forgetit/
+│   ├── core/
+│   │   ├── schema.py              # MemRecord, Query, MemFeatures, Session, etc.
+│   │   └── logging.py             # BenchmarkLogger, EventLogger protocol, LogEntry
+│   │
+│   ├── memory_system/
+│   │   └── store.py               # RetentionManager — budget enforcement, eviction loop
+│   │
+│   ├── policies/
+│   │   ├── base.py                # EvictionPolicy protocol
+│   │   ├── lru.py                 # Least Recently Used
+│   │   └── lfu.py                 # Least Frequently Used
+│   │
+│   ├── backend/
+│   │   ├── backend.py             # Backend ABC
+│   │   ├── in_memory.py           # Dict-based backend (used for all experiments)
+│   │   └── falkor.py              # FalkorDB backend (partial, optional import)
+│   │
+│   ├── retrieval/
+│   │   ├── base.py                # Retriever protocol
+│   │   └── lexical.py             # Token overlap retriever (deterministic baseline)
+│   │
+│   ├── benchmark/                 # ← Evaluation pipeline
+│   │   ├── schema.py              # WorkloadEvent, EvalResult
+│   │   ├── runner.py              # Replays workload, produces EvalResult per query
+│   │   ├── pipeline.py            # Single-run orchestrator: store → run → metrics → CSV
+│   │   ├── metrics.py             # Aggregation functions over EvalResult lists
+│   │   └── workloads/
+│   │       ├── base.py            # Workload protocol, Itemiser protocol
+│   │       ├── synthetic.py       # Controlled synthetic workload
+│   │       └── longmemeval.py     # LongMemEval adapter + SessionItemiser, TurnPairItemiser
+│   │
+│   ├── experiments/               # Entry points (thin scripts that call the pipeline)
+│   │   ├── run_synthetic.py       # Sweep policies × budgets on synthetic workload
+│   │   ├── run_longmemeval.py     # Sweep policies × budgets × itemisers on LongMemEval
+│   │   └── run_toy.py             # Minimal smoke test
+│   │
+│   ├── llm/                       # OpenAI-compatible LLM client + Reader protocol
+│   ├── services/                  # MemoryQAService (higher-level orchestration)
+│   └── pipelines/                 # LangGraph wiring (ingest, retrieve, QA nodes)
 │
-├── retrieval/
-│   ├── base.py            # Retriever Protocol
-│   └── lexical.py         # Token overlap retriever (baseline)
-│
-├── llm/
-│   ├── base.py            # Abstract LLM
-│   ├── openai_llm.py      # OpenAI-compatible client (points to local server)
-│   └── readers/
-│       ├── base.py        # Reader Protocol
-│       └── json_reader.py # Builds prompt, calls LLM, parses answer
-│
-├── services/
-│   └── memory_qa_service.py  # Thin orchestrator: sessions → store → retrieve → answer
-│
-└── experiments/
-    ├── run_longmemeval.py     # Retrieval-only eval (no LLM) ← primary eval script
-    └── run_toy.py             # Minimal smoke test, good for local dev
+└── tests/
+    ├── memory_sys/
+    └── policies/
 ```
 
-### How the pieces connect
+### How the benchmark pipeline works
 
 ```
-User session
+Experiment script (e.g. run_longmemeval.py)
+    │  defines: workload, policy, budget, k
+    ▼
+pipeline.run_pipeline()
+    │  builds: RetentionManager(backend, policy, logger)
+    ▼
+runner.run(workload, store, k, ...)
+    │  for each WorkloadEvent:
+    │    INSERT → store.insert(item)
+    │    QUERY  → three-layer evaluation
+    │      1. Policy: gold_ids ∩ retained_ids → gold_survived, ubf, waste
+    │      2. Retriever: store.retrieve(query, k) → hit@k, mrr
+    │      3. Reader: (placeholder)
+    │    → append EvalResult
+    ▼
+list[EvalResult]
     │
     ▼
-MemoryQAService.add_session()
-    │  converts Session → MemRecord
+metrics.summarize(results) → dict
+    │
+    ▼
+save to artifacts/<dataset>/<policy>/budget_<N>/
+    ├── results.csv
+    └── summary.csv
+```
+
+### How the memory system works
+
+```
+MemRecord
+    │
     ▼
 RetentionManager.insert()
     │  checks byte budget
-    │  if over budget → calls policy.select_victim(store) → evicts
+    │  if over budget → policy.select_victim(store) → evict
+    │  logger.event("insert", ...) / logger.event("evict", ...)
     ▼
-Backend.upsert()   ← stores the record
+Backend.upsert()
     │
     ▼
 RetentionManager.retrieve(query, k)
     │  delegates to Backend.search()
-    │  updates access_count + last_access on returned items (used by LFU/LRU)
+    │  updates access_count + last_access on hits (drives LRU/LFU)
     ▼
-list[MemRecord]   ← top-k results
-    │
-    ▼
-Reader.answer(question, records)   ← only in QA eval
-    │  serialises records to JSON, calls LLM
-    ▼
-AnswerResult
+list[MemRecord]
 ```
 
 ---
-
 ## Installation
 
 Requires Python 3.12+. The package is installed in editable mode:
@@ -125,48 +171,73 @@ export LLM_MODEL="your-model-name"
 
 ## Running experiments
 
-### Quickest sanity check
+### Quick smoke test
 
 ```bash
 python -m forgetit.experiments.run_toy
 ```
 
-This inserts 5 records into a 250-byte budget store, runs a retrieval, triggers evictions, and prints the result. No LLM or dataset required.
+Inserts 5 records into a 250-byte budget, triggers evictions, prints results. No dataset or LLM needed.
 
-### Retrieval-only evaluation (primary eval — no LLM needed)
+### Synthetic benchmark
 
-For this experiment please create a /data folder within ```src/forgetit``` 
-Use the following dataset/command: 
-```bash 
-wget https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json
-```
-
-And run this command from the root directory:
 ```bash
-python src/forgetit/experiments/run_longmemeval.py \
-  --data src/forgetit/data/longmemeval_s_cleaned.json \
-  --policies lru lfu \
-  --budgets 81920 98304 131072 196608 262144 \
-  --ks 5 10 \
-  --limit 200 \
-  --out-dir results/my_run
+python src/forgetit/experiments/run_synthetic.py
 ```
 
+Runs LRU and LFU across multiple budget levels on a controlled synthetic workload with known gold items. Validates that the pipeline works and that policies diverge under pressure. Output goes to `artifacts/benchmark/synthetic/`.
+
+### LongMemEval benchmark
+
+Download the dataset:
+
+```bash
+mkdir -p data
+wget -P data/ https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json
 ```
-policy=lru budget=262144 k=5 examples=200 gold_retained=0.550 hit@5=0.300 hit@5|retained=0.545 avg_evictions=27.00
+
+Run the experiment:
+
+```bash
+python src/forgetit/experiments/run_longmemeval.py
 ```
 
-**Metrics explained:**
+This sweeps over policies, budgets, and itemisers (session-level and turn-pair). Output goes to `artifacts/benchmark/longmemeval/`.
 
-| Metric | Meaning |
-|---|---|
-| `gold_retained` | Did the eviction policy keep the relevant memory? |
-| `hit_at_k` | Did retrieval surface it in the top-k? |
-| `hit_at_k_given_retained` | Given it wasn't evicted, did retrieval find it? (retrieval quality in isolation) |
-| `evictions` | How many sessions were evicted to fit the budget |
-| `used_bytes_end` | Bytes occupied at end of example |
+Example output:
 
-`hit_at_k_given_retained` is the most informative metric for comparing retrieval quality independent of eviction policy.
+```
+itemiser=session      policy=lru   budget=524288    gold_survival=0.550  hit@k=0.300
+itemiser=turn_pair    policy=lfu   budget=524288    gold_survival=0.420  hit@k=0.280
+```
+
+---
+
+## Adding a new policy
+
+Implement the `EvictionPolicy` protocol — one method:
+
+```python
+class MyPolicy:
+    name = "my_policy"
+
+    def select_victim(self, store) -> str:
+        """Return the id of the item to evict."""
+        for it in store.iter_features():
+            # it: MemFeatures(id, bytes, last_access, access_count, created_at)
+            ...
+        return victim_id
+```
+
+Then add it to your experiment script's policy list and run. The pipeline handles everything else.
+
+## Adding a new dataset
+
+1. Write a workload class that yields `WorkloadEvent`s (inserts and queries with `gold_item_ids`).
+2. Optionally write an `Itemiser` if the raw data needs chunking.
+3. Create an experiment entry point that passes the workload to `run_pipeline`.
+
+See `workloads/synthetic.py` for the simplest example, `workloads/longmemeval.py` for a real dataset adapter.
 
 
 
