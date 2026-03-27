@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from typing import Optional, Iterable
+from typing import Optional, Iterable, TYPE_CHECKING
 
-from forgetit.core.schema import MemRecord, Query, MemFeatures
-from forgetit.backend.backend import Backend
+from forgetit.core import MemRecord, Query, MemFeatures
+from forgetit.policies import Action, Evict, Compress, Prune
 
+if TYPE_CHECKING:
+    from forgetit.policies import EvictionPolicy
+    from forgetit.backend import Backend
 
 def estimate_bytes(item: MemRecord) -> int:
 
@@ -16,7 +19,7 @@ def estimate_bytes(item: MemRecord) -> int:
 # TODO maybe look at calling it "ForgettingController"
 class RetentionManager:
 
-    def __init__(self, budget_bytes: int, backend: Backend, policy, logger):
+    def __init__(self, budget_bytes: int, backend: Backend, policy: EvictionPolicy, logger):
         self.budget_bytes = budget_bytes
         self.backend = backend
         self.policy = policy
@@ -33,7 +36,7 @@ class RetentionManager:
         
     def close(self) -> None:
         self.backend.close()
-
+ 
     def insert(self, item: MemRecord) -> None:
         # Ensure bytes exists deterministically
         b = item.bytes if item.bytes > 0 else estimate_bytes(item)
@@ -48,7 +51,7 @@ class RetentionManager:
             self.used_bytes -= old_b
             self._bytes_by_id.pop(item.id, None)
 
-        self._evict_until_fits(incoming_bytes=b)
+        self._ensure_budget(incoming_bytes=b)
         
         # if new put the creation time as last access LRU vs LFU differentiation.
 
@@ -81,35 +84,93 @@ class RetentionManager:
 
     def delete(self, item_id: str) -> None:
         # Maintain accounting
-        b = self._bytes_by_id.pop(item_id, None)
-        if b is None:
-            # If we don't know, try backend
-            it = self.backend.get(item_id)
-            b = it.bytes if it else 0
+        freed = self._remove_record(item_id)
+        self.logger.event("delete", {
+            "id": item_id,
+            "freed_bytes": freed,
+            "used_bytes": self.used_bytes,
+        })
 
-        self.backend.delete(item_id)
-        self.used_bytes = max(0, self.used_bytes - b)
+    def _execute_action(self, action: Action) -> None:
+        """
+        Dispatch a policy Action and update byte accounting
+        """
+        if isinstance(action, Evict):
+            self._do_evict(action.id)
+        elif isinstance(action, Compress):
+            self._do_compress(action.id, action.new_text)
+        elif isinstance(action, Prune):
+            raise NotImplementedError("Not Implemented yet and requires a graph backend")
+        else:
+            raise TypeError(f" Unknown action type: {type(action)}")
 
-        self.logger.event("delete", {"id": item_id, "used_bytes": self.used_bytes})
+    def _do_evict(self, record_id: str) -> None:
+        """Policy-driven eviction."""
+        freed = self._remove_record(record_id)
+        self.logger.event("evict", {
+            "id": record_id,
+            "freed_bytes": freed,
+            "used_bytes": self.used_bytes,
+        })
+    
+    def _do_compress(self, record_id: str, new_text: str) -> None:
+        record = self.backend.get(record_id)
 
-    def _evict_until_fits(self, incoming_bytes: int) -> None:
+        if record is None:
+            # TODO re-evaluate, this only happens if the record disappears mid way.
+            return 
+        old_bytes = self._bytes_by_id.get(record_id, 0)
+        new_bytes = len(new_text.encode("utf-8"))
+
+        # Compression didn't help
+        if new_bytes >= old_bytes:
+            
+            self.logger.event("compress_skipped", {
+                "id": record_id,
+                "old_bytes": old_bytes,
+                "new_bytes": new_bytes,
+            })
+            return
+        
+        # Compression worked:
+        freed = old_bytes - new_bytes
+        # Mutate the record
+        record.text = new_text
+        record.meta["compressed"] = True
+        record.meta["compression_saved_bytes"] = freed
+
+        # Upsert back into 
+        self.backend.upsert(record)
+
+        self._bytes_by_id[record_id] = new_bytes
+        self.used_bytes += (new_bytes - old_bytes)
+
+    
+        self.logger.event("compress", {
+            "id": record_id,
+            "old_bytes": old_bytes,
+            "new_bytes": new_bytes,
+            "freed_bytes": freed,
+            "used_bytes": self.used_bytes,
+        })
+
+
+    def _ensure_budget(self, incoming_bytes: int) -> None:
+
         while self.used_bytes + incoming_bytes > self.budget_bytes:
-            victim_id = self.policy.select_victim(store=self)
-            if victim_id is None:
-                raise RuntimeError("Policy returned None victim while budget exceeded.")
-            self._evict(victim_id)
-
-    def _evict(self, victim_id: str) -> None:
-        # Get bytes before delete for correct accounting
-        b = self._bytes_by_id.pop(victim_id, None)
-        if b is None:
-            it = self.backend.get(victim_id)
-            b = it.bytes if it else 0
-
-        self.backend.delete(victim_id)
-        self.used_bytes = max(0, self.used_bytes - b)
-
-        self.logger.event("evict", {"id": victim_id, "bytes": b, "used_bytes": self.used_bytes})
+            action = self.policy.select_action(self)
+            self._execute_action(action=action)
+    
+    def _remove_record(self, record_id: str) -> int:
+        """Remove a record from backend and accounting. Returns bytes freed.
+        
+        No logging — callers decide what event name and payload to use.
+        """
+        freed = self._bytes_by_id.get(record_id, 0)
+        self.backend.delete(record_id)              # if this throws, nothing changed
+        self._bytes_by_id.pop(record_id, None)
+        self.used_bytes = max(0, self.used_bytes - freed)
+        return freed
 
     def rebuild_accounting(self) -> None:
         self.used_bytes = 0
