@@ -14,7 +14,7 @@ class FIFOPolicy(SimpleEvictionPolicy):
 
     def select_victim(self, store: RetentionManager):
         oldest_id: str | None = None
-        oldest_ts: str | None = None
+        oldest_ts: float | None = None
 
         for feat in store.iter_features():
             if oldest_ts is None or feat.created_at < oldest_ts:
@@ -34,7 +34,7 @@ class RandomPolicy(SimpleEvictionPolicy):
 
 
     def select_victim(self, store):
-        ids = list(store.iter_ids)
+        ids = list(store.iter_ids())
         if not ids:
             raise RuntimeError("No records to evict")
         
