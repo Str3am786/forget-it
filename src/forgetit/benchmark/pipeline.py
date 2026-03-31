@@ -12,8 +12,8 @@ from forgetit.benchmark.workloads.synthetic import SyntheticWorkload
 from forgetit.backend.in_memory import InMemoryBackend
 from forgetit.core.logging import BenchmarkLogger
 from forgetit.memory_system.store import RetentionManager
-from forgetit.retrieval.lexical import LexicalOverlapRetriever
-
+from forgetit.retrieval import Retriever
+from forgetit.policies import EvictionPolicy
 
 def save_results_csv(results, path: str | Path) -> None:
     path = Path(path)
@@ -44,8 +44,8 @@ def run_pipeline(
     dataset: str,
     workload: Workload,
     budget_bytes: int,
-    policy,
-    policy_name: str,
+    retriever: Retriever,
+    policy: EvictionPolicy,
     k: int = 5,
     seed: int = 0,
     itemiser: str = "",
@@ -54,7 +54,6 @@ def run_pipeline(
 ):
 
 
-    retriever = LexicalOverlapRetriever()
     backend = InMemoryBackend(retriever=retriever)
     logger = BenchmarkLogger()
     store = RetentionManager(
@@ -65,14 +64,18 @@ def run_pipeline(
     )
 
     store.connect()
+
+    policy_label = getattr(policy, "name", type(policy).__name__)
+    retriever_label = getattr(retriever, "name", type(retriever).__name__)
+
     try:
         results = run(
             workload=workload,
             store=store,
             k=k,
             dataset=dataset,
-            policy=policy_name,
-            retriever=type(retriever).__name__,
+            policy=policy_label,
+            retriever_name=retriever_label,
             seed=seed,
             itemiser=itemiser,
             reader=reader,
@@ -82,7 +85,7 @@ def run_pipeline(
 
     summary = summarize(results)
 
-    base = Path(out_dir) / dataset / policy_name / f"budget_{budget_bytes}"
+    base = Path(out_dir) / dataset / policy_label / f"budget_{budget_bytes}"
     save_results_csv(results, base / "results.csv")
     save_summary_csv(summary, base / "summary.csv")
 

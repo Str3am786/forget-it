@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from forgetit.benchmark.pipeline import run_pipeline
 from forgetit.benchmark.workloads.synthetic import SyntheticWorkload
-from forgetit.policies.lru import LRUPolicy
-from forgetit.policies.lfu import LFUPolicy
+from forgetit.policies import LRUPolicy
+from forgetit.policies import LFUPolicy
 
 
 def main() -> None:
