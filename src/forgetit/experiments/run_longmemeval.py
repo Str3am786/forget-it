@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from forgetit.benchmark.pipeline import run_pipeline
 from forgetit.benchmark.workloads.longmemeval import (
@@ -9,11 +10,17 @@ from forgetit.retrieval import LexicalOverlapRetriever, BM25Retriever
 from forgetit.policies import LRUPolicy
 from forgetit.policies import LFUPolicy
 
-REPO_ROOT = Path(__file__).resolve().parents[3]  
+REPO_ROOT = Path(__file__).resolve().parents[3]
 DATA_DIR = REPO_ROOT / "data"
 
 def main() -> None:
-    data_path = REPO_ROOT / "data" / "longmemeval_s_cleaned.json"
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s  %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
+    data_path = DATA_DIR / "longmemeval_s_cleaned.json"
     
     if not data_path.exists():
         raise FileNotFoundError(f"Dataset not found: {data_path}")
