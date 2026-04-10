@@ -1,6 +1,6 @@
 from .base import LLM
 from .openai_llm import OpenAiLLM
-from .readers import Reader, JsonMemoryReader
+from .readers import Reader, JsonMemoryReader, PlainTextReader
 
 from forgetit.settings import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 
@@ -17,4 +17,5 @@ __all__ = [
     "get_llm",
     "Reader",
     "JsonMemoryReader",
+    "PlainTextReader"
 ]
