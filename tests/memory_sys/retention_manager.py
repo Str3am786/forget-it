@@ -1,7 +1,7 @@
 from unittest import TestCase
 
 from forgetit.policies import LRUPolicy, LFUPolicy
-from forgetit.memory_system.store import RetentionManager
+from forgetit.memory_system import RetentionManager
 from forgetit.retrieval.lexical import LexicalOverlapRetriever
 from forgetit.backend.in_memory import InMemoryBackend
 from forgetit.core.schema import MemRecord, Query

@@ -1,4 +1,4 @@
 # orchestration + budget enforcement (things that “run the system”)
-from .store import RetentionManager
+from .custom_manager import RetentionManager
 
 __all__ = ["RetentionManager"]

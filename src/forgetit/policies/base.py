@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from forgetit.policies.actions import Action, Evict
 
 if TYPE_CHECKING:
-    from forgetit.memory_system.store import RetentionManager
+    from forgetit.memory_system import RetentionManager
 
 
 class EvictionPolicy(ABC):

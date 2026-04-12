@@ -5,7 +5,7 @@ import time
 
 from forgetit.benchmark.workloads.base import Workload
 from forgetit.benchmark.schema import EvalResult, QueryEval, QAFields
-from forgetit.memory_system.store import RetentionManager
+from forgetit.memory_system import RetentionManager
 from forgetit.core import Question, Query
 from forgetit.llm import Reader
 

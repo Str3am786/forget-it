@@ -6,7 +6,7 @@ import uuid
 
 from forgetit.backend.in_memory import InMemoryBackend
 from forgetit.core.schema import MemRecord, Query
-from forgetit.memory_system.store import RetentionManager
+from forgetit.memory_system import RetentionManager
 from forgetit.policies import LRUPolicy
 from forgetit.retrieval.lexical import LexicalOverlapRetriever
 

@@ -10,7 +10,7 @@ from forgetit.policies.base import EvictionPolicy
 if TYPE_CHECKING:
     from forgetit.policies.base import SimpleEvictionPolicy
     from forgetit.llm.base import LLM
-    from forgetit.memory_system.store import RetentionManager
+    from forgetit.memory_system import RetentionManager
 
 
 _COMPRESS_PROMPT = textwrap.dedent("""\

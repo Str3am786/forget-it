@@ -9,7 +9,7 @@ from forgetit.benchmark.runner_core import run
 from forgetit.benchmark.workloads.base import Workload
 from forgetit.backend.in_memory import InMemoryBackend
 from forgetit.core.logging import BenchmarkLogger
-from forgetit.memory_system.store import RetentionManager
+from forgetit.memory_system import RetentionManager
 from forgetit.retrieval import Retriever
 from forgetit.policies import EvictionPolicy
 from forgetit.llm.readers.base import Reader
