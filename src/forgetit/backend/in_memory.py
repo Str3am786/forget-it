@@ -39,6 +39,9 @@ class InMemoryBackend(Backend):
     def delete(self, item_id: str) -> None:
         self._items.pop(item_id, None)
 
+    def clear(self) -> None:
+        self._items.clear()
+
     def search(self, query: Query, k: int) -> List[MemRecord]:
         return self._retriever.topk(self._items, query, k)
 

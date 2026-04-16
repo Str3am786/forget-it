@@ -4,6 +4,7 @@ from typing import Optional, Iterable, TYPE_CHECKING
 
 from forgetit.core import MemRecord, Query, MemFeatures
 from forgetit.policies import Action, Evict, Compress, Prune
+from forgetit.memory_system.base import MemorySystem
 
 if TYPE_CHECKING:
     from forgetit.policies import EvictionPolicy
@@ -17,7 +18,7 @@ def estimate_bytes(item: MemRecord) -> int:
     return text_bytes + emb_bytes
 
 # TODO maybe look at calling it "ForgettingController"
-class RetentionManager:
+class RetentionManager(MemorySystem):
 
     def __init__(self, budget_bytes: int, backend: Backend, policy: EvictionPolicy, logger):
         self.budget_bytes = budget_bytes
@@ -90,6 +91,17 @@ class RetentionManager:
             "freed_bytes": freed,
             "used_bytes": self.used_bytes,
         })
+    
+    def clear(self) -> None:
+        """Wipes the backend and resets all byte accounting"""
+        
+        self.backend.clear()
+        self.used_bytes = 0 
+        self._bytes_by_id.clear()
+
+        if hasattr(self.logger, "event"):
+            self.logger.event("clear", {"budget_bytes": self.budget_bytes})
+
 
     def _execute_action(self, action: Action) -> None:
         """

@@ -85,6 +85,7 @@ def run_pipeline(
             answer_max_tokens=answer_max_tokens,
         )
     finally:
+        store.clear()
         store.close()
 
     summary = summarize(results)

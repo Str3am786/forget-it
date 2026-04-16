@@ -169,6 +169,11 @@ class FalkorBackend(Backend):
         self._graph.query(q, {"id": item_id})
 
     @override
+    def clear(self) -> None:
+        self._ensure_connected()
+        self._graph.query("MATCH (n) DETACH DELETE n")
+
+    @override
     def iter_ids(self) -> Iterable[str]:
         self._ensure_connected()
 
