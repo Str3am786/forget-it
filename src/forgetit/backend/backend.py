@@ -35,6 +35,10 @@ class Backend(ABC):
     def delete(self, item_id: str) -> None: ...
 
     @abstractmethod
+    def clear(self) -> None: ...
+
+    
+    @abstractmethod
     def search(self, query: Query, k: int) -> list[MemRecord]: ...
 
     @abstractmethod
