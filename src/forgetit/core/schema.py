@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Set
 import time
+import uuid 
 
 @dataclass
 class MemRecord:
@@ -30,8 +31,8 @@ class MemFeatures:
 # TODO placeholder 
 @dataclass
 class Query:
-    id: str
     text: str
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
     timestamp: float = field(default_factory=lambda: time.time())
     embedding: Optional[list[float]] = None
     meta: Dict[str, Any] = field(default_factory=dict)
