@@ -193,16 +193,20 @@ class LongMemEvalWorkload:
             elif "question_date" in example:
                 q_ts = parse_longmemeval_date(example["question_date"])
             else:
-                q_ts = 0.0
+                raise ValueError("No question date or question date provided.")
+
+            qid = str(example.get("question_id", ""))
+            ref_answer = str(example.get("answer", ""))
+            question_type = str(example.get("question_type", ""))
 
             query = Query(
-                id=str(example.get("question_id", "")),
+                id=qid,
                 text=str(example["question"]),
                 timestamp=q_ts,
                 embedding=None,
                 meta={
                     "dataset": "longmemeval",
-                    "question_type": example.get("question_type", ""),
+                    "question_type": question_type,
                 },
             )
 
@@ -212,4 +216,6 @@ class LongMemEvalWorkload:
                 item=None,
                 query=query,
                 gold_item_ids=self._resolve_gold(example, emitted_items_by_session),
+                ref_answer=ref_answer,
+                question_type=question_type
             )

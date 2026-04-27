@@ -30,7 +30,7 @@ def main():
     backend = InMemoryBackend(retriever=retriever)
     policy = LRUPolicy()
 
-    # Small budget to force evictions
+    # Small budget to force evictions_total_at_query_time
     store = RetentionManager(budget_bytes=250, backend=backend, policy=policy, logger=logger)
     store.connect()
 
@@ -45,7 +45,7 @@ def main():
     hits = store.retrieve(q1, k=2)
     print("Hits:", [h.id for h in hits])
 
-    # Insert more to trigger evictions
+    # Insert more to trigger evictions_total_at_query_time
     store.insert(make_item(4, "Vector databases enable similarity search using embeddings."))
     store.insert(make_item(5, "LRU evicts the least recently accessed item."))
 

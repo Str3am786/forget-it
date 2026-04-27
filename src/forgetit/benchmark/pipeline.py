@@ -3,15 +3,12 @@ from __future__ import annotations
 import csv
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 
 from forgetit.benchmark.metrics import summarize
-from forgetit.benchmark.runner_core import run
+from forgetit.benchmark.runner_core import run, _StoreView
 from forgetit.benchmark.workloads.base import Workload
-from forgetit.backend.in_memory import InMemoryBackend
-from forgetit.core.logging import BenchmarkLogger
-from forgetit.memory_system import RetentionManager
-from forgetit.retrieval import Retriever
-from forgetit.policies import EvictionPolicy
+from forgetit.memory_system.base import MemorySystem
 from forgetit.llm.readers.base import Reader
 
 
@@ -43,31 +40,40 @@ def run_pipeline(
     *,
     dataset: str,
     workload: Workload,
-    budget_bytes: int,
-    retriever: Retriever,
-    policy: EvictionPolicy,
+    store: MemorySystem,
+    store_label: str,
     k: int = 5,
     seed: int = 0,
     itemiser: str = "",
     reader: str = "",
     reader_impl: Reader | None = None,
-    ref_answers: dict[str, dict] | None = None,
     answer_max_tokens: int = 128,
+    budget_bytes: int = 0,
+    policy_label: str = "",
+    retriever_label: str = "",
     out_dir: str = "artifacts/benchmark",
-):
-    backend = InMemoryBackend(retriever=retriever)
-    logger = BenchmarkLogger()
-    store = RetentionManager(
-        budget_bytes=budget_bytes,
-        backend=backend,
-        policy=policy,
-        logger=logger,
-    )
+    clear_after: bool = True
+) -> tuple[list, dict[str, float]]:
+    """
+    Run a workload against a pre-built memory system and persist results.
 
-    store.connect()
+    The caller is responsible for constructing ``store``.  For a retention
+    experiment this means building a ``RetentionManager`` with its backend,
+    policy, and logger; for Letta it's a ``LettaWrapper()``.  The pipeline
+    does lifecycle (connect/close if the store exposes them) and always
+    calls ``store.clear()`` at the end.
 
-    policy_label = getattr(policy, "name", type(policy).__name__)
-    retriever_label = getattr(retriever, "name", type(retriever).__name__)
+    ``store_label`` identifies the configuration in output CSVs and in the
+    artifact directory layout.  Use a slash-separated string to get nested
+    directories, e.g. ``"retention/lru/bm25/budget_262144"`` →
+    ``<out_dir>/<dataset>/<itemiser>/retention/lru/bm25/budget_262144/``.
+
+    ``budget_bytes`` / ``policy_label`` / ``retriever_label`` are pass-through
+    labels for reporting only; the actual budget/policy/retriever live inside
+    the store and the pipeline doesn't touch them.
+    """
+    view = _StoreView(store)
+    view.safe_call("connect")
 
     try:
         results = run(
@@ -75,29 +81,34 @@ def run_pipeline(
             store=store,
             k=k,
             dataset=dataset,
+            store_label=store_label,
             policy=policy_label,
             retriever_name=retriever_label,
+            budget_bytes_report=budget_bytes,
             seed=seed,
             itemiser=itemiser,
             reader_name=reader,
             reader_impl=reader_impl,
-            ref_answers=ref_answers,
             answer_max_tokens=answer_max_tokens,
         )
     finally:
-        store.clear()
-        store.close()
+        # TODO need to think of a clear_between_examples=True flag
+        if clear_after:
+            store.clear()
+            
+        view.safe_call("close")
 
     summary = summarize(results)
 
+    # Artifact layout:
+    #   <out_dir>/<dataset>/<itemiser>/<store_label>/<reader>/
+    # store_label can contain slashes; they become sub-directories.
     base = (
         Path(out_dir)
         / dataset
-        / itemiser
-        / policy_label
-        / retriever_label
+        / (itemiser or "default")
+        / store_label
         / (reader or "none")
-        / f"budget_{budget_bytes}"
     )
     save_results_csv(results, base / "results.csv")
     save_summary_csv(summary, base / "summary.csv")

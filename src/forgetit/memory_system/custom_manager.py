@@ -10,12 +10,12 @@ if TYPE_CHECKING:
     from forgetit.policies import EvictionPolicy
     from forgetit.backend import Backend
 
+
 def estimate_bytes(item: MemRecord) -> int:
-
     text_bytes = len(item.text.encode("utf-8"))
-    emb_bytes = 0 if item.embedding is None else 4 * len(item.embedding)  
-
+    emb_bytes = 0 if item.embedding is None else 4 * len(item.embedding)
     return text_bytes + emb_bytes
+
 
 # TODO maybe look at calling it "ForgettingController"
 class RetentionManager(MemorySystem):
@@ -27,17 +27,17 @@ class RetentionManager(MemorySystem):
         self.logger = logger
 
         self.used_bytes = 0
-        self._bytes_by_id: dict[str, int] = {}  
+        self._bytes_by_id: dict[str, int] = {}
 
     def connect(self) -> None:
         self.backend.connect()
         # TODO remove once cheap
         if self.backend.is_persistent:
             self.rebuild_accounting()
-        
+
     def close(self) -> None:
         self.backend.close()
- 
+
     def insert(self, item: MemRecord) -> None:
         # Ensure bytes exists deterministically
         b = item.bytes if item.bytes > 0 else estimate_bytes(item)
@@ -53,9 +53,8 @@ class RetentionManager(MemorySystem):
             self._bytes_by_id.pop(item.id, None)
 
         self._ensure_budget(incoming_bytes=b)
-        
-        # if new put the creation time as last access LRU vs LFU differentiation.
 
+        # If new, use creation time as last_access so LRU/LFU can differentiate.
         if item.last_access == 0.0:
             item.last_access = item.created_at
         self.backend.upsert(item)
@@ -67,7 +66,11 @@ class RetentionManager(MemorySystem):
             {"id": item.id, "bytes": b, "used_bytes": self.used_bytes, "budget_bytes": self.budget_bytes},
         )
 
-    def retrieve(self, query: Query, k: int) -> list[MemRecord]:
+    def retrieve(self, query: Query, k: int | None = None) -> list[MemRecord]:
+        # RetentionManager always honours k; the Protocol's optional-k signature
+        # is about callers that don't want to supply one (e.g. Letta benchmarks).
+        if k is None:
+            raise ValueError("RetentionManager.retrieve requires k.")
         results = self.backend.search(query, k)
         now = query.timestamp
 
@@ -83,6 +86,12 @@ class RetentionManager(MemorySystem):
     def get(self, item_id: str) -> Optional[MemRecord]:
         return self.backend.get(item_id)
 
+    def get_used_bytes(self) -> int:
+        # Protocol conformance — mirrors the attribute.  Keeping both because
+        # internal code (and callers who already pattern-match RetentionManager)
+        # uses the attribute; the method is what MemorySystem promises.
+        return self.used_bytes
+
     def delete(self, item_id: str) -> None:
         # Maintain accounting
         freed = self._remove_record(item_id)
@@ -91,22 +100,18 @@ class RetentionManager(MemorySystem):
             "freed_bytes": freed,
             "used_bytes": self.used_bytes,
         })
-    
+
     def clear(self) -> None:
         """Wipes the backend and resets all byte accounting"""
-        
         self.backend.clear()
-        self.used_bytes = 0 
+        self.used_bytes = 0
         self._bytes_by_id.clear()
 
         if hasattr(self.logger, "event"):
             self.logger.event("clear", {"budget_bytes": self.budget_bytes})
 
-
     def _execute_action(self, action: Action) -> None:
-        """
-        Dispatch a policy Action and update byte accounting
-        """
+        """Dispatch a policy Action and update byte accounting"""
         if isinstance(action, Evict):
             self._do_evict(action.id)
         elif isinstance(action, Compress):
@@ -124,40 +129,36 @@ class RetentionManager(MemorySystem):
             "freed_bytes": freed,
             "used_bytes": self.used_bytes,
         })
-    
+
     def _do_compress(self, record_id: str, new_text: str) -> None:
         record = self.backend.get(record_id)
 
         if record is None:
             # TODO re-evaluate, this only happens if the record disappears mid way.
-            return 
+            return
         old_bytes = self._bytes_by_id.get(record_id, 0)
         new_bytes = len(new_text.encode("utf-8"))
 
         # Compression didn't help
         if new_bytes >= old_bytes:
-            
             self.logger.event("compress_skipped", {
                 "id": record_id,
                 "old_bytes": old_bytes,
                 "new_bytes": new_bytes,
             })
             return
-        
-        # Compression worked:
+
+        # Compression worked
         freed = old_bytes - new_bytes
-        # Mutate the record
         record.text = new_text
         record.meta["compressed"] = True
         record.meta["compression_saved_bytes"] = freed
 
-        # Upsert back into 
         self.backend.upsert(record)
 
         self._bytes_by_id[record_id] = new_bytes
         self.used_bytes += (new_bytes - old_bytes)
 
-    
         self.logger.event("compress", {
             "id": record_id,
             "old_bytes": old_bytes,
@@ -166,16 +167,14 @@ class RetentionManager(MemorySystem):
             "used_bytes": self.used_bytes,
         })
 
-
     def _ensure_budget(self, incoming_bytes: int) -> None:
-
         while self.used_bytes + incoming_bytes > self.budget_bytes:
             action = self.policy.select_action(self)
             self._execute_action(action=action)
-    
+
     def _remove_record(self, record_id: str) -> int:
         """Remove a record from backend and accounting. Returns bytes freed.
-        
+
         No logging — callers decide what event name and payload to use.
         """
         freed = self._bytes_by_id.get(record_id, 0)
@@ -192,14 +191,11 @@ class RetentionManager(MemorySystem):
             self._bytes_by_id[item_id] = b
             self.used_bytes += b
 
-    
     def iter_ids(self):
         return self.backend.iter_ids()
 
-
     def iter_features(self) -> Iterable[MemFeatures]:
         return self.backend.scan_features()
-    
 
     def iter_items(self):
         # TODO add 'feature cache' or policy-specific indexes.

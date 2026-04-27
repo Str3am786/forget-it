@@ -13,7 +13,7 @@ Why BM25 instead of raw overlap:
 
 The retriever is stateless between calls — corpus stats are computed
 on-the-fly from the ``items`` dict passed to ``topk()``.  This is fine
-because the item set changes between calls (evictions happen), and
+because the item set changes between calls (evictions_total_at_query_time happen), and
 the total number of items is small (bounded by your memory budget).
 """
 from __future__ import annotations
