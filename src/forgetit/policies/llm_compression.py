@@ -72,6 +72,7 @@ class LLMCompressionPolicy(EvictionPolicy):
         min_saving_ratio: float = 0.5,
         max_attempts: int = 3,
         min_compress_bytes: int = 200,
+        prompt_template: str = _COMPRESS_PROMPT,
     ) -> None:
         self.llm = llm
         self.selector = selector
@@ -79,6 +80,7 @@ class LLMCompressionPolicy(EvictionPolicy):
         self.min_saving_ratio = min_saving_ratio
         self.max_attempts = max_attempts
         self.min_compress_bytes = min_compress_bytes
+        self.prompt_template = prompt_template
         self._failures: dict[str, int] = {}
 
     def select_action(self, store: RetentionManager) -> Evict | Compress:
@@ -97,7 +99,7 @@ class LLMCompressionPolicy(EvictionPolicy):
         if original_bytes < self.min_compress_bytes:
             return Evict(id=victim_id)
 
-        prompt = _COMPRESS_PROMPT.format(text=record.text)
+        prompt = self.prompt_template.format(text=record.text)
 
         try:
             raw = self.llm.generate(

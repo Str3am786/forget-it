@@ -17,7 +17,8 @@ from forgetit.memory_system.wrappers.memgpt_sys import LettaWrapper
 from forgetit.backend.in_memory import InMemoryBackend
 from forgetit.core.logging import BenchmarkLogger
 from forgetit.retrieval import LexicalOverlapRetriever, BM25Retriever
-from forgetit.policies import LRUPolicy, LFUPolicy, RandomPolicy, LLMCompressionPolicy
+from forgetit.policies import LRUPolicy, LFUPolicy, RandomPolicy, LLMCompressionPolicy, EbbinghausPolicy, \
+    MemoryBankCompressionPolicy
 from forgetit.llm import get_llm
 from forgetit.llm.readers import PlainTextReader
 from forgetit.settings import LETTA_BASE_URL, LETTA_API_KEY
@@ -101,7 +102,9 @@ def make_stores(
         ("lru", LRUPolicy),
         ("lfu", LFUPolicy),
         ("random", RandomPolicy),
-        ("compression", LLMCompressionPolicy ),
+        ("compression", LLMCompressionPolicy),
+        ("ebbinghaus", EbbinghausPolicy),
+        ("memorybank", MemoryBankCompressionPolicy),
     ]
     retrievers = [("lexical", LexicalOverlapRetriever), ("bm25", BM25Retriever)]
 

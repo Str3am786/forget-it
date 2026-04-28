@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import math
+import textwrap
 from typing import TYPE_CHECKING
 
 from forgetit.policies.base import SimpleEvictionPolicy
+from forgetit.policies.llm_compression import LLMCompressionPolicy
 
 if TYPE_CHECKING:
     from forgetit.memory_system import RetentionManager
+
 
 
 class EbbinghausPolicy(SimpleEvictionPolicy):
@@ -71,3 +74,44 @@ class EbbinghausPolicy(SimpleEvictionPolicy):
         if victim_id is None:
             raise RuntimeError("Ebbinghaus: store empty but eviction requested.")
         return victim_id
+
+
+# Adapted from MemoryBank (Zhong et al., AAAI 2024), `summarize_content_prompt`
+# in memory_bank/summarize_memory.py. We strip the role-prefixing loop because
+# our MemRecord text is already formatted as "role: content\n..." by the
+# LongMemEval itemisers (see _turn_text in workloads/longmemeval.py). The
+# instruction wording is preserved verbatim from the English branch of the
+# original prompt; the trailing "no preamble" line is added because small
+# local models otherwise prepend "Sure, here is the summary:" etc.
+_MEMORYBANK_PROMPT = textwrap.dedent("""\
+    Please summarize the following dialogue as concisely as possible,
+    extracting the main themes and key information. If there are multiple
+    key events, you may summarize them separately.
+    Output ONLY the summary — no preamble, no explanation.
+
+    Dialogue content:
+    {text}
+
+    Summarization:""")
+
+# TODO Not fully implemented, lacking "hierarchy"
+#  MemoryBankHierarchicalCompressionPolicy
+#  that prefers compressing already-compressed records (consolidation) before reaching for fresh ones.
+class MemoryBankCompressionPolicy(LLMCompressionPolicy):
+    """
+    MemoryBank-style summarization-as-compression policy.
+
+    Reference:
+        Zhong, Guo, Gao, Wang. "MemoryBank: Enhancing Large Language
+        Models with Long-Term Memory." AAAI 2024.
+        https://arxiv.org/abs/2305.10250
+    """
+
+    name = "memorybank_compression"
+
+    def __init__(self, *args, **kwargs) -> None:
+        # Sampling parameters. Original MemoryBank calls GPT-3.5 with
+        # temperature=0.7, top_p=1.0, frequency_penalty=0.4, presence_penalty=0.2, max_tokens=400.
+
+        kwargs.setdefault("prompt_template", _MEMORYBANK_PROMPT)
+        super().__init__(*args, **kwargs)
