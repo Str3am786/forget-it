@@ -21,7 +21,7 @@ class SimpleEvictionPolicy(EvictionPolicy):
     """Base for delete-only policies"""
     @abstractmethod
     def select_victim(self, store: RetentionManager) -> str:
-        raise NotImplementedError
+        ...
     
     def select_action(self, store: RetentionManager) -> Action:
         return Evict(id=self.select_victim(store))

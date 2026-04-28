@@ -1,18 +1,20 @@
 from .baselines import RandomPolicy, LRUPolicy, LFUPolicy, FIFOPolicy
 from .actions import Action, Evict, Compress, Prune
 from .base import EvictionPolicy, SimpleEvictionPolicy
+from llm_compression import LLMCompressionPolicy
 
 __all__ = [
     "EvictionPolicy",
-    "SimpleEvictionPolicy"
+    "SimpleEvictionPolicy",
     "LRUPolicy",
     "LFUPolicy", 
     "RandomPolicy", 
-    "FIFOPolicy", 
+    "FIFOPolicy",
+    "LLMCompressionPolicy",
     "Action", 
     "Evict",
     "Compress",
-    "Prune"
+    "Prune",
     ]
 
 # eviction / forgetting decisions

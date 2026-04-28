@@ -3,13 +3,14 @@ from __future__ import annotations
 import hashlib
 import time
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterable
 
 from letta_client import Letta, LettaError
 from letta_client.types import EmbeddingConfig
 
 from forgetit.memory_system.base import MemorySystem
 from forgetit.core.schema import MemRecord, Query
+from forgetit.policies import Action, Evict
 from forgetit.policies.base import EvictionPolicy
 from forgetit.settings import LLM_BASE_URL as _DEFAULT_EMBEDDING_ENDPOINT, LETTA_MAX_CHUNK_CHARS
 
