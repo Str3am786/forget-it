@@ -16,6 +16,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "letta-client",
     "humanize", # Decide to keep or not
+    "pandas",
 ]
 
 [project.optional-dependencies]

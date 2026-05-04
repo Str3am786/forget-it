@@ -28,6 +28,7 @@ class RetentionManager(MemorySystem):
 
         self.used_bytes = 0
         self._bytes_by_id: dict[str, int] = {}
+        self._tick: int = 0
 
     def connect(self) -> None:
         self.backend.connect()
@@ -51,12 +52,19 @@ class RetentionManager(MemorySystem):
             old_b = self._bytes_by_id.get(item.id, existing.bytes)
             self.used_bytes -= old_b
             self._bytes_by_id.pop(item.id, None)
+            # Carry forward accumulated retrieval signal across re-inserts so
+            # LRU/LFU don't treat a re-seen session as a cold-start.
+            item.access_count = max(item.access_count, existing.access_count)
 
         self._ensure_budget(incoming_bytes=b)
 
-        # If new, use creation time as last_access so LRU/LFU can differentiate.
-        if item.last_access == 0.0:
-            item.last_access = item.created_at
+        # Use a monotonic insertion counter for last_access so that LRU/LFU
+        # operate on workload-stream order rather than historical session dates
+        # (which are non-monotonic across LongMemEval examples).
+        self._tick += 1
+        item.last_access = float(self._tick)
+        if item.access_count == 0:
+            item.access_count = 1
         self.backend.upsert(item)
         self._bytes_by_id[item.id] = b
         self.used_bytes += b
@@ -72,12 +80,12 @@ class RetentionManager(MemorySystem):
         if k is None:
             raise ValueError("RetentionManager.retrieve requires k.")
         results = self.backend.search(query, k)
-        now = query.timestamp
 
+        self._tick += 1
         # TODO change to a multiple upsert
         for it in results:
             it.access_count += 1
-            it.last_access = now
+            it.last_access = float(self._tick)
             self.backend.upsert(it)
 
         self.logger.event("retrieve", {"q": query.id, "hits": [r.id for r in results]})
