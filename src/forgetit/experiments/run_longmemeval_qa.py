@@ -87,39 +87,50 @@ def build_letta_store(
 
 # ── Plans ─────────────────────────────────────────────────────────
 
+PolicySpec = tuple[str, Callable]      # (name, zero-arg factory)
+RetrieverSpec = tuple[str, Callable]   # (name, zero-arg factory)
+
+
+def default_policy_specs(llm, seed: int = 42) -> list[PolicySpec]:
+    """Zero-arg factories for every policy. Edit here to add/remove policies."""
+    return [
+        ("lru",         lambda: LRUPolicy()),
+        ("lfu",         lambda: LFUPolicy()),
+        ("random",      lambda: RandomPolicy(seed=seed)),
+        ("ebbinghaus",  lambda: EbbinghausPolicy()),
+        ("compression", lambda: LLMCompressionPolicy(llm=llm, selector=LFUPolicy())),
+        ("memorybank",  lambda: MemoryBankCompressionPolicy(llm=llm, selector=EbbinghausPolicy())),
+    ]
+
+
+def default_retriever_specs() -> list[RetrieverSpec]:
+    return [
+        ("lexical", LexicalOverlapRetriever),
+        ("bm25",    BM25Retriever),
+    ]
+
+
 def make_stores(
+    policy_specs: list[PolicySpec],
+    retriever_specs: list[RetrieverSpec],
     budgets: list[int],
     include_letta: bool = False,
 ) -> Iterator[tuple[str, Callable[[], object], dict]]:
     """
-    Yield factories (not instances) so we get a *fresh* store per pipeline run.
-
-    Reusing a store across runs is unsafe: ``run_pipeline`` calls ``clear()``
-    at the end, and most stores do not support re-use after clear in a
-    benchmark-meaningful way.
+    Yield ``(label, factory, {})`` triples — one per (policy × retriever × budget).
+    Each ``factory()`` returns a fresh ``(label, store, extras)`` triple.
     """
-    policies = [
-        ("lru", LRUPolicy),
-        ("lfu", LFUPolicy),
-        ("random", RandomPolicy),
-        ("compression", LLMCompressionPolicy),
-        ("ebbinghaus", EbbinghausPolicy),
-        ("memorybank", MemoryBankCompressionPolicy),
-    ]
-    retrievers = [("lexical", LexicalOverlapRetriever), ("bm25", BM25Retriever)]
-
-    for pname, PClass in policies:
-        for rname, RClass in retrievers:
+    for pname, policy_fn in policy_specs:
+        for rname, retriever_fn in retriever_specs:
             for budget in budgets:
-                # Close over the current values
-                def _retention_factory(b=budget, P=PClass, R=RClass,
-                                       pn=pname, rn=rname):
+                def _factory(b=budget, pf=policy_fn, rf=retriever_fn,
+                             pn=pname, rn=rname):
                     return build_retention_store(
-                        budget=b, policy=P(), retriever=R(),
+                        budget=b, policy=pf(), retriever=rf(),
                         policy_name=pn, retriever_name=rn,
                     )
                 label = f"retention/{pname}/{rname}/budget_{budget}"
-                yield label, _retention_factory, {}
+                yield label, _factory, {}
 
     if include_letta:
         yield "letta/default", build_letta_store, {}
@@ -147,9 +158,14 @@ def main() -> None:
     # experiment — policies, budgets, retrievers — stays identical.
     INCLUDE_LETTA = False
 
+    policy_specs = default_policy_specs(llm, seed=42)
+    retriever_specs = default_retriever_specs()
+
     for itemiser in itemisers:
         workload = LongMemEvalWorkload(data_path, itemiser)
-        for _label, factory, _ in make_stores(budgets, include_letta=INCLUDE_LETTA):
+        for _label, factory, _ in make_stores(
+            policy_specs, retriever_specs, budgets, include_letta=INCLUDE_LETTA
+        ):
             label, store, extras = factory()
             _, summary = run_pipeline(
                 dataset="longmemeval",
