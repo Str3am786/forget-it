@@ -134,10 +134,14 @@ class LongMemEvalWorkload:
         *,
         probe_every: int = 1,
         clear_between_examples: bool = True,
+        limit: int | None = None,
     ):
         """
         Parameters
         ----------
+        limit
+            If set, only the first ``limit`` examples are replayed.  Handy for
+            quick smoke runs on a cluster before launching the full sweep.
         probe_every
             Emit an access-only query probe after every N session inserts
             within an example.  The probe uses the example's question text so
@@ -157,11 +161,14 @@ class LongMemEvalWorkload:
         self.itemiser = itemiser
         self.probe_every = probe_every
         self.clear_between_examples = clear_between_examples
+        self.limit = limit
 
     def _load(self) -> list[dict[str, Any]]:
         data = json.loads(self.path.read_text(encoding="utf-8"))
         if not isinstance(data, list):
             raise ValueError("Expected LongMemEval JSON to be a list of examples.")
+        if self.limit is not None:
+            data = data[: self.limit]
         return data
 
     def _resolve_gold(

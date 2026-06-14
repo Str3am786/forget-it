@@ -14,7 +14,7 @@ METRICS_MAIN = [
 ]
 
 METRICS_COST = [
-    ("evictions", "Avg evictions"),
+    ("evictions_total_at_query_time", "Avg evictions_total_at_query_time"),
     ("used_bytes_end", "Avg used bytes (end)"),
 ]
 
@@ -36,7 +36,7 @@ def load_all_csvs(results_dir: Path) -> pd.DataFrame:
     df["k"] = df["k"].astype(int)
     df["policy"] = df["policy"].astype(str)
 
-    for col in ["gold_retained", "hit_at_k", "hit_at_k_given_retained", "used_bytes_end", "evictions"]:
+    for col in ["gold_retained", "hit_at_k", "hit_at_k_given_retained", "used_bytes_end", "evictions_total_at_query_time"]:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
     return df
@@ -53,8 +53,8 @@ def aggregate(df: pd.DataFrame) -> pd.DataFrame:
             hit_at_k_std=("hit_at_k", "std"),
             hit_at_k_given_retained_mean=("hit_at_k_given_retained", "mean"),
             hit_at_k_given_retained_std=("hit_at_k_given_retained", "std"),
-            evictions_mean=("evictions", "mean"),
-            evictions_std=("evictions", "std"),
+            evictions_mean=("evictions_total_at_query_time", "mean"),
+            evictions_std=("evictions_total_at_query_time", "std"),
             used_bytes_end_mean=("used_bytes_end", "mean"),
             used_bytes_end_std=("used_bytes_end", "std"),
         )
@@ -134,8 +134,8 @@ def main():
         for m, label in METRICS_MAIN:
             _plot_lines_with_errorbars(sub, m, f"{label} (k={k})", out_dir / f"{m}_k{k}.png")
 
-        # Cost metrics: evictions is best as bar chart; used_bytes can be line
-        _plot_bars_with_errorbars(sub, "evictions", f"Avg evictions (k={k})", out_dir / f"evictions_k{k}.png")
+        # Cost metrics: evictions_total_at_query_time is best as bar chart; used_bytes can be line
+        _plot_bars_with_errorbars(sub, "evictions_total_at_query_time", f"Avg evictions_total_at_query_time (k={k})", out_dir / f"evictions_k{k}.png")
         _plot_lines_with_errorbars(sub, "used_bytes_end", f"Avg used bytes end (k={k})", out_dir / f"used_bytes_end_k{k}.png")
 
     print(f"Wrote plots to: {out_dir}")
