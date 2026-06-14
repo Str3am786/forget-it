@@ -8,7 +8,7 @@ from forgetit.core.schema import MemRecord, Query
 
 @dataclass
 class WorkloadEvent:
-    type: Literal["insert", "retrieve", "query"]
+    type: Literal["insert", "retrieve", "query", "reset"]
     timestamp: float
     item: MemRecord | None       # for insert events
     query: Query | None          # for retrieve/query events

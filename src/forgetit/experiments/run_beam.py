@@ -87,12 +87,12 @@ RetrieverSpec = tuple[str, Callable]   # (name, zero-arg factory)
 def default_policy_specs(llm, seed: int = 42) -> list[PolicySpec]:
     """Return zero-arg factories for every policy.  Add or remove entries here."""
     return [
-        ("lru",         lambda: LRUPolicy()),
-        ("lfu",         lambda: LFUPolicy()),
-        ("random",      lambda: RandomPolicy(seed=seed)),
-        ("ebbinghaus",  lambda: EbbinghausPolicy()),
+        #("lru",         lambda: LRUPolicy()),
+        #("lfu",         lambda: LFUPolicy()),
+        #("random",      lambda: RandomPolicy(seed=seed)),
+        #("ebbinghaus",  lambda: EbbinghausPolicy()),
         ("compression", lambda: LLMCompressionPolicy(llm=llm, selector=LFUPolicy())),
-        ("memorybank",  lambda: MemoryBankCompressionPolicy(llm=llm, selector=EbbinghausPolicy())),
+        #("memorybank",  lambda: MemoryBankCompressionPolicy(llm=llm, selector=EbbinghausPolicy())),
     ]
 
 

@@ -63,8 +63,9 @@ class RetentionManager(MemorySystem):
         # (which are non-monotonic across LongMemEval examples).
         self._tick += 1
         item.last_access = float(self._tick)
-        if item.access_count == 0:
-            item.access_count = 1
+        # Leave access_count at 0 for fresh items so LFU only counts true
+        # retrievals.  The carry-forward above already preserved any prior
+        # retrieval signal for re-inserted items.
         self.backend.upsert(item)
         self._bytes_by_id[item.id] = b
         self.used_bytes += b
@@ -159,6 +160,9 @@ class RetentionManager(MemorySystem):
         # Compression worked
         freed = old_bytes - new_bytes
         record.text = new_text
+        record.bytes = new_bytes  # keep record.bytes in sync so the policy
+                                  # (which reads record.bytes as original_bytes)
+                                  # doesn't see a stale, pre-compression size.
         record.meta["compressed"] = True
         record.meta["compression_saved_bytes"] = freed
 
@@ -176,9 +180,27 @@ class RetentionManager(MemorySystem):
         })
 
     def _ensure_budget(self, incoming_bytes: int) -> None:
+        # Each iteration must make progress (free bytes or drop a record).
+        # If a policy/compression action does neither, the loop would spin
+        # forever; we surface that as a clear error instead of hanging.
         while self.used_bytes + incoming_bytes > self.budget_bytes:
+            before_bytes = self.used_bytes
+            before_count = self.backend.count()
+
             action = self.policy.select_action(self)
             self._execute_action(action=action)
+
+            made_progress = (
+                self.used_bytes < before_bytes
+                or self.backend.count() < before_count
+            )
+            if not made_progress:
+                raise RuntimeError(
+                    f"Eviction made no progress: used_bytes={self.used_bytes}, "
+                    f"budget={self.budget_bytes}, incoming={incoming_bytes}, "
+                    f"last_action={type(action).__name__}(id={getattr(action, 'id', '?')}). "
+                    "Policy returned an action that neither freed bytes nor removed a record."
+                )
 
     def _remove_record(self, record_id: str) -> int:
         """Remove a record from backend and accounting. Returns bytes freed.

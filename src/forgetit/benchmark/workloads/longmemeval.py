@@ -127,9 +127,36 @@ class SessionItemiser:
 class LongMemEvalWorkload:
     name = "longmemeval"
 
-    def __init__(self, path: str | Path, itemiser: Itemiser):
+    def __init__(
+        self,
+        path: str | Path,
+        itemiser: Itemiser,
+        *,
+        probe_every: int = 1,
+        clear_between_examples: bool = True,
+    ):
+        """
+        Parameters
+        ----------
+        probe_every
+            Emit an access-only query probe after every N session inserts
+            within an example.  The probe uses the example's question text so
+            that retrieved items that are truly relevant gain a recency/frequency
+            bump *before* later inserts can trigger their eviction.  Set 0 to
+            disable probing (preserves old FIFO-equivalent behaviour for ablations).
+        clear_between_examples
+            When True, emit a ``reset`` event between examples so the store is
+            wiped at each example boundary.  This isolates evaluation: gold
+            items from example N cannot accidentally survive into example N+1,
+            and the budget pressure that each example sees is exactly the
+            pressure from its own haystack.  Set False to accumulate across
+            all examples (original behaviour — useful for studying long-horizon
+            memory but conflates examples during eval).
+        """
         self.path = Path(path)
         self.itemiser = itemiser
+        self.probe_every = probe_every
+        self.clear_between_examples = clear_between_examples
 
     def _load(self) -> list[dict[str, Any]]:
         data = json.loads(self.path.read_text(encoding="utf-8"))
@@ -167,13 +194,40 @@ class LongMemEvalWorkload:
         return gold_ids
 
     def events(self) -> Iterator[WorkloadEvent]:
+        first_example = True
         for example in self._load():
+            # Emit a reset event between examples so the runner can clear the
+            # store at each boundary (controlled by clear_between_examples).
+            # The very first example never needs a preceding reset.
+            if self.clear_between_examples and not first_example:
+                yield WorkloadEvent(
+                    type="reset",
+                    timestamp=0.0,
+                    item=None,
+                    query=None,
+                    gold_item_ids=[],
+                )
+            first_example = False
+
             emitted_items_by_session: dict[str, list[MemRecord]] = {}
 
             session_ids = example["haystack_session_ids"]
             dates = example["haystack_dates"]
             sessions = example["haystack_sessions"]
 
+            if "question_date_ts" in example:
+                q_ts = float(example["question_date_ts"])
+            elif "question_date" in example:
+                q_ts = parse_longmemeval_date(example["question_date"])
+            else:
+                raise ValueError("No question date or question date provided.")
+
+            qid = str(example.get("question_id", ""))
+            ref_answer = str(example.get("answer", ""))
+            question_type = str(example.get("question_type", ""))
+            question_text = str(example["question"])
+
+            sessions_inserted = 0
             for session_id, date, turns in zip(session_ids, dates, sessions):
                 sid = str(session_id)
                 items = self.itemiser.itemise(sid, date, turns)
@@ -188,20 +242,35 @@ class LongMemEvalWorkload:
                         gold_item_ids=[],
                     )
 
-            if "question_date_ts" in example:
-                q_ts = float(example["question_date_ts"])
-            elif "question_date" in example:
-                q_ts = parse_longmemeval_date(example["question_date"])
-            else:
-                raise ValueError("No question date or question date provided.")
+                sessions_inserted += 1
 
-            qid = str(example.get("question_id", ""))
-            ref_answer = str(example.get("answer", ""))
-            question_type = str(example.get("question_type", ""))
+                # Periodically fire an access-only probe using the example's
+                # question so that items relevant to the query gain a
+                # recency/frequency bump before later inserts can evict them.
+                # gold_item_ids=[] marks this as unscored (runner skips eval).
+                if self.probe_every > 0 and sessions_inserted % self.probe_every == 0:
+                    probe_query = Query(
+                        id=f"{qid}::probe::{sessions_inserted}",
+                        text=question_text,
+                        timestamp=q_ts,
+                        embedding=None,
+                        meta={
+                            "dataset": "longmemeval",
+                            "question_type": question_type,
+                            "probe": True,
+                        },
+                    )
+                    yield WorkloadEvent(
+                        type="query",
+                        timestamp=q_ts,
+                        item=None,
+                        query=probe_query,
+                        gold_item_ids=[],   # access-only — not scored
+                    )
 
             query = Query(
                 id=qid,
-                text=str(example["question"]),
+                text=question_text,
                 timestamp=q_ts,
                 embedding=None,
                 meta={

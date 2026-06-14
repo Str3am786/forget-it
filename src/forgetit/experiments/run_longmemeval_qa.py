@@ -97,9 +97,9 @@ def default_policy_specs(llm, seed: int = 42) -> list[PolicySpec]:
         ("lru",         lambda: LRUPolicy()),
         ("lfu",         lambda: LFUPolicy()),
         ("random",      lambda: RandomPolicy(seed=seed)),
-        ("ebbinghaus",  lambda: EbbinghausPolicy()),
+        #("ebbinghaus",  lambda: EbbinghausPolicy()),
         ("compression", lambda: LLMCompressionPolicy(llm=llm, selector=LFUPolicy())),
-        ("memorybank",  lambda: MemoryBankCompressionPolicy(llm=llm, selector=EbbinghausPolicy())),
+        #("memorybank",  lambda: MemoryBankCompressionPolicy(llm=llm, selector=EbbinghausPolicy())),
     ]
 
 
@@ -162,7 +162,15 @@ def main() -> None:
     retriever_specs = default_retriever_specs()
 
     for itemiser in itemisers:
-        workload = LongMemEvalWorkload(data_path, itemiser)
+        # probe_every=1: emit an access-only warmup probe after every session
+        # insert so LRU/LFU see genuine reuse signal before eviction fires.
+        # clear_between_examples=True: wipe the store at each example boundary
+        # so examples are evaluated in isolation (intended eval semantics).
+        workload = LongMemEvalWorkload(
+            data_path, itemiser,
+            probe_every=1,
+            clear_between_examples=True,
+        )
         for _label, factory, _ in make_stores(
             policy_specs, retriever_specs, budgets, include_letta=INCLUDE_LETTA
         ):

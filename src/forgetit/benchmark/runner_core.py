@@ -308,6 +308,16 @@ def run(
                 )
             continue
 
+        if event.type == "reset":
+            # Example-boundary signal: wipe the store so each example is
+            # evaluated in isolation.  Only fires when the workload emits
+            # reset events (controlled by clear_between_examples=True).
+            clear_fn = getattr(store, "clear", None)
+            if callable(clear_fn):
+                clear_fn()
+            log.debug("  [reset]  store cleared between examples")
+            continue
+
         if event.type != "query":
             raise ValueError(f"Unknown event type: {event.type}")
 
