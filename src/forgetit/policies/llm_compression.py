@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 import textwrap
 from typing import TYPE_CHECKING
@@ -30,6 +31,8 @@ _PREAMBLE_RE = re.compile(
 )
 _FENCE_RE = re.compile(r"```[\s\S]*?```")
 _REPEATED_LINE_RE = re.compile(r"^(.+?)(\n\1)+", re.MULTILINE)
+
+log = logging.getLogger(__name__)
 
 
 def _sanitise(text: str) -> str:
@@ -86,19 +89,26 @@ class LLMCompressionPolicy(EvictionPolicy):
     def select_action(self, store: RetentionManager) -> Evict | Compress:
         victim_id = self.selector.select_victim(store)
 
-        if self._failures.get(victim_id, 0) >= self.max_attempts:
+        fails = self._failures.get(victim_id, 0)
+        if fails >= self.max_attempts:
             self._failures.pop(victim_id, None)
+            log.info("[compress] %s gave up after %d failed attempt(s) → EVICT",
+                     victim_id, fails)
             return Evict(id=victim_id)
 
         record = store.backend.get(victim_id)
         if record is None:
+            log.info("[compress] %s vanished before compression → EVICT", victim_id)
             return Evict(id=victim_id)
 
         original_bytes = record.bytes
 
         if original_bytes < self.min_compress_bytes:
+            log.info("[compress] %s too small to compress (%dB < %dB floor) → EVICT",
+                     victim_id, original_bytes, self.min_compress_bytes)
             return Evict(id=victim_id)
 
+        already = bool(record.meta.get("compressed", False))
         prompt = self.prompt_template.format(text=record.text)
 
         try:
@@ -107,7 +117,8 @@ class LLMCompressionPolicy(EvictionPolicy):
                 max_tokens=self.max_tokens,
                 temperature=0.0,
             )
-        except Exception:
+        except Exception as e:
+            log.warning("[compress] %s LLM error → EVICT: %s", victim_id, e)
             return Evict(id=victim_id)
 
         compressed = _sanitise(raw)
@@ -115,9 +126,26 @@ class LLMCompressionPolicy(EvictionPolicy):
 
         saving = 1 - (compressed_bytes / max(original_bytes, 1))
 
+        # Full original/response text only at DEBUG so it doesn't flood INFO runs.
+        log.debug("[compress] %s ORIGINAL (%dB%s): %r",
+                  victim_id, original_bytes, " already-compressed" if already else "",
+                  record.text[:300])
+        log.debug("[compress] %s RESPONSE (%dB): %r", victim_id, compressed_bytes, compressed[:300])
+
         if saving < self.min_saving_ratio or not compressed:
-            self._failures[victim_id] = self._failures.get(victim_id, 0) + 1
+            self._failures[victim_id] = fails + 1
+            log.info(
+                "[compress] %s REJECT %dB→%dB saving=%.0f%% (need ≥%.0f%%)%s, "
+                "fails=%d → EVICT",
+                victim_id, original_bytes, compressed_bytes, 100 * saving,
+                100 * self.min_saving_ratio,
+                " [already-compressed]" if already else "",
+                self._failures[victim_id],
+            )
             return Evict(id=victim_id)
 
         self._failures.pop(victim_id, None)
+        log.info("[compress] %s APPLY %dB→%dB saving=%.0f%%%s",
+                 victim_id, original_bytes, compressed_bytes, 100 * saving,
+                 " [re-compress]" if already else "")
         return Compress(id=victim_id, new_text=compressed)
