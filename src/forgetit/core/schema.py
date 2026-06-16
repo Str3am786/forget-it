@@ -27,6 +27,10 @@ class MemFeatures:
     last_access: float
     access_count: int
     created_at: Optional[float] = None
+    # Whether this record has already been compressed once. Lets two-phase
+    # policies (compress-to-pack, evict-as-last-resort) tell the un-compressed
+    # candidates apart from the compressed ones without reading full records.
+    compressed: bool = False
 
 # TODO placeholder 
 @dataclass

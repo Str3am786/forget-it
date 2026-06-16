@@ -70,4 +70,5 @@ class InMemoryBackend(Backend):
                 last_access=it.last_access,
                 access_count=it.access_count,
                 created_at=it.created_at,
+                compressed=bool(it.meta.get("compressed", False)),
             )

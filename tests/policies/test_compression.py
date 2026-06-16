@@ -1,35 +1,31 @@
 """
-Tests for LLMCompressionPolicy.
+Unit tests for LLMCompressionPolicy — pure / store-independent.
 
-All tests use mocks — no LLM server, no backend, no disk.
-Run with: pytest tests/test_llm_compression.py -v
+Covers _sanitise(), the Action dataclasses, SimpleEvictionPolicy.select_action
+wrapping, and MemoryBankCompressionPolicy construction/prompt wiring.
+
+The behavioral tests that exercise the two-phase compress/evict loop against a
+real RetentionManager live in test_compression_2.py.
+
+All tests here are pure — no LLM server, no backend, no disk.
 """
 from __future__ import annotations
 
 import pytest
-from unittest.mock import MagicMock, PropertyMock
-from dataclasses import dataclass, field
+from unittest.mock import MagicMock
 
-# ── minimal fakes (avoid importing the real modules) ────────────────
+from forgetit.policies.llm_compression import LLMCompressionPolicy, _sanitise
+from forgetit.policies.actions import Evict, Compress
 
-@dataclass
-class FakeRecord:
-    id: str
-    text: str
-    bytes: int = 0
-    meta: dict = field(default_factory=dict)
 
-    def __post_init__(self):
-        if self.bytes == 0:
-            self.bytes = len(self.text.encode("utf-8"))
-
+# ── minimal construction-only fakes ─────────────────────────────────
 
 class FakeSelector:
-    """Always picks the victim_id you tell it to."""
+    """Always picks the victim_id you tell it to. Accepts the candidates filter."""
     def __init__(self, victim_id: str):
         self.victim_id = victim_id
 
-    def select_victim(self, store) -> str:
+    def select_victim(self, store, candidates=None) -> str:
         return self.victim_id
 
 
@@ -45,19 +41,6 @@ class FakeLLM:
         if self.should_raise:
             raise RuntimeError("LLM crashed")
         return self.response
-
-
-def make_store(records: dict[str, FakeRecord]) -> MagicMock:
-    """Build a mock store whose backend.get returns from the dict."""
-    store = MagicMock()
-    store.backend.get.side_effect = lambda rid: records.get(rid)
-    return store
-
-
-# ── import the real code under test ─────────────────────────────────
-
-from forgetit.policies.llm_compression import LLMCompressionPolicy, _sanitise
-from forgetit.policies.actions import Evict, Compress
 
 
 # ====================================================================
@@ -116,158 +99,6 @@ class TestSanitise:
         assert result == "User moved to Berlin in March."
 
 
-# ====================================================================
-# LLMCompressionPolicy.select_action tests
-# ====================================================================
-
-class TestSelectAction:
-
-    def _make_policy(self, llm, victim_id="vic-1", **kwargs):
-        selector = FakeSelector(victim_id)
-        return LLMCompressionPolicy(
-            llm=llm,
-            selector=selector,
-            **kwargs,
-        )
-
-    # ── happy path: compression works ───────────────────────────
-
-    def test_good_compression_returns_compress(self):
-        """LLM returns text that's < 50% of original → Compress."""
-        original = "A" * 500  # 500 bytes
-        compressed = "Short summary."  # ~14 bytes
-
-        llm = FakeLLM(response=compressed)
-        policy = self._make_policy(llm)
-        store = make_store({"vic-1": FakeRecord(id="vic-1", text=original)})
-
-        action = policy.select_action(store)
-
-        assert isinstance(action, Compress)
-        assert action.id == "vic-1"
-        assert action.new_text == compressed
-
-    # ── compression not good enough ─────────────────────────────
-
-    def test_insufficient_saving_returns_evict(self):
-        """LLM output is 80% of original → doesn't meet 50% threshold → Evict."""
-        original = "A" * 500
-        barely_smaller = "B" * 400  # 80% of original
-
-        llm = FakeLLM(response=barely_smaller)
-        policy = self._make_policy(llm, min_saving_ratio=0.5)
-        store = make_store({"vic-1": FakeRecord(id="vic-1", text=original)})
-
-        action = policy.select_action(store)
-
-        assert isinstance(action, Evict)
-        assert action.id == "vic-1"
-
-    def test_custom_saving_ratio(self):
-        """With min_saving_ratio=0.2, a 50% reduction is fine."""
-        original = "A" * 500
-        half = "B" * 250
-
-        llm = FakeLLM(response=half)
-        policy = self._make_policy(llm, min_saving_ratio=0.2)
-        store = make_store({"vic-1": FakeRecord(id="vic-1", text=original)})
-
-        action = policy.select_action(store)
-
-        assert isinstance(action, Compress)
-
-    # ── tiny record → skip compression ──────────────────────────
-
-    def test_tiny_record_evicted_directly(self):
-        """Records under min_compress_bytes get evicted, not compressed."""
-        llm = FakeLLM(response="should not be called")
-        policy = self._make_policy(llm, min_compress_bytes=200)
-        store = make_store({"vic-1": FakeRecord(id="vic-1", text="tiny")})
-
-        action = policy.select_action(store)
-
-        assert isinstance(action, Evict)
-        assert llm.call_count == 0  # LLM was never called
-
-    # ── LLM crashes → evict ─────────────────────────────────────
-
-    def test_llm_exception_returns_evict(self):
-        llm = FakeLLM(should_raise=True)
-        policy = self._make_policy(llm)
-        store = make_store({"vic-1": FakeRecord(id="vic-1", text="A" * 500)})
-
-        action = policy.select_action(store)
-
-        assert isinstance(action, Evict)
-
-    # ── record vanished → evict ─────────────────────────────────
-
-    def test_missing_record_returns_evict(self):
-        llm = FakeLLM()
-        policy = self._make_policy(llm)
-        store = make_store({})  # record doesn't exist
-
-        action = policy.select_action(store)
-
-        assert isinstance(action, Evict)
-        assert action.id == "vic-1"
-
-    # ── LLM returns empty after sanitise → evict ────────────────
-
-    def test_empty_compression_returns_evict(self):
-        llm = FakeLLM(response="Here is a summary:")  # sanitise strips this to ""
-        policy = self._make_policy(llm)
-        store = make_store({"vic-1": FakeRecord(id="vic-1", text="A" * 500)})
-
-        action = policy.select_action(store)
-
-        assert isinstance(action, Evict)
-
-    # ── failure tracking and max_attempts ────────────────────────
-
-    def test_max_attempts_then_evict(self):
-        """After max_attempts failed compressions, evict without calling LLM."""
-        llm = FakeLLM(response="B" * 400)  # too big — will fail min_saving_ratio
-        policy = self._make_policy(llm, max_attempts=2, min_saving_ratio=0.5)
-        store = make_store({"vic-1": FakeRecord(id="vic-1", text="A" * 500)})
-
-        # First two calls: compression fails, failure count increments
-        action1 = policy.select_action(store)
-        assert isinstance(action1, Evict)
-        assert policy._failures.get("vic-1") == 1
-
-        action2 = policy.select_action(store)
-        assert isinstance(action2, Evict)
-        assert policy._failures.get("vic-1") == 2
-
-        # Third call: max_attempts reached, evicts immediately
-        calls_before = llm.call_count
-        action3 = policy.select_action(store)
-        assert isinstance(action3, Evict)
-        assert llm.call_count == calls_before  # LLM was NOT called
-        # Failure count cleared after forced eviction
-        assert "vic-1" not in policy._failures
-
-    def test_successful_compression_resets_failures(self):
-        """A successful compression clears the failure counter."""
-        policy = self._make_policy(FakeLLM(response="B" * 400), max_attempts=5)
-        store = make_store({"vic-1": FakeRecord(id="vic-1", text="A" * 500)})
-
-        # Accumulate some failures
-        policy._failures["vic-1"] = 3
-
-        # Now swap in a good LLM response
-        policy.llm = FakeLLM(response="Short.")
-        action = policy.select_action(store)
-
-        assert isinstance(action, Compress)
-        assert "vic-1" not in policy._failures
-
-
-# ====================================================================
-# _sanitise edge cases
-# ====================================================================
-
 class TestSanitiseEdgeCases:
 
     def test_question_mark_ending_preserved(self):
@@ -289,10 +120,6 @@ class TestSanitiseEdgeCases:
     def test_whitespace_only(self):
         assert _sanitise("   \n\n  ") == ""
 
-
-# ====================================================================
-# _sanitise — stacking, locale, and structural edge cases
-# ====================================================================
 
 class TestSanitisePreambleStacking:
     """The preamble-strip loop runs until stable, so stacked preambles unwind."""
@@ -383,318 +210,6 @@ class TestSanitiseUnicode:
 
 
 # ====================================================================
-# Savings threshold boundary conditions
-# ====================================================================
-
-class TestSavingsThreshold:
-
-    def _policy_and_store(self, ratio, response, original_size=500):
-        llm = FakeLLM(response=response)
-        policy = LLMCompressionPolicy(
-            llm=llm, selector=FakeSelector("v"), min_saving_ratio=ratio
-        )
-        store = make_store({"v": FakeRecord(id="v", text="A" * original_size)})
-        return policy, store
-
-    def test_saving_exactly_at_threshold_allows_compress(self):
-        # saving == min_saving_ratio: condition is `saving < threshold`, so equal → Compress.
-        # Original=500, need exactly 50%: compressed=250 bytes.
-        policy, store = self._policy_and_store(ratio=0.5, response="B" * 250)
-        assert isinstance(policy.select_action(store), Compress)
-
-    def test_saving_one_byte_below_threshold_evicts(self):
-        # 251/500 → saving=0.498 < 0.5 → Evict.
-        policy, store = self._policy_and_store(ratio=0.5, response="B" * 251)
-        assert isinstance(policy.select_action(store), Evict)
-
-    def test_zero_saving_evicts(self):
-        policy, store = self._policy_and_store(ratio=0.5, response="A" * 500)
-        assert isinstance(policy.select_action(store), Evict)
-
-    def test_record_bytes_field_used_not_recomputed_from_text(self):
-        # The policy reads record.bytes; if the caller set it to an unusual value,
-        # savings are relative to that, not the text's actual UTF-8 length.
-        llm = FakeLLM(response="Short.")  # 6 bytes
-        policy = LLMCompressionPolicy(
-            llm=llm, selector=FakeSelector("v"), min_saving_ratio=0.5
-        )
-        # bytes forced to 1000 even though text is short
-        record = FakeRecord(id="v", text="Twelve chars", bytes=1000)
-        store = make_store({"v": record})
-        # saving = 1 - 6/1000 = 0.994 → Compress
-        assert isinstance(policy.select_action(store), Compress)
-
-    def test_utf8_multibyte_savings_counted_correctly(self):
-        # Japanese text: each char is 3 UTF-8 bytes.
-        original_text = "日本語テキスト。" * 30   # 8 chars × 3 bytes × 30 = 720 bytes
-        compressed_text = "Short English summary."  # 22 ASCII bytes
-        saving = 1 - len(compressed_text.encode()) / len(original_text.encode())
-
-        llm = FakeLLM(response=compressed_text)
-        policy = LLMCompressionPolicy(
-            llm=llm, selector=FakeSelector("v"), min_saving_ratio=0.5
-        )
-        store = make_store({"v": FakeRecord(id="v", text=original_text)})
-        action = policy.select_action(store)
-        assert isinstance(action, Compress), f"saving={saving:.3f} should exceed 0.5"
-
-
-# ====================================================================
-# min_compress_bytes boundary conditions
-# ====================================================================
-
-class TestMinCompressBytesThreshold:
-
-    def test_record_one_byte_under_threshold_evicts_without_llm(self):
-        llm = FakeLLM()
-        policy = LLMCompressionPolicy(
-            llm=llm, selector=FakeSelector("v"), min_compress_bytes=200
-        )
-        record = FakeRecord(id="v", text="X", bytes=199)
-        store = make_store({"v": record})
-        action = policy.select_action(store)
-        assert isinstance(action, Evict)
-        assert llm.call_count == 0
-
-    def test_record_exactly_at_threshold_calls_llm(self):
-        llm = FakeLLM(response="S")  # 1 byte — saving = 199/200 > 0.5
-        policy = LLMCompressionPolicy(
-            llm=llm, selector=FakeSelector("v"), min_compress_bytes=200
-        )
-        record = FakeRecord(id="v", text="X", bytes=200)
-        store = make_store({"v": record})
-        policy.select_action(store)
-        assert llm.call_count == 1
-
-    def test_zero_bytes_record_evicts_without_llm(self):
-        # text="" → bytes stays 0 after FakeRecord.__post_init__
-        llm = FakeLLM()
-        policy = LLMCompressionPolicy(
-            llm=llm, selector=FakeSelector("v"), min_compress_bytes=1
-        )
-        store = make_store({"v": FakeRecord(id="v", text="")})
-        action = policy.select_action(store)
-        assert isinstance(action, Evict)
-        assert llm.call_count == 0
-
-
-# ====================================================================
-# Failure tracking
-# ====================================================================
-
-class TestFailureTracking:
-
-    def _fail_policy(self, **kwargs):
-        """Policy whose LLM always returns text too large to save (saving=0.2 < 0.5)."""
-        llm = FakeLLM(response="B" * 400)
-        policy = LLMCompressionPolicy(
-            llm=llm,
-            selector=FakeSelector("v"),
-            min_saving_ratio=0.5,
-            **kwargs,
-        )
-        store = make_store({"v": FakeRecord(id="v", text="A" * 500)})
-        return policy, store
-
-    def test_each_failed_compression_increments_counter(self):
-        policy, store = self._fail_policy(max_attempts=10)
-        for expected in range(1, 4):
-            policy.select_action(store)
-            assert policy._failures.get("v") == expected
-
-    def test_failure_counters_are_independent_per_victim(self):
-        llm = FakeLLM(response="B" * 400)
-        policy = LLMCompressionPolicy(
-            llm=llm, selector=FakeSelector("placeholder"),
-            min_saving_ratio=0.5, max_attempts=5,
-        )
-        store_a = make_store({"a": FakeRecord(id="a", text="A" * 500)})
-        store_b = make_store({"b": FakeRecord(id="b", text="A" * 500)})
-
-        policy.selector = FakeSelector("a")
-        policy.select_action(store_a)
-        policy.select_action(store_a)
-
-        policy.selector = FakeSelector("b")
-        policy.select_action(store_b)
-
-        assert policy._failures.get("a") == 2
-        assert policy._failures.get("b") == 1
-
-    def test_max_attempts_one_second_call_evicts_without_llm(self):
-        policy, store = self._fail_policy(max_attempts=1)
-        policy.select_action(store)  # failure 1 — failure count reaches limit
-        calls_before = policy.llm.call_count
-        action = policy.select_action(store)
-        assert isinstance(action, Evict)
-        assert policy.llm.call_count == calls_before  # LLM skipped
-
-    def test_forced_eviction_clears_failure_counter(self):
-        policy, store = self._fail_policy(max_attempts=2)
-        policy.select_action(store)
-        policy.select_action(store)
-        # Next call: failures == max_attempts → forced evict → counter deleted
-        policy.select_action(store)
-        assert "v" not in policy._failures
-
-    def test_llm_exception_does_not_increment_failure_counter(self):
-        # Exception path returns Evict immediately — it's a transient fault,
-        # not a failed compression attempt, so the counter must stay at zero.
-        llm = FakeLLM(should_raise=True)
-        policy = LLMCompressionPolicy(
-            llm=llm, selector=FakeSelector("v"), max_attempts=3
-        )
-        store = make_store({"v": FakeRecord(id="v", text="A" * 500)})
-
-        policy.select_action(store)
-        policy.select_action(store)
-
-        assert policy._failures.get("v", 0) == 0
-
-    def test_fresh_policy_has_empty_failure_dict(self):
-        policy = LLMCompressionPolicy(llm=FakeLLM(), selector=FakeSelector("v"))
-        assert policy._failures == {}
-
-    def test_failure_state_is_instance_level(self):
-        """Two policy instances never share failure state."""
-        llm = FakeLLM(response="B" * 400)
-        p1 = LLMCompressionPolicy(
-            llm=llm, selector=FakeSelector("v"), min_saving_ratio=0.5
-        )
-        p2 = LLMCompressionPolicy(
-            llm=llm, selector=FakeSelector("v"), min_saving_ratio=0.5
-        )
-        store = make_store({"v": FakeRecord(id="v", text="A" * 500)})
-        p1.select_action(store)
-        assert p1._failures.get("v") == 1
-        assert p2._failures.get("v", 0) == 0
-
-
-# ====================================================================
-# LLM call parameter forwarding
-# ====================================================================
-
-class TestLLMForwarding:
-
-    class RecordingLLM:
-        def __init__(self, response="Short summary."):
-            self.calls: list[dict] = []
-            self._response = response
-
-        def generate(self, prompt, *, max_tokens, temperature):
-            self.calls.append(
-                {"prompt": prompt, "max_tokens": max_tokens, "temperature": temperature}
-            )
-            return self._response
-
-    def _setup(self, response="Short summary.", **policy_kwargs):
-        llm = self.RecordingLLM(response=response)
-        policy = LLMCompressionPolicy(llm=llm, selector=FakeSelector("v"), **policy_kwargs)
-        store = make_store({"v": FakeRecord(id="v", text="A" * 500)})
-        return policy, store, llm
-
-    def test_record_text_appears_in_prompt(self):
-        policy, store, llm = self._setup()
-        policy.select_action(store)
-        assert "A" * 500 in llm.calls[0]["prompt"]
-
-    def test_max_tokens_forwarded(self):
-        policy, store, llm = self._setup(max_tokens=64)
-        policy.select_action(store)
-        assert llm.calls[0]["max_tokens"] == 64
-
-    def test_temperature_is_always_zero(self):
-        policy, store, llm = self._setup()
-        policy.select_action(store)
-        assert llm.calls[0]["temperature"] == 0.0
-
-    def test_custom_prompt_template_used(self):
-        policy, store, llm = self._setup(prompt_template="CUSTOM: {text} :END")
-        policy.select_action(store)
-        prompt = llm.calls[0]["prompt"]
-        assert prompt.startswith("CUSTOM:")
-        assert prompt.endswith(":END")
-
-    def test_llm_not_called_for_missing_record(self):
-        llm = FakeLLM()
-        policy = LLMCompressionPolicy(llm=llm, selector=FakeSelector("v"))
-        policy.select_action(make_store({}))
-        assert llm.call_count == 0
-
-    def test_llm_not_called_when_max_attempts_already_reached(self):
-        llm = FakeLLM()
-        policy = LLMCompressionPolicy(
-            llm=llm, selector=FakeSelector("v"), max_attempts=1
-        )
-        store = make_store({"v": FakeRecord(id="v", text="A" * 500)})
-        policy._failures["v"] = 1  # already at the limit
-        policy.select_action(store)
-        assert llm.call_count == 0
-
-
-# ====================================================================
-# Architectural / design invariants
-# ====================================================================
-
-class TestPolicyArchitecture:
-
-    def test_llm_compression_policy_is_an_eviction_policy(self):
-        from forgetit.policies.base import EvictionPolicy
-        policy = LLMCompressionPolicy(llm=FakeLLM(), selector=FakeSelector("v"))
-        assert isinstance(policy, EvictionPolicy)
-
-    def test_select_action_only_returns_evict_or_compress(self):
-        scenarios = [
-            ("Short.", {"v": FakeRecord(id="v", text="A" * 500)}),  # compress path
-            ("B" * 400, {"v": FakeRecord(id="v", text="A" * 500)}),  # saving too small
-            ("Short.", {}),                                            # record missing
-        ]
-        for response, records in scenarios:
-            policy = LLMCompressionPolicy(
-                llm=FakeLLM(response=response), selector=FakeSelector("v")
-            )
-            action = policy.select_action(make_store(records))
-            assert isinstance(action, (Evict, Compress)), f"Unexpected action for {response!r}"
-
-    def test_selector_called_exactly_once_per_action(self):
-        """Policy never calls select_victim more than once — no retry inside select_action."""
-        call_count = [0]
-
-        class CountingSelector:
-            def select_victim(self, store):
-                call_count[0] += 1
-                return "v"
-
-        policy = LLMCompressionPolicy(llm=FakeLLM(), selector=CountingSelector())
-        store = make_store({"v": FakeRecord(id="v", text="A" * 500)})
-        policy.select_action(store)
-        assert call_count[0] == 1
-
-    def test_max_attempts_zero_evicts_immediately_without_llm(self):
-        # _failures.get(id, 0) == 0 >= max_attempts=0 → forced evict on first call.
-        llm = FakeLLM()
-        policy = LLMCompressionPolicy(
-            llm=llm, selector=FakeSelector("v"), max_attempts=0
-        )
-        store = make_store({"v": FakeRecord(id="v", text="A" * 500)})
-        action = policy.select_action(store)
-        assert isinstance(action, Evict)
-        assert llm.call_count == 0
-
-    def test_policy_does_not_write_to_store(self):
-        """select_action is read-only. The RetentionManager, not the policy, executes mutations."""
-        llm = FakeLLM(response="Short summary.")
-        policy = LLMCompressionPolicy(llm=llm, selector=FakeSelector("v"))
-        store = make_store({"v": FakeRecord(id="v", text="A" * 500)})
-        policy.select_action(store)
-        store.backend.upsert.assert_not_called()
-        store.backend.delete.assert_not_called()
-
-    def test_has_name_attribute(self):
-        assert LLMCompressionPolicy.name == "llm_compression"
-
-
-# ====================================================================
 # Action dataclass design
 # ====================================================================
 
@@ -744,7 +259,7 @@ class TestSimpleEvictionPolicyDesign:
 
         class ConcretePolicy(SimpleEvictionPolicy):
             name = "concrete"
-            def select_victim(self, store):
+            def select_victim(self, store, candidates=None):
                 return victim_id
 
         return ConcretePolicy()
@@ -763,10 +278,10 @@ class TestSimpleEvictionPolicyDesign:
 
 
 # ====================================================================
-# MemoryBankCompressionPolicy
+# MemoryBankCompressionPolicy — construction / prompt wiring
 # ====================================================================
 
-class TestMemoryBankCompressionPolicy:
+class TestMemoryBankConstruction:
 
     @staticmethod
     def _import():
@@ -796,33 +311,3 @@ class TestMemoryBankCompressionPolicy:
     def test_name_attribute(self):
         MB, _ = self._import()
         assert MB.name == "memorybank_compression"
-
-    def test_compresses_successfully(self):
-        MB, _ = self._import()
-        policy = MB(llm=FakeLLM(response="Short summary."), selector=FakeSelector("v"))
-        store = make_store({"v": FakeRecord(id="v", text="A" * 500)})
-        action = policy.select_action(store)
-        assert isinstance(action, Compress)
-        assert action.new_text == "Short summary."
-
-    def test_prompt_contains_record_text(self):
-        MB, _ = self._import()
-        calls: list[str] = []
-
-        class Rec:
-            def generate(self, prompt, *, max_tokens, temperature):
-                calls.append(prompt)
-                return "Short."
-
-        policy = MB(llm=Rec(), selector=FakeSelector("v"))
-        store = make_store({"v": FakeRecord(id="v", text="A" * 500)})
-        policy.select_action(store)
-        assert "A" * 500 in calls[0]
-
-    def test_inherits_failure_tracking(self):
-        MB, _ = self._import()
-        llm = FakeLLM(response="B" * 400)  # saving insufficient
-        policy = MB(llm=llm, selector=FakeSelector("v"), min_saving_ratio=0.5)
-        store = make_store({"v": FakeRecord(id="v", text="A" * 500)})
-        policy.select_action(store)
-        assert policy._failures.get("v") == 1

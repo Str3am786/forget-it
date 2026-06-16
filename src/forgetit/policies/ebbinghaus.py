@@ -48,12 +48,13 @@ class EbbinghausPolicy(SimpleEvictionPolicy):
     def _strength(self, access_count: int) -> float:
         return self.base_strength + self.strength_growth * access_count
 
-    def select_victim(self, store: "RetentionManager") -> str:
+    def select_victim(self, store: "RetentionManager", candidates: set[str] | None = None) -> str:
         # last_access is a logical tick counter (not wall-clock), so we use
         # created_at for the forgetting-curve time delta. created_at preserves
         # the historical session timestamps from the replay dataset, which is
         # the correct "elapsed time" signal for the Ebbinghaus decay formula.
         # Pass 1: "now" = most recent session creation timestamp in the store.
+        # "now" is taken over ALL items (real elapsed time), not just candidates.
         now = 0.0
         for feat in store.iter_features():
             ts = feat.created_at or 0.0
@@ -64,6 +65,8 @@ class EbbinghausPolicy(SimpleEvictionPolicy):
         victim_id: str | None = None
         best: tuple[float, float, str] | None = None
         for feat in store.iter_features():
+            if candidates is not None and feat.id not in candidates:
+                continue
             ts = feat.created_at or 0.0
             dt = max(0.0, (now - ts) / self.time_unit_seconds)
             s = self._strength(feat.access_count)
