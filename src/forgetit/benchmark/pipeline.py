@@ -49,10 +49,13 @@ def run_pipeline(
     reader_impl: Reader | None = None,
     answer_max_tokens: int = 128,
     budget_bytes: int = 0,
+    budget_frac: float = 0.0,
+    example_footprints: list[int] | None = None,
     policy_label: str = "",
     retriever_label: str = "",
     out_dir: str = "artifacts/benchmark",
-    clear_after: bool = True
+    clear_after: bool = True,
+    write_events: bool = False,
 ) -> tuple[list, dict[str, float]]:
     """
     Run a workload against a pre-built memory system and persist results.
@@ -73,6 +76,25 @@ def run_pipeline(
     the store and the pipeline doesn't touch them.
     """
     view = _StoreView(store)
+
+    # Artifact layout:
+    #   <out_dir>/<dataset>/<itemiser>/<store_label>/<reader>/
+    # store_label can contain slashes; they become sub-directories.
+    base = (
+        Path(out_dir)
+        / dataset
+        / (itemiser or "default")
+        / store_label
+        / (reader or "none")
+    )
+
+    # Opt-in per-eviction event trace (insert/evict/compress/clear/gold), streamed
+    # next to results.csv. Powers the survival / regret / value-decay analysis.
+    if write_events:
+        logger = getattr(store, "logger", None)
+        if logger is not None and hasattr(logger, "set_path"):
+            logger.set_path(base / "events.jsonl")
+
     view.safe_call("connect")
 
     try:
@@ -85,6 +107,8 @@ def run_pipeline(
             policy=policy_label,
             retriever_name=retriever_label,
             budget_bytes_report=budget_bytes,
+            budget_frac=budget_frac,
+            example_footprints=example_footprints,
             seed=seed,
             itemiser=itemiser,
             reader_name=reader,
@@ -95,21 +119,16 @@ def run_pipeline(
         # TODO need to think of a clear_between_examples=True flag
         if clear_after:
             store.clear()
-            
+
         view.safe_call("close")
+
+        # Flush/close the event-trace file if one was attached.
+        logger = getattr(store, "logger", None)
+        if logger is not None and hasattr(logger, "close"):
+            logger.close()
 
     summary = summarize(results)
 
-    # Artifact layout:
-    #   <out_dir>/<dataset>/<itemiser>/<store_label>/<reader>/
-    # store_label can contain slashes; they become sub-directories.
-    base = (
-        Path(out_dir)
-        / dataset
-        / (itemiser or "default")
-        / store_label
-        / (reader or "none")
-    )
     save_results_csv(results, base / "results.csv")
     save_summary_csv(summary, base / "summary.csv")
 

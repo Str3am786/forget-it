@@ -8,6 +8,7 @@ import logging
 from typing import Callable, Iterator
 
 from forgetit.benchmark.pipeline import run_pipeline
+from forgetit.benchmark.budget import example_footprints, DEFAULT_BUDGET_FRACTIONS
 from forgetit.benchmark.workloads.longmemeval import (
     LongMemEvalWorkload,
     SessionItemiser,
@@ -49,9 +50,14 @@ DATA_DIR = REPO_ROOT / "data"
 #             (budget_bytes / policy_label / retriever_label columns in the CSV)
 
 
+# Sentinel initial budget for relative-budget mode: the runner overrides this
+# per example before any insert, so it just needs to start effectively unbounded.
+_BUDGET_SENTINEL = 1 << 62
+
+
 def build_retention_store(
     *,
-    budget: int,
+    budget_frac: float,
     policy,
     retriever,
     policy_name: str,
@@ -60,14 +66,15 @@ def build_retention_store(
     backend = InMemoryBackend(retriever=retriever)
     logger = BenchmarkLogger()
     store = RetentionManager(
-        budget_bytes=budget,
+        budget_bytes=_BUDGET_SENTINEL,   # runner sets per-example budget = frac × footprint
         backend=backend,
         policy=policy,
         logger=logger,
     )
-    label = f"retention/{policy_name}/{retriever_name}/budget_{budget}"
+    pct = f"{int(round(budget_frac * 100)):03d}pct"
+    label = f"retention/{policy_name}/{retriever_name}/budget_{pct}"
     return label, store, {
-        "budget_bytes": budget,
+        "budget_frac": budget_frac,
         "policy_label": policy_name,
         "retriever_label": retriever_name,
     }
@@ -119,23 +126,24 @@ def default_retriever_specs() -> list[RetrieverSpec]:
 def make_stores(
     policy_specs: list[PolicySpec],
     retriever_specs: list[RetrieverSpec],
-    budgets: list[int],
+    budget_fracs: list[float],
     include_letta: bool = False,
 ) -> Iterator[tuple[str, Callable[[], object], dict]]:
     """
-    Yield ``(label, factory, {})`` triples — one per (policy × retriever × budget).
+    Yield ``(label, factory, {})`` triples — one per (policy × retriever × budget_frac).
     Each ``factory()`` returns a fresh ``(label, store, extras)`` triple.
     """
     for pname, policy_fn in policy_specs:
         for rname, retriever_fn in retriever_specs:
-            for budget in budgets:
-                def _factory(b=budget, pf=policy_fn, rf=retriever_fn,
+            for frac in budget_fracs:
+                def _factory(fr=frac, pf=policy_fn, rf=retriever_fn,
                              pn=pname, rn=rname):
                     return build_retention_store(
-                        budget=b, policy=pf(), retriever=rf(),
+                        budget_frac=fr, policy=pf(), retriever=rf(),
                         policy_name=pn, retriever_name=rn,
                     )
-                label = f"retention/{pname}/{rname}/budget_{budget}"
+                pct = f"{int(round(frac * 100)):03d}pct"
+                label = f"retention/{pname}/{rname}/budget_{pct}"
                 yield label, _factory, {}
 
     if include_letta:
@@ -160,6 +168,9 @@ def parse_args() -> argparse.Namespace:
                         "no inference endpoint required.")
     p.add_argument("--out-dir", type=str, default=str(REPO_ROOT / "artifacts" / "benchmark"),
                    help="Root directory for per-config result CSVs.")
+    p.add_argument("--event-log", action="store_true",
+                   help="Stream a per-eviction event trace (events.jsonl) next to each "
+                        "config's CSVs — enables the survival/regret/value-decay analysis.")
     args = p.parse_args()
     if args.num_shards < 1:
         p.error("--num-shards must be >= 1")
@@ -194,7 +205,10 @@ def main() -> None:
         reader_name = getattr(reader_impl, "name", type(reader_impl).__name__)
 
     itemisers = [SessionItemiser(), TurnPairItemiser()]
-    budgets = [262_144, 524_288, 1_048_576, 2_097_152, 5_242_880]
+    # Budgets are now a fraction of EACH example's own footprint (per-example
+    # relative): 100% = no-eviction control, then 75/50/25/10%. The runner sizes
+    # the store per example, so every fraction < 1.0 applies uniform pressure.
+    budget_fracs = DEFAULT_BUDGET_FRACTIONS
 
     # Flip this on when your Letta server is running.  The rest of the
     # experiment — policies, budgets, retrievers — stays identical.
@@ -209,7 +223,7 @@ def main() -> None:
     all_configs: list[tuple[object, str, Callable]] = []
     for itemiser in itemisers:
         for label, factory, _ in make_stores(
-            policy_specs, retriever_specs, budgets, include_letta=INCLUDE_LETTA
+            policy_specs, retriever_specs, budget_fracs, include_letta=INCLUDE_LETTA
         ):
             all_configs.append((itemiser, label, factory))
 
@@ -234,6 +248,16 @@ def main() -> None:
             limit=args.limit,
         )
 
+    # Per-example footprints (one workload replay per itemiser) — the denominator
+    # for relative budgeting.  Computed only for itemisers this shard touches.
+    footprints: dict[str, list[int]] = {}
+    for name in {it.name for it, _, _ in my_configs}:
+        fp = example_footprints(workloads[name])
+        footprints[name] = fp
+        mean = sum(fp) / len(fp) if fp else 0
+        log.info("footprints[%s]: %d examples, mean=%.0f B, max=%d B",
+                 name, len(fp), mean, max(fp) if fp else 0)
+
     for itemiser, _label, factory in my_configs:
         label, store, extras = factory()
         _, summary = run_pipeline(
@@ -248,6 +272,8 @@ def main() -> None:
             reader_impl=reader_impl,
             answer_max_tokens=128,
             out_dir=args.out_dir,
+            write_events=args.event_log,
+            example_footprints=footprints.get(itemiser.name),
             **extras,
         )
         print(

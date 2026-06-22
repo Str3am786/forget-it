@@ -1,54 +1,71 @@
+"""
+Synthetic benchmark — validates that the pipeline detects known policy
+differences under controlled conditions.
+
+Budgets are per-example relative (fraction of the workload's own footprint).
+The synthetic workload is a single "example" (no resets), so the budget is a
+fraction of its total bytes. 100% = no-eviction control; lower fractions force
+eviction, where LRU/LFU (which see the mid-stream access probes) should keep the
+early gold items alive while FIFO/Random shed them.
+"""
 from __future__ import annotations
 
 from forgetit.benchmark.pipeline import run_pipeline
+from forgetit.benchmark.budget import example_footprints, DEFAULT_BUDGET_FRACTIONS
 from forgetit.benchmark.workloads.synthetic import SyntheticWorkload
-from forgetit.policies import LRUPolicy
-from forgetit.policies import LFUPolicy
+from forgetit.backend.in_memory import InMemoryBackend
+from forgetit.core.logging import BenchmarkLogger
+from forgetit.memory_system import RetentionManager
+from forgetit.policies import FIFOPolicy, LRUPolicy, LFUPolicy, RandomPolicy
+from forgetit.retrieval import LexicalOverlapRetriever
+
+_BUDGET_SENTINEL = 1 << 62   # runner overrides per example before any insert
 
 
 def main() -> None:
-    # Materialize once so the workload can estimate total text bytes.
     workload = SyntheticWorkload()
-    list(workload.events())
-
-    budgets = workload.suggested_budgets()
-    if not budgets:
-        raise RuntimeError("Synthetic workload produced no budget suggestions.")
+    footprints = example_footprints(workload)   # one example → [total_bytes]
+    print(f"synthetic footprint: {footprints[0]} bytes\n")
 
     policies = [
-        # TODO ("fifo", FIFOPolicy()),
-        ("lru", LRUPolicy()),
-        ("lfu", LFUPolicy()),
+        ("fifo",   lambda: FIFOPolicy()),
+        ("lru",    lambda: LRUPolicy()),
+        ("lfu",    lambda: LFUPolicy()),
+        ("random", lambda: RandomPolicy(seed=42)),
     ]
 
-    print("Synthetic workload budgets:", budgets)
-    print()
-
-    for policy_name, policy in policies:
-        print(f"=== Policy: {policy_name} ===")
-        for budget in budgets:
-            results, summary = run_pipeline(
+    for pname, pfac in policies:
+        print(f"=== Policy: {pname} ===")
+        for frac in DEFAULT_BUDGET_FRACTIONS:
+            store = RetentionManager(
+                budget_bytes=_BUDGET_SENTINEL,
+                backend=InMemoryBackend(retriever=LexicalOverlapRetriever()),
+                policy=pfac(),
+                logger=BenchmarkLogger(),
+            )
+            pct = f"{int(round(frac * 100)):03d}pct"
+            _, summary = run_pipeline(
                 dataset="synthetic",
                 workload=workload,
-                budget_bytes=budget,
-                policy=policy,
-                policy_name=policy_name,
+                store=store,
+                store_label=f"retention/{pname}/lexical/budget_{pct}",
                 k=5,
                 seed=42,
                 itemiser="none",
                 reader="none",
+                reader_impl=None,
+                budget_frac=frac,
+                example_footprints=footprints,
+                policy_label=pname,
+                retriever_label="lexical",
                 out_dir="artifacts/benchmark",
             )
-
             print(
-                f"budget={budget:<6} "
-                f"n={int(summary['n_queries']):<2} "
-                f"gold_survival={summary['gold_survival_rate']:.3f} "
-                f"ubf={summary['useful_byte_fraction']:.3f} "
-                f"waste={summary['waste_rate']:.3f} "
-                f"hit@k={summary['hit_at_k']:.3f} "
-                f"hit@k|retained={summary['hit_at_k_given_retained']:.3f} "
-                f"mrr={summary['mean_mrr']:.3f}"
+                f"  budget={pct}  "
+                f"gold_survival={summary['gold_survival_rate']:.3f}  "
+                f"hit@k={summary['hit_at_k']:.3f}  "
+                f"non_gold={summary['non_gold_byte_fraction']:.3f}  "
+                f"evict/q={summary['mean_evictions_per_query']:.1f}"
             )
         print()
 

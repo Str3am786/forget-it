@@ -29,6 +29,9 @@ class RetentionManager(MemorySystem):
         self.used_bytes = 0
         self._bytes_by_id: dict[str, int] = {}
         self._tick: int = 0
+        # Global monotonic insert ordinal — the "clock" for lifetime/survival
+        # analysis.  NOT reset by clear(); the offline analysis censors at clears.
+        self._n_inserts: int = 0
 
     def connect(self) -> None:
         self.backend.connect()
@@ -45,7 +48,13 @@ class RetentionManager(MemorySystem):
         item.bytes = b  # normalize
 
         if b > self.budget_bytes:
-            raise ValueError("Single item larger than budget.")
+            # Under per-example relative budgets a single item can legitimately
+            # exceed the cap (e.g. a large session at a low budget fraction).
+            # Keep it rather than crash — it'll be the sole resident and evicted
+            # as soon as anything else needs room.
+            self.logger.event("oversized_insert", {
+                "id": item.id, "bytes": b, "budget_bytes": self.budget_bytes,
+            })
 
         existing = self.backend.get(item.id)
         if existing is not None:
@@ -62,6 +71,7 @@ class RetentionManager(MemorySystem):
         # operate on workload-stream order rather than historical session dates
         # (which are non-monotonic across LongMemEval examples).
         self._tick += 1
+        self._n_inserts += 1
         item.last_access = float(self._tick)
         # Leave access_count at 0 for fresh items so LFU only counts true
         # retrievals.  The carry-forward above already preserved any prior
@@ -72,7 +82,8 @@ class RetentionManager(MemorySystem):
 
         self.logger.event(
             "insert",
-            {"id": item.id, "bytes": b, "used_bytes": self.used_bytes, "budget_bytes": self.budget_bytes},
+            {"id": item.id, "bytes": b, "t_insert": self._n_inserts,
+             "used_bytes": self.used_bytes, "budget_bytes": self.budget_bytes},
         )
 
     def retrieve(self, query: Query, k: int | None = None) -> list[MemRecord]:
@@ -117,7 +128,7 @@ class RetentionManager(MemorySystem):
         self._bytes_by_id.clear()
 
         if hasattr(self.logger, "event"):
-            self.logger.event("clear", {"budget_bytes": self.budget_bytes})
+            self.logger.event("clear", {"t_insert": self._n_inserts, "budget_bytes": self.budget_bytes})
 
     def _execute_action(self, action: Action) -> None:
         """Dispatch a policy Action and update byte accounting"""
@@ -136,6 +147,7 @@ class RetentionManager(MemorySystem):
         self.logger.event("evict", {
             "id": record_id,
             "freed_bytes": freed,
+            "t_insert": self._n_inserts,
             "used_bytes": self.used_bytes,
         })
 
@@ -176,6 +188,7 @@ class RetentionManager(MemorySystem):
             "old_bytes": old_bytes,
             "new_bytes": new_bytes,
             "freed_bytes": freed,
+            "t_insert": self._n_inserts,
             "used_bytes": self.used_bytes,
         })
 
@@ -184,6 +197,10 @@ class RetentionManager(MemorySystem):
         # If a policy/compression action does neither, the loop would spin
         # forever; we surface that as a clear error instead of hanging.
         while self.used_bytes + incoming_bytes > self.budget_bytes:
+            if self.backend.count() == 0:
+                # Nothing left to evict — the incoming item alone exceeds the
+                # budget. Accept the over-budget state for this single item.
+                return
             before_bytes = self.used_bytes
             before_count = self.backend.count()
 

@@ -7,7 +7,7 @@ from forgetit.benchmark.schema import EvalResult
 
 
 # ── primitive aggregates ──────────────────────────────────────────
-# Retention-specific ones (gold_survival, useful_byte_fraction, waste_rate,
+# Retention-specific ones (gold_survival, useful_byte_fraction, non_gold_byte_fraction,
 # hit_at_k_given_retained) only average over rows where introspectable=True,
 # because opaque stores (Letta, Mem0) carry sentinel values in those fields.
 # Retrieval and latency metrics are meaningful for all stores.
@@ -31,11 +31,11 @@ def useful_byte_fraction(results: list[EvalResult]) -> float:
     return sum(r.useful_byte_fraction for r in introspectable) / len(introspectable)
 
 
-def waste_rate(results: list[EvalResult]) -> float:
+def non_gold_byte_fraction(results: list[EvalResult]) -> float:
     introspectable = _introspectable(results)
     if not introspectable:
         return 0.0
-    return sum(r.waste_rate for r in introspectable) / len(introspectable)
+    return sum(r.non_gold_byte_fraction for r in introspectable) / len(introspectable)
 
 
 def hit_at_k(results: list[EvalResult]) -> float:
@@ -133,15 +133,21 @@ def summarize(results: list[EvalResult]) -> dict[str, float]:
     meaningful.
     """
     intro = _introspectable(results)
+    n = len(results)
+    mean = lambda f: (sum(f(r) for r in results) / n) if n else 0.0
     return {
-        "n_queries": float(len(results)),
+        "n_queries": float(n),
         "n_introspectable": float(len(intro)),
         "gold_survival_rate": gold_survival_rate(results),
         "useful_byte_fraction": useful_byte_fraction(results),
-        "waste_rate": waste_rate(results),
+        "non_gold_byte_fraction": non_gold_byte_fraction(results),
         "hit_at_k": hit_at_k(results),
         "hit_at_k_given_retained": hit_at_k_given_retained(results),
         "mean_mrr": mean_mrr(results),
+        # per-query activity (deltas), averaged across queries
+        "mean_inserts_per_query": mean(lambda r: r.inserts_since_last_query),
+        "mean_evictions_per_query": mean(lambda r: r.evictions_since_last_query),
+        "mean_compressions_per_query": mean(lambda r: r.compressions_since_last_query),
         "mean_latency_sec": mean_latency(results),
         "mean_qa_latency_sec": mean_qa_latency(results),
         "abstention_rate": abstention_rate(results),

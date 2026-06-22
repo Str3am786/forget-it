@@ -25,6 +25,7 @@ class _BeamMessage:
     msg_idx: int
     role: str
     content: str
+    msg_id: int | None = None   # explicit global message id from the data ("id" field)
 
     @property
     def key(self) -> MessageKey:
@@ -120,19 +121,56 @@ def _normalize_one_source_id(raw: Any, flat_index: dict[int, MessageKey]) -> Mes
     return None
 
 
-def _normalize_source_ids(raw: Any, flat_index: dict[int, MessageKey]) -> list[MessageKey]:
-    """Normalise whatever the probing question's source-id field is into message keys."""
+def _iter_source_leaves(raw: Any) -> Iterator[Any]:
+    """Yield scalar source-id leaves from BEAM's varied encodings:
+
+      - a list of ints                       -> each int
+      - a dict {label: [ints], ...}          -> every int across values
+      - a string repr of either              -> parsed, then flattened
+      - a bare int / "30"                    -> itself
+    """
     if raw is None:
-        return []
-    if not isinstance(raw, (list, tuple)):
-        raw = [raw]
+        return
+    if isinstance(raw, str):
+        s = raw.strip()
+        try:
+            raw = ast.literal_eval(s)        # "[30, 31]" / "{'a':[1]}" -> real object
+        except (ValueError, SyntaxError):
+            yield s                          # opaque token (e.g. "b0m1"); handle downstream
+            return
+    if isinstance(raw, dict):
+        for v in raw.values():
+            yield from _iter_source_leaves(v)
+    elif isinstance(raw, (list, tuple)):
+        for v in raw:
+            yield from _iter_source_leaves(v)
+    else:
+        yield raw
+
+
+def _normalize_source_ids(raw: Any, flat_index: dict[int, MessageKey]) -> list[MessageKey]:
+    """Normalise a probing question's source-id field into message keys.
+
+    BEAM source ids are flat global message ids, so an int is a message id
+    (resolved via flat_index), NOT a (batch, msg) pair. Non-numeric tokens fall
+    back to _normalize_one_source_id (handles tuple-like / "bXmY" forms).
+    """
     out: list[MessageKey] = []
     unresolved: list[Any] = []
-    for item in raw:
-        key = _normalize_one_source_id(item, flat_index)
-        if key is None:
-            unresolved.append(item)
+    seen: set[MessageKey] = set()
+    for leaf in _iter_source_leaves(raw):
+        if isinstance(leaf, bool):
+            continue
+        if isinstance(leaf, int):
+            key = flat_index.get(leaf)
+        elif isinstance(leaf, str) and leaf.strip().isdigit():
+            key = flat_index.get(int(leaf.strip()))
         else:
+            key = _normalize_one_source_id(leaf, flat_index)
+        if key is None:
+            unresolved.append(leaf)
+        elif key not in seen:
+            seen.add(key)
             out.append(key)
     if unresolved:
         log.debug("BEAM: could not normalise %d source_ids: %r", len(unresolved), unresolved[:3])
@@ -141,6 +179,7 @@ def _normalize_source_ids(raw: Any, flat_index: dict[int, MessageKey]) -> list[M
 
 
 _SOURCE_ID_FIELDS = (
+    "source_chat_ids",   # the field BEAM-500K actually uses (values = message ids)
     "source_ids", "source_message_ids", "message_ids",
     "source_ids_list", "source_messages", "provenance",
     "turn_ids", "source_indices", "sources",
@@ -228,8 +267,12 @@ def _parse_chat_field(raw_chat: Any) -> list[list[_BeamMessage]]:
             content = str(m.get("content", "")).strip()
             if not content:
                 continue
+            try:
+                mid = int(m.get("id"))
+            except (TypeError, ValueError):
+                mid = None
             msgs.append(_BeamMessage(batch_idx=batch_idx, msg_idx=msg_idx,
-                                     role=role, content=content))
+                                     role=role, content=content, msg_id=mid))
         if msgs:
             batches.append(msgs)
     return batches
@@ -245,10 +288,11 @@ def _parse_row(row: dict[str, Any]) -> _BeamConversation | None:
         log.warning("BEAM: conversation %s has no parseable chat — skipping", conv_id)
         return None
 
-    # Flat-index map: the i-th message in the whole conversation -> (batch, msg).
+    # Map message-id -> (batch, msg). source_chat_ids reference the explicit
+    # message "id"; fall back to positional index when an id is missing.
     flat_index: dict[int, MessageKey] = {}
     for i, m in enumerate(msg for batch in batches for msg in batch):
-        flat_index[i] = m.key
+        flat_index[m.msg_id if m.msg_id is not None else i] = m.key
 
     probing = _extract_probing_questions(row.get("probing_questions"), flat_index)
 
@@ -534,13 +578,34 @@ class BeamWorkload:
         *,
         conversation_ids: Sequence[str] | None = None,
         base_timestamp: float = 1_700_000_000.0,
+        probe_every: int = 1,
+        clear_between_examples: bool = True,
+        limit: int | None = None,
     ):
+        """
+        Parameters
+        ----------
+        probe_every
+            Emit an access-only query probe after every N item inserts within a
+            conversation, cycling through that conversation's probing questions.
+            The probe retrieves (bumping recency/frequency) but is not scored, so
+            LRU/LFU/Ebbinghaus get a usage signal *before* later inserts trigger
+            eviction (otherwise they collapse into FIFO).  Set 0 to disable.
+        clear_between_examples
+            When True, emit a ``reset`` event between conversations so the store is
+            wiped at each boundary — each conversation is evaluated in isolation.
+        limit
+            If set, only the first ``limit`` conversations are replayed.
+        """
         self.path = Path(path)
         self.itemiser = itemiser
         self._allow: set[str] | None = (
             {str(c) for c in conversation_ids} if conversation_ids is not None else None
         )
         self._base_ts = base_timestamp
+        self.probe_every = probe_every
+        self.clear_between_examples = clear_between_examples
+        self.limit = limit
 
 
     # ---- public introspection ----
@@ -579,14 +644,30 @@ class BeamWorkload:
         n_queries_emitted = 0
         n_queries_with_gold = 0
         ts = self._base_ts
+        first_conv = True
 
         for conv in self._iter_conversations():
+            if self.limit is not None and n_conv >= self.limit:
+                break
             n_conv += 1
+
+            # Reset between conversations so each is evaluated in isolation.
+            if self.clear_between_examples and not first_conv:
+                yield WorkloadEvent(
+                    type="reset", timestamp=0.0, item=None, query=None, gold_item_ids=[],
+                )
+            first_conv = False
+
             items, key_to_item = itemiser.itemise(conv.conversation_id, ts, conv.batches)
             if items:
                 ts = items[-1].created_at + 1.0
 
-            for rec in items:
+            # Access-only probes cycle through this conversation's questions so
+            # the items they retrieve gain recency/frequency before eviction.
+            probe_texts = [pq.question for pq in conv.probing_questions if pq.question]
+            probe_i = 0
+
+            for n, rec in enumerate(items, start=1):
                 yield WorkloadEvent(
                     type="insert",
                     timestamp=rec.created_at,
@@ -594,6 +675,24 @@ class BeamWorkload:
                     query=None,
                     gold_item_ids=[],
                 )
+                if self.probe_every > 0 and probe_texts and n % self.probe_every == 0:
+                    probe_text = probe_texts[probe_i % len(probe_texts)]
+                    probe_i += 1
+                    yield WorkloadEvent(
+                        type="query",
+                        timestamp=ts,
+                        item=None,
+                        query=Query(
+                            id=f"{conv.conversation_id}::probe::{n}",
+                            text=probe_text,
+                            timestamp=ts,
+                            embedding=None,
+                            meta={"dataset": "beam",
+                                  "conversation_id": conv.conversation_id,
+                                  "probe": True},
+                        ),
+                        gold_item_ids=[],   # access-only — not scored
+                    )
 
             for q_idx, pq in enumerate(conv.probing_questions):
                 q_id = f"{conv.conversation_id}::q::{q_idx}::{pq.ability}"

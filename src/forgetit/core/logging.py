@@ -39,6 +39,15 @@ class BenchmarkLogger:
             p.parent.mkdir(parents=True, exist_ok=True)
             self._file = open(p, "a", encoding="utf-8")
 
+    def set_path(self, path: str | Path) -> None:
+        """Attach a JSONL sink after construction (idempotent). Used by the
+        pipeline to stream the per-config event trace next to results.csv."""
+        if self._file is not None:
+            return
+        p = Path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        self._file = open(p, "a", encoding="utf-8")
+
     def event(self, name: str, payload: dict | None = None) -> None:
         payload = payload or {}
         entry = LogEntry(

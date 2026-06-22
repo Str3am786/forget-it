@@ -46,7 +46,7 @@ class _StoreView:
     def introspectable(self) -> bool:
         """
         True iff we can enumerate resident items.  Needed for gold_survived,
-        useful_byte_fraction, and waste_rate.  Opaque stores report False
+        useful_byte_fraction, and non_gold_byte_fraction.  Opaque stores report False
         and the runner falls back to retrieval-only metrics.
         """
         return self._can_iter and self._can_get
@@ -109,6 +109,12 @@ class _StoreView:
         fn = getattr(self.store, method_name, None)
         if callable(fn):
             fn()
+
+    def log_event(self, name: str, payload: dict) -> None:
+        """Emit an event through the store's logger if it has one (no-op otherwise)."""
+        logger = getattr(self.store, "logger", None)
+        if logger is not None and hasattr(logger, "event"):
+            logger.event(name, payload)
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -179,7 +185,7 @@ def _evaluate_scored_query(
     Compute retrieval metrics for one scored query.
 
     For introspectable stores we compute the full metric set including
-    gold_survived, useful_byte_fraction, waste_rate.  For opaque stores
+    gold_survived, useful_byte_fraction, non_gold_byte_fraction.  For opaque stores
     those are set to sentinel values and ``introspectable=False`` on the
     output row — don't average them across store types without filtering.
     """
@@ -203,10 +209,10 @@ def _evaluate_scored_query(
     used_bytes = view.used_bytes()
     if introspectable and used_bytes > 0:
         ubf = gold_bytes / used_bytes
-        waste = 1.0 - ubf
+        non_gold = 1.0 - ubf
     else:
         ubf = 0.0
-        waste = 0.0
+        non_gold = 0.0
 
     t0 = time.perf_counter()
     retrieved = view.retrieve(query, k)
@@ -226,7 +232,7 @@ def _evaluate_scored_query(
     return QueryEval(
         gold_survived=gold_survived,
         useful_byte_fraction=ubf,
-        waste_rate=waste,
+        non_gold_byte_fraction=non_gold,
         evictions_total_at_query_time=view.event_count("evict"),
         compressions=view.event_count("compress"),
         hit_at_k=hit,
@@ -244,6 +250,18 @@ def _evaluate_scored_query(
 # ════════════════════════════════════════════════════════════════════
 
 
+def _apply_example_budget(store, frac: float, footprints, idx: int) -> None:
+    """Set the store's byte budget to ``frac × footprint`` for example ``idx``.
+
+    No-op when not in relative-budget mode (frac<=0 / no footprints) or for
+    stores without a mutable ``budget_bytes`` (e.g. opaque Letta).
+    """
+    if frac <= 0 or not footprints or not hasattr(store, "budget_bytes"):
+        return
+    fp = footprints[idx] if idx < len(footprints) else footprints[-1]
+    store.budget_bytes = max(1, round(frac * fp))
+
+
 def run(
     workload: Workload,
     store: MemorySystem,
@@ -254,6 +272,8 @@ def run(
     policy: str = "",
     retriever_name: str = "",
     budget_bytes_report: int = 0,
+    budget_frac: float = 0.0,
+    example_footprints: list[int] | None = None,
     seed: int = 0,
     itemiser: str = "",
     reader_name: str = "",
@@ -278,6 +298,18 @@ def run(
     insert_count = 0
     query_count = 0
     skip_count = 0
+
+    # Running totals at the previous scored query, so we can report per-query
+    # deltas (activity since the last query) instead of only the cumulative
+    # odometers, which are easy to misread as per-example counts.
+    prev_inserts = 0
+    prev_evicts = 0
+    prev_compresses = 0
+
+    # Relative budgets: size the store to example 0 before any insert, then
+    # re-size at each reset boundary.
+    example_idx = 0
+    _apply_example_budget(store, budget_frac, example_footprints, example_idx)
 
     budget_display = budget_bytes_report or view.budget_bytes()
     mode = "retrieval+QA" if reader_impl else "retrieval-only"
@@ -315,7 +347,11 @@ def run(
             clear_fn = getattr(store, "clear", None)
             if callable(clear_fn):
                 clear_fn()
-            log.debug("  [reset]  store cleared between examples")
+            # Re-size the budget to the next example's own footprint.
+            example_idx += 1
+            _apply_example_budget(store, budget_frac, example_footprints, example_idx)
+            log.debug("  [reset]  store cleared; budget=%s",
+                      _fmt_bytes(view.budget_bytes()))
             continue
 
         if event.type != "query":
@@ -335,6 +371,10 @@ def run(
 
         query_count += 1
 
+        # Record which items are gold for this query — needed offline to compute
+        # survival / regret / value-decay curves from the event log.
+        view.log_event("gold", {"query_id": event.query.id, "gold_ids": sorted(gold_ids)})
+
         # ── retrieval evaluation ──
         base = _evaluate_scored_query(
             view=view,
@@ -342,6 +382,14 @@ def run(
             gold_ids=gold_ids,
             k=k,
         )
+
+        # Per-query activity = totals now minus totals at the previous scored query.
+        inserts_delta = insert_count - prev_inserts
+        evicts_delta = base.evictions_total_at_query_time - prev_evicts
+        compresses_delta = base.compressions - prev_compresses
+        prev_inserts = insert_count
+        prev_evicts = base.evictions_total_at_query_time
+        prev_compresses = base.compressions
 
         # ── reader evaluation (no-op when reader_impl is None) ──
         qa = _run_reader(reader_impl=reader_impl, query=event.query, retrieved=base.retrieved,
@@ -365,20 +413,25 @@ def run(
 
         log.info(
             "  [query %3d]  id=%-20s  gold=%s  retrieval=%s  "
-            "hit@%d=%.0f  mrr=%.2f  latency=%.3fs  "
-            "store=%s  evictions_total_at_query_time=%d%s",
+            "hit@%d=%.0f  mrr=%.2f  latency=%.3fs  store=%s  "
+            "inserts=%d  evicted=%d  compressed=%d  (evict_total=%d)%s",
             query_count, event.query.id, survived_tag, hit_tag,
             k, base.hit_at_k, base.mrr, base.latency_sec,
-            _fmt_bytes(base.used_bytes_end), base.evictions_total_at_query_time,
-            qa_detail,
+            _fmt_bytes(base.used_bytes_end),
+            inserts_delta, evicts_delta, compresses_delta,
+            base.evictions_total_at_query_time, qa_detail,
         )
+
+        # In relative mode budget_bytes varies per example — report the current one.
+        eval_budget = view.budget_bytes() if budget_frac > 0 else budget_display
 
         results.append(
             EvalResult(
                 dataset=dataset,
                 query_id=event.query.id,
                 policy=policy,
-                budget_bytes=budget_display,
+                budget_bytes=eval_budget,
+                budget_frac=budget_frac,
                 k=k,
                 itemiser=itemiser,
                 retriever=retriever_name,
@@ -386,9 +439,12 @@ def run(
                 seed=seed,
                 gold_survived=base.gold_survived,
                 useful_byte_fraction=base.useful_byte_fraction,
-                waste_rate=base.waste_rate,
+                non_gold_byte_fraction=base.non_gold_byte_fraction,
                 evictions_total_at_query_time=base.evictions_total_at_query_time,
                 compressions=base.compressions,
+                inserts_since_last_query=inserts_delta,
+                evictions_since_last_query=evicts_delta,
+                compressions_since_last_query=compresses_delta,
                 hit_at_k=base.hit_at_k,
                 hit_at_k_given_retained=base.hit_at_k_given_retained,
                 mrr=base.mrr,

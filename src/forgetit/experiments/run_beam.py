@@ -1,25 +1,25 @@
 """
-BEAM experiment runner — multi-system variant.
+BEAM experiment runner.
 
-Same shape as ``run_longmemeval_experiment.py``: build each ``MemorySystem``
-explicitly in this script and pass it to ``run_pipeline``.  Adding a new
-system requires only a new entry in the policy/retriever spec lists in main().
+Mirrors run_longmemeval_qa.py: build each MemorySystem explicitly, sweep the
+(itemiser × policy × retriever × budget) grid, write one CSV per config, and
+support sharding for parallel/cluster runs.
 
 BEAM-specific notes:
   - Three itemiser granularities (turn / turn-pair / batch).
-  - ``question_type`` in EvalResult is the memory ability — enabling the
-    per-ability breakdown (abstention / contradiction_resolution / etc.)
-    without any custom summarization code.
+  - ``question_type`` in EvalResult is the memory ability, so a per-ability
+    breakdown (abstention / contradiction_resolution / ...) falls out of
+    grouping the combined results by question_type — no custom code.
 """
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 import logging
 from typing import Callable, Iterator
 
-import pandas as pd
-
 from forgetit.benchmark.pipeline import run_pipeline
+from forgetit.benchmark.budget import example_footprints, DEFAULT_BUDGET_FRACTIONS
 from forgetit.benchmark.workloads.beam import (
     BeamWorkload,
     BeamTurnItemiser,
@@ -47,20 +47,24 @@ BEAM_PATH = DATA_DIR / "beam_500K.jsonl"    # file or dir; .json / .jsonl / .par
 
 # ── Store builders ────────────────────────────────────────────────
 
+# Sentinel initial budget for relative-budget mode: the runner overrides it
+# per example before any insert, so it just needs to start effectively unbounded.
+_BUDGET_SENTINEL = 1 << 62
+
+
 def build_retention_store(
-    *, budget: int, policy, retriever, policy_name: str, retriever_name: str,
+    *, budget_frac: float, policy, retriever, policy_name: str, retriever_name: str,
 ) -> tuple[str, RetentionManager, dict]:
     backend = InMemoryBackend(retriever=retriever)
     logger = BenchmarkLogger()
     store = RetentionManager(
-        budget_bytes=budget,
-        backend=backend,
-        policy=policy,
-        logger=logger,
+        budget_bytes=_BUDGET_SENTINEL,   # runner sets per-example budget = frac × footprint
+        backend=backend, policy=policy, logger=logger,
     )
-    label = f"retention/{policy_name}/{retriever_name}/budget_{budget}"
+    pct = f"{int(round(budget_frac * 100)):03d}pct"
+    label = f"retention/{policy_name}/{retriever_name}/budget_{pct}"
     return label, store, {
-        "budget_bytes": budget,
+        "budget_frac": budget_frac,
         "policy_label": policy_name,
         "retriever_label": retriever_name,
     }
@@ -78,22 +82,26 @@ def build_letta_store(
     return label, store, {}
 
 
-# ── Policy / retriever spec helpers ──────────────────────────────
+# ── Policy / retriever specs ──────────────────────────────────────
 
-PolicySpec = tuple[str, Callable]      # (name, zero-arg factory)
-RetrieverSpec = tuple[str, Callable]   # (name, zero-arg factory)
+PolicySpec = tuple[str, Callable]
+RetrieverSpec = tuple[str, Callable]
 
 
 def default_policy_specs(llm, seed: int = 42) -> list[PolicySpec]:
-    """Return zero-arg factories for every policy.  Add or remove entries here."""
-    return [
-        #("lru",         lambda: LRUPolicy()),
-        #("lfu",         lambda: LFUPolicy()),
-        #("random",      lambda: RandomPolicy(seed=seed)),
+    """Zero-arg factories for every policy. Edit here to add/remove policies."""
+    specs: list[PolicySpec] = [
+        ("lru",         lambda: LRUPolicy()),
+        ("lfu",         lambda: LFUPolicy()),
+        ("random",      lambda: RandomPolicy(seed=seed)),
         #("ebbinghaus",  lambda: EbbinghausPolicy()),
-        ("compression", lambda: LLMCompressionPolicy(llm=llm, selector=LFUPolicy())),
-        #("memorybank",  lambda: MemoryBankCompressionPolicy(llm=llm, selector=EbbinghausPolicy())),
     ]
+    # LLM-driven policies need an endpoint even when the reader is disabled, so
+    # skip them when llm is None (--no-reader) → retrieval-only runs need no server.
+    if llm is not None:
+        specs.append(("compression", lambda: LLMCompressionPolicy(llm=llm, selector=LFUPolicy())))
+        #specs.append(("memorybank",  lambda: MemoryBankCompressionPolicy(llm=llm, selector=EbbinghausPolicy())))
+    return specs
 
 
 def default_retriever_specs() -> list[RetrieverSpec]:
@@ -103,109 +111,157 @@ def default_retriever_specs() -> list[RetrieverSpec]:
     ]
 
 
-# ── Store iterator ────────────────────────────────────────────────
-
 def make_stores(
     policy_specs: list[PolicySpec],
     retriever_specs: list[RetrieverSpec],
-    budgets: list[int],
+    budget_fracs: list[float],
     include_letta: bool = False,
 ) -> Iterator[tuple[str, Callable[[], tuple]]]:
-    """
-    Yield ``(label, factory)`` pairs — one per (policy × retriever × budget)
-    combination.  Each ``factory()`` call returns a fresh ``(label, store, extras)``
-    triple so the store is never reused across runs.
-    """
+    """Yield ``(label, factory)`` pairs — one per (policy × retriever × budget_frac)."""
     for pname, policy_fn in policy_specs:
         for rname, retriever_fn in retriever_specs:
-            for budget in budgets:
-                def _factory(b=budget, pf=policy_fn, rf=retriever_fn,
-                             pn=pname, rn=rname):
+            for frac in budget_fracs:
+                def _factory(fr=frac, pf=policy_fn, rf=retriever_fn, pn=pname, rn=rname):
                     return build_retention_store(
-                        budget=b, policy=pf(), retriever=rf(),
+                        budget_frac=fr, policy=pf(), retriever=rf(),
                         policy_name=pn, retriever_name=rn,
                     )
-                yield f"retention/{pname}/{rname}/budget_{budget}", _factory
+                pct = f"{int(round(frac * 100)):03d}pct"
+                yield f"retention/{pname}/{rname}/budget_{pct}", _factory
 
     if include_letta:
         yield "letta/default", build_letta_store
 
 
+# ── CLI ───────────────────────────────────────────────────────────
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="Run the BEAM sweep. Sharding lets many workers split the "
+                    "(itemiser × policy × retriever × budget) grid; each config "
+                    "writes its own CSV, so shards never collide.",
+    )
+    p.add_argument("--num-shards", type=int, default=1,
+                   help="Total number of parallel workers splitting the config grid.")
+    p.add_argument("--shard", type=int, default=0,
+                   help="This worker's index in [0, num-shards). On SLURM, pass $SLURM_ARRAY_TASK_ID.")
+    p.add_argument("--limit", type=int, default=None,
+                   help="Only replay the first N conversations (smoke test).")
+    p.add_argument("--no-reader", action="store_true",
+                   help="Skip the LLM reader — retrieval/eviction metrics only, no endpoint. "
+                        "LLM-driven policies are skipped automatically.")
+    p.add_argument("--out-dir", type=str, default=str(REPO_ROOT / "artifacts" / "benchmark"),
+                   help="Root directory for per-config result CSVs.")
+    p.add_argument("--event-log", action="store_true",
+                   help="Stream a per-eviction event trace (events.jsonl) next to each config's "
+                        "CSVs — enables the survival/regret/value-decay analysis.")
+    p.add_argument("--include-letta", action="store_true",
+                   help="Also run the Letta store (requires a running Letta server).")
+    args = p.parse_args()
+    if args.num_shards < 1:
+        p.error("--num-shards must be >= 1")
+    if not (0 <= args.shard < args.num_shards):
+        p.error(f"--shard must be in [0, {args.num_shards})")
+    return args
+
+
 # ── Main ─────────────────────────────────────────────────────────
 
 def main() -> None:
+    args = parse_args()
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s  %(message)s",
         datefmt="%H:%M:%S",
     )
+    log = logging.getLogger(__name__)
 
     if not BEAM_PATH.exists():
         raise FileNotFoundError(f"BEAM data not found: {BEAM_PATH}")
 
     seed = 42
-    llm = get_llm()
-    reader_impl = PlainTextReader(llm)
-    reader_name = getattr(reader_impl, "name", type(reader_impl).__name__)
 
-    # ── Configure experiment here ──────────────────────────────────
+    if args.no_reader:
+        llm = None
+        reader_impl = None
+        reader_name = "none"
+    else:
+        llm = get_llm()
+        reader_impl = PlainTextReader(llm)
+        reader_name = getattr(reader_impl, "name", type(reader_impl).__name__)
+
     policy_specs = default_policy_specs(llm, seed=seed)
     retriever_specs = default_retriever_specs()
-    # BEAM budgets scaled to the same "interesting fraction" spread as LongMemEval.
-    budgets = [1_048_576, 4_194_304, 16_777_216, 67_108_864, 268_435_456]  # 1/4/16/64/256 MB
-    INCLUDE_LETTA = True
-    # ──────────────────────────────────────────────────────────────
+    # Per-example relative budgets (fraction of each conversation's own footprint):
+    # 100% no-eviction control, then 75/50/25/10%. Makes "50%" mean the same on
+    # BEAM and LongMemEval despite BEAM's wildly varying conversation lengths.
+    budget_fracs = DEFAULT_BUDGET_FRACTIONS
 
     itemisers = [BeamTurnItemiser(), BeamTurnPairItemiser(), BeamBatchItemiser()]
 
-    out_csv = REPO_ROOT / "artifacts" / "benchmark" / "beam_summary.csv"
-    out_csv.parent.mkdir(parents=True, exist_ok=True)
-    accumulated: list[dict] = []
-
+    # Flatten the grid → take this shard's stride. Output paths embed itemiser +
+    # store_label, so each config lands in its own directory regardless of shard.
+    all_configs: list[tuple[object, str, Callable]] = []
     for itemiser in itemisers:
-        for _label, factory in make_stores(
-            policy_specs, retriever_specs, budgets, include_letta=INCLUDE_LETTA
+        for label, factory in make_stores(
+            policy_specs, retriever_specs, budget_fracs, include_letta=args.include_letta
         ):
-            label, store, extras = factory()
-            workload = BeamWorkload(BEAM_PATH, itemiser=itemiser)
-            store.clear()
-            _, summary = run_pipeline(
-                dataset="beam",
-                workload=workload,
-                store=store,
-                store_label=label,
-                k=5,
-                seed=seed,
-                itemiser=itemiser.name,
-                reader=reader_name,
-                reader_impl=reader_impl,
-                answer_max_tokens=128,
-                out_dir=REPO_ROOT / "artifacts" / "benchmark",
-                clear_after=False,
-                **extras,
-            )
+            all_configs.append((itemiser, label, factory))
 
-            row = {
-                "itemiser":      itemiser.name,
-                "store":         label,
-                "reader":        reader_name,
-                "policy":        extras.get("policy_label", ""),
-                "retriever":     extras.get("retriever_label", ""),
-                "budget_bytes":  extras.get("budget_bytes", ""),
-                "gold_survival": summary["gold_survival_rate"],
-                "hit_at_5":      summary["hit_at_k"],
-                "mrr":           summary["mean_mrr"],
-            }
-            accumulated.append(row)
-            pd.DataFrame(accumulated).to_csv(out_csv, index=False)
+    my_configs = all_configs[args.shard::args.num_shards]
+    log.info(
+        "shard %d/%d: running %d of %d configs (limit=%s, reader=%s)",
+        args.shard, args.num_shards, len(my_configs), len(all_configs), args.limit, reader_name,
+    )
 
-            print(
-                f"itemiser={itemiser.name:<16} "
-                f"store={label:<45} "
-                f"reader={reader_name:<12} "
-                f"gold_survival={summary['gold_survival_rate']:.3f} "
-                f"hit@k={summary['hit_at_k']:.3f}"
-            )
+    # One workload per itemiser (cheap — holds path + config), reused across configs.
+    # probe_every=1: access-only warmup probe after each insert so LRU/LFU get a
+    # reuse signal before eviction. clear_between_examples=True: isolate conversations.
+    workloads: dict[str, BeamWorkload] = {}
+    for itemiser in itemisers:
+        workloads[itemiser.name] = BeamWorkload(
+            BEAM_PATH, itemiser=itemiser,
+            probe_every=1,
+            clear_between_examples=True,
+            limit=args.limit,
+        )
+
+    # Per-example footprints (one workload replay per itemiser) — the denominator
+    # for relative budgeting.  Computed only for itemisers this shard touches.
+    footprints: dict[str, list[int]] = {}
+    for name in {it.name for it, _, _ in my_configs}:
+        fp = example_footprints(workloads[name])
+        footprints[name] = fp
+        mean = sum(fp) / len(fp) if fp else 0
+        log.info("footprints[%s]: %d conversations, mean=%.0f B, max=%d B",
+                 name, len(fp), mean, max(fp) if fp else 0)
+
+    for itemiser, _label, factory in my_configs:
+        label, store, extras = factory()
+        _, summary = run_pipeline(
+            dataset="beam",
+            workload=workloads[itemiser.name],
+            store=store,
+            store_label=label,
+            k=5,
+            seed=seed,
+            itemiser=itemiser.name,
+            reader=reader_name,
+            reader_impl=reader_impl,
+            answer_max_tokens=128,
+            out_dir=args.out_dir,
+            write_events=args.event_log,
+            example_footprints=footprints.get(itemiser.name),
+            **extras,
+        )
+        print(
+            f"itemiser={itemiser.name:<16} "
+            f"store={label:<45} "
+            f"reader={reader_name:<12} "
+            f"gold_survival={summary['gold_survival_rate']:.3f} "
+            f"hit@k={summary['hit_at_k']:.3f}"
+        )
 
 
 if __name__ == "__main__":

@@ -24,7 +24,7 @@ class QueryEval:
     """Retrieval-layer evaluation for a single scored query."""
     gold_survived: bool
     useful_byte_fraction: float
-    waste_rate: float
+    non_gold_byte_fraction: float
     evictions_total_at_query_time: int
     compressions: int
     hit_at_k: float
@@ -69,8 +69,8 @@ class EvalResult:
     # policy verdict
     gold_survived: bool
     useful_byte_fraction: float
-    waste_rate: float
-    evictions_total_at_query_time: int
+    non_gold_byte_fraction: float          # 1 - useful_byte_fraction (non-gold share of used bytes)
+    evictions_total_at_query_time: int     # cumulative over the whole run (odometer, not per-query)
 
     # retriever verdict
     hit_at_k: float
@@ -83,6 +83,18 @@ class EvalResult:
 
     # optional / future fields with defaults
     compressions: int = 0
+
+    # Relative-budget config: budget_frac is the fraction of each example's own
+    # footprint used as its byte cap (budget_bytes above is the resolved per-example
+    # value). 0.0 means a fixed byte budget was used instead.
+    budget_frac: float = 0.0
+
+    # per-query activity (deltas since the previous scored query) — the readable
+    # counterparts to the cumulative odometer above.  inserts_since_last_query is
+    # "how many items were admitted for this query/example".
+    inserts_since_last_query: int = 0
+    evictions_since_last_query: int = 0
+    compressions_since_last_query: int = 0
 
     # reader verdict
     reader_answer: str = ""
@@ -100,7 +112,7 @@ class EvalResult:
     # "letta/qwen2.5".  Default "" keeps old analyses working.
     store: str = ""
 
-    # True if gold_survived / useful_byte_fraction / waste_rate /
+    # True if gold_survived / useful_byte_fraction / non_gold_byte_fraction /
     # evictions_total_at_query_time / compressions reflect real measurements.  False for
     # opaque stores where those fields carry sentinel values only.
     introspectable: bool = False
