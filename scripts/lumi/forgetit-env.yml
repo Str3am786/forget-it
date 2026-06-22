@@ -1,0 +1,31 @@
+# Conda/pip environment for the forget-it CLIENT container, built with cotainr.
+#
+# This mirrors the third-party deps in pyproject.toml. The forgetit package
+# ITSELF is deliberately NOT installed here — it's pure-Python with a src/
+# layout, so at runtime we just put <repo>/src on PYTHONPATH (bind-mounted from
+# scratch). That means editing code never requires rebuilding the .sif.
+#
+# Build (on a LUMI LOGIN node — needs internet for pip; cotainr needs no root):
+#   module load LUMI cotainr
+#   cotainr build forgetit.sif --system=lumi-c --conda-env=scripts/lumi/forgetit-env.yml
+#
+# Use --system=lumi-c (CPU partition base): the client only does retrieval +
+# HTTP calls to the vLLM server, so it needs no GPU/ROCm. Switch to
+# --system=lumi-g only if you later fold GPU work into this same image.
+name: forgetit
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - pip:
+      # ── from pyproject.toml [project.dependencies] ──
+      - falkordb
+      - langgraph
+      - "openai>=1.0.0"
+      - "python-dotenv>=1.0.0"
+      - letta-client
+      - humanize
+      - pandas
+      # ── handy for running the suite inside the container (optional) ──
+      - "pytest>=8.0"

@@ -162,11 +162,17 @@ class LongMemEvalWorkload:
         self.probe_every = probe_every
         self.clear_between_examples = clear_between_examples
         self.limit = limit
+        self._cache: list[dict[str, Any]] | None = None   # parsed once, shared read-only
 
     def _load(self) -> list[dict[str, Any]]:
-        data = json.loads(self.path.read_text(encoding="utf-8"))
-        if not isinstance(data, list):
-            raise ValueError("Expected LongMemEval JSON to be a list of examples.")
+        # Cache the parse so concurrent workers (thread pool) share ONE copy of
+        # the dataset instead of each re-parsing ~250 MB. Iteration is read-only.
+        if self._cache is None:
+            data = json.loads(self.path.read_text(encoding="utf-8"))
+            if not isinstance(data, list):
+                raise ValueError("Expected LongMemEval JSON to be a list of examples.")
+            self._cache = data
+        data = self._cache
         if self.limit is not None:
             data = data[: self.limit]
         return data

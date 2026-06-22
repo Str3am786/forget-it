@@ -606,6 +606,7 @@ class BeamWorkload:
         self.probe_every = probe_every
         self.clear_between_examples = clear_between_examples
         self.limit = limit
+        self._conv_cache: list[_BeamConversation] | None = None  # parsed once, shared read-only
 
 
     # ---- public introspection ----
@@ -627,16 +628,21 @@ class BeamWorkload:
             yield self.path
 
     def _iter_conversations(self) -> Iterator[_BeamConversation]:
-        for fp in self._iter_files():
-            for row in _load_rows(fp):
-                if not isinstance(row, dict):
-                    continue
-                conv = _parse_row(row)
-                if conv is None:
-                    continue
-                if self._allow is not None and conv.conversation_id not in self._allow:
-                    continue
-                yield conv
+        # Parse once and cache so concurrent workers share one copy.
+        if self._conv_cache is None:
+            convs: list[_BeamConversation] = []
+            for fp in self._iter_files():
+                for row in _load_rows(fp):
+                    if not isinstance(row, dict):
+                        continue
+                    conv = _parse_row(row)
+                    if conv is not None:
+                        convs.append(conv)
+            self._conv_cache = convs
+        for conv in self._conv_cache:
+            if self._allow is not None and conv.conversation_id not in self._allow:
+                continue
+            yield conv
 
     def events(self) -> Iterator[WorkloadEvent]:
         itemiser = self.itemiser

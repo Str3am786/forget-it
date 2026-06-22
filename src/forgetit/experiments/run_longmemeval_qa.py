@@ -171,6 +171,15 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--event-log", action="store_true",
                    help="Stream a per-eviction event trace (events.jsonl) next to each "
                         "config's CSVs — enables the survival/regret/value-decay analysis.")
+    p.add_argument("--workers", type=int, default=1,
+                   help="Run this many configs concurrently in one process (thread pool). "
+                        "The LLM calls are I/O-bound, so threads overlap their waits with "
+                        "one dataset copy and an isolated store per config (race-free). "
+                        "Lets you drop --num-shards (fewer processes, less memory).")
+    p.add_argument("--reader-workers", type=int, default=1,
+                   help="Within each config, run the QA reader as a concurrent second pass "
+                        "(store-free, pure I/O). Big speedup for the non-compression configs, "
+                        "where the reader is ~all the LLM cost.")
     args = p.parse_args()
     if args.num_shards < 1:
         p.error("--num-shards must be >= 1")
@@ -258,8 +267,9 @@ def main() -> None:
         log.info("footprints[%s]: %d examples, mean=%.0f B, max=%d B",
                  name, len(fp), mean, max(fp) if fp else 0)
 
-    for itemiser, _label, factory in my_configs:
-        label, store, extras = factory()
+    def _run_one(cfg) -> str:
+        itemiser, _label, factory = cfg
+        label, store, extras = factory()   # fresh, isolated store per config
         _, summary = run_pipeline(
             dataset="longmemeval",
             workload=workloads[itemiser.name],
@@ -271,18 +281,25 @@ def main() -> None:
             reader=reader_name,
             reader_impl=reader_impl,
             answer_max_tokens=128,
+            reader_workers=args.reader_workers,
             out_dir=args.out_dir,
             write_events=args.event_log,
             example_footprints=footprints.get(itemiser.name),
             **extras,
         )
-        print(
-            f"itemiser={itemiser.name:<12} "
-            f"store={label:<45} "
-            f"reader={reader_name:<12} "
-            f"gold_survival={summary['gold_survival_rate']:.3f} "
-            f"hit@k={summary['hit_at_k']:.3f}"
-        )
+        return (f"itemiser={itemiser.name:<12} store={label:<45} reader={reader_name:<12} "
+                f"gold_survival={summary['gold_survival_rate']:.3f} hit@k={summary['hit_at_k']:.3f}")
+
+    if args.workers > 1:
+        # Configs are independent (isolated stores + per-config CSVs), and the LLM
+        # waits dominate, so a thread pool overlaps them from one process.
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        with ThreadPoolExecutor(max_workers=args.workers) as pool:
+            for fut in as_completed(pool.submit(_run_one, c) for c in my_configs):
+                print(fut.result())
+    else:
+        for cfg in my_configs:
+            print(_run_one(cfg))
 
 
 if __name__ == "__main__":

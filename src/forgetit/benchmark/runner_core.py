@@ -279,6 +279,7 @@ def run(
     reader_name: str = "",
     reader_impl: Reader | None = None,
     answer_max_tokens: int = 128,
+    reader_workers: int = 1,
 ) -> list[EvalResult]:
     """
     Replay a workload chronologically against the store.
@@ -310,6 +311,15 @@ def run(
     # re-size at each reset boundary.
     example_idx = 0
     _apply_example_budget(store, budget_frac, example_footprints, example_idx)
+
+    # Two-pass reader: when reader_workers > 1, the store-touching Pass 1 (this
+    # loop) records each query's retrieved context instead of calling the reader
+    # inline; Pass 2 fires all reader calls concurrently. The reader is a pure
+    # function of (question, retrieved context) — no store, no shared mutable
+    # state — so concurrent calls are race-free, and there's no CPU between them
+    # so a thread pool overlaps the LLM waits near-perfectly.
+    defer_reader = reader_impl is not None and reader_workers > 1
+    deferred: list[tuple] = []   # (result_index, query, retrieved, ref_answer, question_type)
 
     budget_display = budget_bytes_report or view.budget_bytes()
     mode = "retrieval+QA" if reader_impl else "retrieval-only"
@@ -391,10 +401,17 @@ def run(
         prev_evicts = base.evictions_total_at_query_time
         prev_compresses = base.compressions
 
-        # ── reader evaluation (no-op when reader_impl is None) ──
-        qa = _run_reader(reader_impl=reader_impl, query=event.query, retrieved=base.retrieved,
-                         answer_max_tokens=answer_max_tokens, ref_answer=event.ref_answer,
-                         question_type=event.question_type)
+        # ── reader evaluation ──
+        # Inline unless deferred to the concurrent Pass 2 (reader_workers > 1).
+        if defer_reader:
+            qa = QAFields(ref_answer=event.ref_answer, question_text=event.query.text,
+                          question_type=event.question_type)   # answer filled in Pass 2
+            deferred.append((len(results), event.query, base.retrieved,
+                             event.ref_answer, event.question_type))
+        else:
+            qa = _run_reader(reader_impl=reader_impl, query=event.query, retrieved=base.retrieved,
+                             answer_max_tokens=answer_max_tokens, ref_answer=event.ref_answer,
+                             question_type=event.question_type)
 
         # For opaque stores, "SURVIVED/EVICTED" is just noise.  Show a hyphen.
         if base.introspectable:
@@ -404,7 +421,7 @@ def run(
         hit_tag = "HIT" if base.hit_at_k > 0 else "MISS"
 
         qa_detail = ""
-        if reader_impl is not None:
+        if reader_impl is not None and not defer_reader:
             ans_preview = (qa.reader_answer[:60] + "…") if len(qa.reader_answer) > 60 else qa.reader_answer
             qa_detail = (
                 f"  answer={'ABSTAINED' if qa.abstained else repr(ans_preview)}"
@@ -460,6 +477,24 @@ def run(
                 introspectable=base.introspectable,
             )
         )
+
+    # ── Pass 2: concurrent reader over recorded contexts (store-free, race-free) ──
+    if deferred:
+        from concurrent.futures import ThreadPoolExecutor
+        log.info("  reader Pass 2: %d calls across %d workers", len(deferred), reader_workers)
+
+        def _answer(task):
+            idx, query, retrieved, ref, qtype = task
+            return idx, _run_reader(reader_impl=reader_impl, query=query, retrieved=retrieved,
+                                    answer_max_tokens=answer_max_tokens, ref_answer=ref,
+                                    question_type=qtype)
+
+        with ThreadPoolExecutor(max_workers=reader_workers) as pool:
+            for idx, qa2 in pool.map(_answer, deferred):
+                r = results[idx]                      # EvalResult is a mutable dataclass
+                r.reader_answer = qa2.reader_answer
+                r.abstained = qa2.abstained
+                r.qa_latency_sec = qa2.qa_latency_sec
 
     elapsed = time.perf_counter() - t_run_start
 

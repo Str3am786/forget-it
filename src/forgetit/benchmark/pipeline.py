@@ -48,6 +48,7 @@ def run_pipeline(
     reader: str = "",
     reader_impl: Reader | None = None,
     answer_max_tokens: int = 128,
+    reader_workers: int = 1,
     budget_bytes: int = 0,
     budget_frac: float = 0.0,
     example_footprints: list[int] | None = None,
@@ -114,6 +115,7 @@ def run_pipeline(
             reader_name=reader,
             reader_impl=reader_impl,
             answer_max_tokens=answer_max_tokens,
+            reader_workers=reader_workers,
         )
     finally:
         # TODO need to think of a clear_between_examples=True flag
