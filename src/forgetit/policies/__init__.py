@@ -1,20 +1,28 @@
-from .baselines import RandomPolicy, LRUPolicy, LFUPolicy, FIFOPolicy
+from .baselines import (
+    RandomPolicy, LRUPolicy, LFUPolicy, FIFOPolicy,
+    KeepSmallestPolicy, EvictSmallestPolicy,
+)
 from .actions import Action, Evict, Compress, Prune
 from .base import EvictionPolicy, SimpleEvictionPolicy
 from .llm_compression import LLMCompressionPolicy
 from .ebbinghaus import EbbinghausPolicy, MemoryBankCompressionPolicy
+from .semantic import SemanticRedundancyPolicy, SemanticCoveragePolicy
 
 __all__ = [
     "EvictionPolicy",
     "SimpleEvictionPolicy",
     "LRUPolicy",
-    "LFUPolicy", 
-    "RandomPolicy", 
+    "LFUPolicy",
+    "RandomPolicy",
     "FIFOPolicy",
+    "KeepSmallestPolicy",
+    "EvictSmallestPolicy",
+    "SemanticRedundancyPolicy",
+    "SemanticCoveragePolicy",
     "LLMCompressionPolicy",
     "EbbinghausPolicy",
     "MemoryBankCompressionPolicy",
-    "Action", 
+    "Action",
     "Evict",
     "Compress",
     "Prune",

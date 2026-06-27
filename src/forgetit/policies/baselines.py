@@ -85,3 +85,53 @@ class LRUPolicy(SimpleEvictionPolicy):
         if victim_id is None:
             raise RuntimeError("LRU: store empty but eviction requested.")
         return victim_id
+
+
+class KeepSmallestPolicy(SimpleEvictionPolicy):
+    """Evict the LARGEST resident item so the budget holds more (smaller) items.
+
+    The content-agnostic size heuristic with a knapsack flavour: shed the few big
+    items first to maximise the *count* retained. The trace-only `keep_smallest`
+    baseline in oracle_size_analysis.py made this concrete; this is the runnable
+    policy. Ties: largest, then oldest, then id (deterministic)."""
+    name = "keep_smallest"
+
+    def select_victim(self, store, candidates: set[str] | None = None):
+        victim_id = None
+        best = None
+        for it in store.iter_features():
+            if candidates is not None and it.id not in candidates:
+                continue
+            created = it.created_at if it.created_at is not None else 0.0
+            # min of (-bytes, created, id) == largest, then oldest, then lowest id
+            score = (-it.bytes, created, it.id)
+            if best is None or score < best:
+                best = score
+                victim_id = it.id
+        if victim_id is None:
+            raise RuntimeError("keep_smallest: store empty but eviction requested.")
+        return victim_id
+
+
+class EvictSmallestPolicy(SimpleEvictionPolicy):
+    """Evict the SMALLEST resident item (keep the large ones).
+
+    The opposite size extreme — the worst size heuristic when small items carry
+    gold, and the natural pessimistic bracket for the size axis. Ties: smallest,
+    then oldest, then id."""
+    name = "evict_smallest"
+
+    def select_victim(self, store, candidates: set[str] | None = None):
+        victim_id = None
+        best = None
+        for it in store.iter_features():
+            if candidates is not None and it.id not in candidates:
+                continue
+            created = it.created_at if it.created_at is not None else 0.0
+            score = (it.bytes, created, it.id)   # smallest, then oldest, then id
+            if best is None or score < best:
+                best = score
+                victim_id = it.id
+        if victim_id is None:
+            raise RuntimeError("evict_smallest: store empty but eviction requested.")
+        return victim_id
