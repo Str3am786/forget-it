@@ -1,18 +1,25 @@
 #!/bin/bash
 # ============================================================================
-# forget-it on LUMI — single-node launcher (no cross-node wizardry).
+# forget-it on LUMI — single-node launcher.
 #
-# What it does, in order:
-#   1. starts a vLLM server (ROCm container) on this node at localhost:8000,
-#      serving the OpenAI-compatible API that forgetit.llm already speaks;
-#   2. waits until the server is healthy;
-#   3. launches NUM_SHARDS sharded client processes — each runs a slice of the
-#      (itemiser × policy × retriever × budget) grid and writes its OWN CSVs
-#      (no collisions); vLLM batches their concurrent requests;
-#   4. concatenates the per-config CSVs into combined tables.
+# Concurrency model (all race-free by store isolation, all synchronous):
+#   - ONE vLLM server, ONE logical endpoint at localhost:8000 (so there's no
+#     shard->port mapping to mis-balance).
+#   - A few client PROCESSES (NUM_SHARDS) split the config grid -> few dataset copies.
+#   - Inside each process configs run SEQUENTIALLY; --workers replays that many
+#     EXAMPLES concurrently within a config (thread pool, a fresh isolated store
+#     per example) so one config's compression LLM calls saturate the replicas,
+#     and --reader-workers runs the QA reader as a concurrent second pass. The
+#     LLM calls are I/O-bound, so threads overlap their waits; vLLM batches them.
+#     Eviction inside any one example stays serial and identical to a 1-worker run.
+#
+#   Peak concurrent requests ≈ NUM_SHARDS × max(WORKERS, READER_WORKERS).
+#   Tune that product to the vLLM plateau-K from:
+#       python scripts/llm_concurrency_probe.py --base-url http://localhost:8000/v1
+#
+# Runs BOTH experiments (LongMemEval + BEAM), then merges all CSVs.
 #
 # Submit with:   sbatch scripts/lumi/run_lumi.sh
-#
 # >>> EDIT the placeholders marked  # EDIT  before first run. <<<
 # ============================================================================
 #SBATCH --job-name=forgetit
@@ -23,23 +30,34 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=56
 #SBATCH --mem=200G
-#SBATCH --time=03:00:00
+#SBATCH --time=06:00:00
 #SBATCH --output=logs/forgetit-%j.out
 
 set -euo pipefail
 
 # ---- paths (EDIT) ----------------------------------------------------------
-REPO=/scratch/project_465XXXXXX/forget-it                 # EDIT: repo on scratch
-VLLM_SIF=/scratch/project_465XXXXXX/containers/vllm-rocm.sif  # EDIT: ROCm vLLM image
-MODEL_PATH=/scratch/project_465XXXXXX/models/Llama-3.1-8B-Instruct  # EDIT: pre-downloaded weights
-export HF_HOME=/scratch/project_465XXXXXX/hf_cache        # EDIT: cache on scratch
+REPO=/scratch/project_465XXXXXX/forget-it                       # EDIT: repo on scratch
+VLLM_SIF=/scratch/project_465XXXXXX/containers/vllm-rocm.sif     # EDIT: ROCm vLLM image
+MODEL_PATH=/scratch/project_465XXXXXX/models/Qwen2.5-7B-Instruct # EDIT: pre-downloaded weights
+export HF_HOME=/scratch/project_465XXXXXX/hf_cache              # EDIT: cache on scratch
 
-NUM_SHARDS=8          # parallel client processes (all hit the one server)
-SERVED_NAME=local     # model name the clients ask for (must match --served-model-name)
+# ---- concurrency knobs (tune to plateau-K) ---------------------------------
+NUM_SHARDS=2            # client processes (= dataset copies). Keep small.
+WORKERS=8              # examples replayed concurrently within a config (fresh store each)
+READER_WORKERS=8       # concurrent QA reader calls (two-pass) within a config
+EVENT_LOG=""          # set to "--event-log" for per-eviction traces (large on disk)
+EXPERIMENTS=(run_longmemeval_qa run_beam)
+
+# ---- vLLM endpoint ---------------------------------------------------------
+SERVED_NAME=local
 API_KEY=sk-lumi
 PORT=8000
+# For a 7B, data-parallel (one replica per GCD, ONE endpoint) maximises
+# throughput. Validate on ROCm; if DP isn't supported, fall back to
+# VLLM_PARALLEL="--tensor-parallel-size 8" (one replica spanning all GCDs).
+VLLM_PARALLEL="--data-parallel-size 8"
 
-# Compute nodes have no internet — force offline so nothing tries to phone home.
+# Compute nodes have no internet — force offline so nothing phones home.
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 
@@ -47,24 +65,22 @@ mkdir -p logs "$REPO/artifacts"
 cd "$REPO"
 
 # ---- 1. start vLLM in the background ---------------------------------------
-echo "[lumi] launching vLLM (ROCm) on port $PORT ..."
+echo "[lumi] launching vLLM (ROCm) on port $PORT ($VLLM_PARALLEL) ..."
 apptainer exec --rocm "$VLLM_SIF" \
     vllm serve "$MODEL_PATH" \
         --served-model-name "$SERVED_NAME" \
         --host 0.0.0.0 --port "$PORT" \
         --api-key "$API_KEY" \
-        --tensor-parallel-size 8 \
+        $VLLM_PARALLEL \
     > "logs/vllm-${SLURM_JOB_ID}.log" 2>&1 &
 VLLM_PID=$!
-# Always kill the server when this script exits (success, error, or scancel).
 trap 'echo "[lumi] stopping vLLM ($VLLM_PID)"; kill $VLLM_PID 2>/dev/null || true' EXIT
 
 # ---- 2. wait until healthy -------------------------------------------------
 echo "[lumi] waiting for vLLM to come up ..."
-for _ in $(seq 1 120); do                       # up to ~10 min
+for _ in $(seq 1 180); do                       # up to ~15 min (DP startup is slower)
     if curl -sf "http://localhost:${PORT}/health" >/dev/null; then
-        echo "[lumi] vLLM is up."
-        break
+        echo "[lumi] vLLM is up."; break
     fi
     if ! kill -0 $VLLM_PID 2>/dev/null; then
         echo "[lumi] vLLM died during startup — see logs/vllm-${SLURM_JOB_ID}.log" >&2
@@ -73,30 +89,34 @@ for _ in $(seq 1 120); do                       # up to ~10 min
     sleep 5
 done
 
-# ---- 3. point the pipeline at the local server & run shards ----------------
+# ---- 3. point the pipeline at the local server ----------------------------
 export LLM_BASE_URL="http://localhost:${PORT}/v1"
 export LLM_API_KEY="$API_KEY"
 export LLM_MODEL="$SERVED_NAME"
-
+# Size the client's httpx pool to the peak in-flight requests per process so it
+# doesn't throttle concurrency above httpx's default of 100.
+export LLM_MAX_CONNECTIONS=$(( WORKERS > READER_WORKERS ? WORKERS : READER_WORKERS ))
 source "$REPO/.venv/bin/activate"
 
-echo "[lumi] launching $NUM_SHARDS sharded clients ..."
-pids=()
-for i in $(seq 0 $((NUM_SHARDS - 1))); do
-    python -m forgetit.experiments.run_longmemeval_qa \
-        --shard "$i" --num-shards "$NUM_SHARDS" \
-        --out-dir "$REPO/artifacts/benchmark" \
-        > "logs/shard-${SLURM_JOB_ID}-${i}.log" 2>&1 &
-    pids+=($!)
-done
-
-# Wait for every shard; fail the job if any shard failed.
+# ---- 4. run each experiment as NUM_SHARDS concurrent processes -------------
 rc=0
-for pid in "${pids[@]}"; do
-    wait "$pid" || rc=1
+for EXP in "${EXPERIMENTS[@]}"; do
+    echo "[lumi] === $EXP : $NUM_SHARDS shards × $WORKERS workers × $READER_WORKERS reader-workers ==="
+    pids=()
+    for i in $(seq 0 $((NUM_SHARDS - 1))); do
+        python -m "forgetit.experiments.$EXP" \
+            --shard "$i" --num-shards "$NUM_SHARDS" \
+            --workers "$WORKERS" --reader-workers "$READER_WORKERS" \
+            --out-dir "$REPO/artifacts/benchmark" $EVENT_LOG \
+            > "logs/${EXP}-${SLURM_JOB_ID}-${i}.log" 2>&1 &
+        pids+=($!)
+    done
+    for pid in "${pids[@]}"; do
+        wait "$pid" || rc=1
+    done
 done
 
-# ---- 4. concatenate per-config CSVs ----------------------------------------
+# ---- 5. merge per-config CSVs (combined table has a `dataset` column) ------
 echo "[lumi] merging per-config CSVs ..."
 python scripts/concat_results.py "$REPO/artifacts/benchmark"
 
