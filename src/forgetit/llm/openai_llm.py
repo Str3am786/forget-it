@@ -10,10 +10,24 @@ class OpenAiLLM(LLM):
         base_url: str = "http://localhost:8000/v1",
         api_key: str = "sk-noauth",
         model: str = "local",
+        max_connections: int | None = None,
     ):
+        # When the across-example / two-pass runner fires many requests at once,
+        # httpx's default pool (100 connections) silently throttles concurrency
+        # above it. Size the pool to the target in-flight count so threads aren't
+        # queued behind a full pool. None keeps the SDK default.
+        http_client = None
+        if max_connections and max_connections > 0:
+            import httpx
+            limits = httpx.Limits(
+                max_connections=max_connections,
+                max_keepalive_connections=max_connections,
+            )
+            http_client = httpx.Client(limits=limits)
         self.client = OpenAI(
             base_url=base_url,
             api_key=api_key,
+            http_client=http_client,
         )
         self.model = model
 
