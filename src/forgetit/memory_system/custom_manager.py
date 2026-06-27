@@ -1,30 +1,48 @@
 from __future__ import annotations
 
+import logging
+import time
 from typing import Optional, Iterable, TYPE_CHECKING
 
 from forgetit.core import MemRecord, Query, MemFeatures
+from forgetit.core.cost import record_cost, text_bytes, vector_bytes
+from forgetit.core.timing import phase
 from forgetit.policies import Action, Evict, Compress, Prune
 from forgetit.memory_system.base import MemorySystem
 
 if TYPE_CHECKING:
     from forgetit.policies import EvictionPolicy
     from forgetit.backend import Backend
+    from forgetit.embeddings.base import Embedder
+
+log = logging.getLogger(__name__)
 
 
 def estimate_bytes(item: MemRecord) -> int:
-    text_bytes = len(item.text.encode("utf-8"))
-    emb_bytes = 0 if item.embedding is None else 4 * len(item.embedding)
-    return text_bytes + emb_bytes
+    """Fallback storage cost for a record whose ``bytes`` was never set.
+
+    Delegates to the single byte-cost source of truth (``core.cost.record_cost``),
+    so it honours the global COUNT_VECTOR_BYTES switch exactly like every other
+    byte consumer. Records that went through ``attach_embeddings`` already carry a
+    pinned ``bytes`` and never reach this fallback.
+    """
+    return record_cost(item)
 
 
 # TODO maybe look at calling it "ForgettingController"
 class RetentionManager(MemorySystem):
 
-    def __init__(self, budget_bytes: int, backend: Backend, policy: EvictionPolicy, logger):
+    def __init__(self, budget_bytes: int, backend: Backend, policy: EvictionPolicy, logger,
+                 embedder: "Embedder | None" = None):
         self.budget_bytes = budget_bytes
         self.backend = backend
         self.policy = policy
         self.logger = logger
+        # Optional: when records carry embeddings (dense/vector retrieval), the
+        # store re-embeds a record's vector after compression so it describes the
+        # new (compressed) text rather than the stale original. Required for
+        # correct vector retrieval under compression; harmless (unused) otherwise.
+        self.embedder = embedder
 
         self.used_bytes = 0
         self._bytes_by_id: dict[str, int] = {}
@@ -65,26 +83,29 @@ class RetentionManager(MemorySystem):
             # LRU/LFU don't treat a re-seen session as a cold-start.
             item.access_count = max(item.access_count, existing.access_count)
 
+        # Eviction/compression is timed inside _ensure_budget (evict_select /
+        # evict_exec); the admit work below is the disjoint "insert" phase.
         self._ensure_budget(incoming_bytes=b)
 
-        # Use a monotonic insertion counter for last_access so that LRU/LFU
-        # operate on workload-stream order rather than historical session dates
-        # (which are non-monotonic across LongMemEval examples).
-        self._tick += 1
-        self._n_inserts += 1
-        item.last_access = float(self._tick)
-        # Leave access_count at 0 for fresh items so LFU only counts true
-        # retrievals.  The carry-forward above already preserved any prior
-        # retrieval signal for re-inserted items.
-        self.backend.upsert(item)
-        self._bytes_by_id[item.id] = b
-        self.used_bytes += b
+        with phase("insert"):
+            # Use a monotonic insertion counter for last_access so that LRU/LFU
+            # operate on workload-stream order rather than historical session dates
+            # (which are non-monotonic across LongMemEval examples).
+            self._tick += 1
+            self._n_inserts += 1
+            item.last_access = float(self._tick)
+            # Leave access_count at 0 for fresh items so LFU only counts true
+            # retrievals.  The carry-forward above already preserved any prior
+            # retrieval signal for re-inserted items.
+            self.backend.upsert(item)
+            self._bytes_by_id[item.id] = b
+            self.used_bytes += b
 
-        self.logger.event(
-            "insert",
-            {"id": item.id, "bytes": b, "t_insert": self._n_inserts,
-             "used_bytes": self.used_bytes, "budget_bytes": self.budget_bytes},
-        )
+            self.logger.event(
+                "insert",
+                {"id": item.id, "bytes": b, "t_insert": self._n_inserts,
+                 "used_bytes": self.used_bytes, "budget_bytes": self.budget_bytes},
+            )
 
     def retrieve(self, query: Query, k: int | None = None) -> list[MemRecord]:
         # RetentionManager always honours k; the Protocol's optional-k signature
@@ -157,36 +178,67 @@ class RetentionManager(MemorySystem):
         if record is None:
             # TODO re-evaluate, this only happens if the record disappears mid way.
             return
-        old_bytes = self._bytes_by_id.get(record_id, 0)
-        new_bytes = len(new_text.encode("utf-8"))
 
-        # Compression didn't help
-        if new_bytes >= old_bytes:
+        # A record's cost = text term (shrinkable) + a fixed term (the vector,
+        # when COUNT_VECTOR_BYTES is on). Compression only rewrites the text, so
+        # it credits savings against the text term and PRESERVES the fixed term.
+        # Recover the fixed term from the authoritative total minus the *current*
+        # text bytes; in the default text-only model it is 0 and this reduces to
+        # the old text-vs-text accounting exactly.
+        old_total = self._bytes_by_id.get(record_id, 0)
+        fixed_bytes = max(0, old_total - text_bytes(record))
+        new_total = len(new_text.encode("utf-8")) + fixed_bytes
+
+        # Compression didn't help (text didn't actually shrink the total).
+        if new_total >= old_total:
             self.logger.event("compress_skipped", {
                 "id": record_id,
-                "old_bytes": old_bytes,
-                "new_bytes": new_bytes,
+                "old_bytes": old_total,
+                "new_bytes": new_total,
             })
             return
 
         # Compression worked
-        freed = old_bytes - new_bytes
+        freed = old_total - new_total
         record.text = new_text
-        record.bytes = new_bytes  # keep record.bytes in sync so the policy
-                                  # (which reads record.bytes as original_bytes)
-                                  # doesn't see a stale, pre-compression size.
+        record.bytes = new_total  # keep record.bytes in sync so the policy
+                                  # (which reads record.bytes as the cost) doesn't
+                                  # see a stale, pre-compression size.
         record.meta["compressed"] = True
         record.meta["compression_saved_bytes"] = freed
 
+        # Re-embed: the vector must describe the NEW (compressed) text, or the
+        # embedding retriever would match this item by its stale pre-compression
+        # vector. Same model → same dimensionality, so the fixed (vector) byte
+        # term computed above is unchanged. This is about retrieval correctness,
+        # so it runs whether or not the vector counts toward the budget.
+        if record.embedding is not None:
+            if self.embedder is not None:
+                try:
+                    with phase("reembed"):
+                        record.embedding = self.embedder.embed_one(new_text)
+                except Exception as e:
+                    # Keep the compression (text already saved) rather than abort
+                    # the budget loop; surface the stale vector loudly.
+                    self.logger.event("compress_reembed_failed", {"id": record_id})
+                    log.warning("[compress] %s re-embed failed — keeping stale vector: %s",
+                                record_id, e)
+            else:
+                self.logger.event("compress_stale_embedding", {"id": record_id})
+                log.warning("[compress] %s compressed but no embedder configured — its "
+                            "vector now describes the pre-compression text. Pass "
+                            "embedder= to RetentionManager for vector-retrieval runs.",
+                            record_id)
+
         self.backend.upsert(record)
 
-        self._bytes_by_id[record_id] = new_bytes
-        self.used_bytes += (new_bytes - old_bytes)
+        self._bytes_by_id[record_id] = new_total
+        self.used_bytes += (new_total - old_total)
 
         self.logger.event("compress", {
             "id": record_id,
-            "old_bytes": old_bytes,
-            "new_bytes": new_bytes,
+            "old_bytes": old_total,
+            "new_bytes": new_total,
             "freed_bytes": freed,
             "t_insert": self._n_inserts,
             "used_bytes": self.used_bytes,
@@ -204,8 +256,35 @@ class RetentionManager(MemorySystem):
             before_bytes = self.used_bytes
             before_count = self.backend.count()
 
-            action = self.policy.select_action(self)
-            self._execute_action(action=action)
+            # evict_select = deciding what to evict/compress (for compression this
+            # includes the summarise LLM call, recorded as the compress_llm
+            # sub-phase). evict_exec = applying it (compression's re-embed is the
+            # reembed sub-phase).
+            #
+            # Per-DECISION latency is also captured here (not just the run-level
+            # aggregate the PhaseTimer accumulates) and stamped with the store
+            # OCCUPANCY at decision time (n_resident / used_bytes). That pairing is
+            # what turns a mean ("78µs/decision") into a complexity-class claim:
+            # plot dur_select_s vs n_resident and read the slope — O(1) LRU stays
+            # flat, an O(n) semantic/coverage scan slopes up as the store fills.
+            t0 = time.perf_counter()
+            with phase("evict_select"):
+                action = self.policy.select_action(self)
+            t1 = time.perf_counter()
+            with phase("evict_exec"):
+                self._execute_action(action=action)
+            t2 = time.perf_counter()
+
+            self.logger.event("decision", {
+                "action": type(action).__name__,
+                "id": getattr(action, "id", None),
+                "n_resident": before_count,        # store occupancy at decision time
+                "used_bytes": before_bytes,
+                "budget_bytes": self.budget_bytes,
+                "t_insert": self._n_inserts,
+                "dur_select_s": t1 - t0,           # decision cost (policy.select_action)
+                "dur_exec_s": t2 - t1,             # apply cost (evict/compress + re-embed)
+            })
 
             made_progress = (
                 self.used_bytes < before_bytes

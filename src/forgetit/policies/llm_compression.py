@@ -5,6 +5,8 @@ import re
 import textwrap
 from typing import TYPE_CHECKING
 
+from forgetit.core.cost import text_bytes
+from forgetit.core.timing import phase
 from forgetit.policies.actions import Evict, Compress
 from forgetit.policies.base import EvictionPolicy
 
@@ -135,37 +137,42 @@ class LLMCompressionPolicy(EvictionPolicy):
             log.info("[compress] %s vanished before compression → EVICT", victim_id)
             return Evict(id=victim_id)
 
-        original_bytes = record.bytes
-        if original_bytes < self.min_compress_bytes:
+        # Compression only rewrites the text, so every decision here is measured
+        # against the TEXT bytes — not record.bytes, which may also carry a fixed
+        # vector term (COUNT_VECTOR_BYTES). Crediting savings against the text it
+        # actually shrinks keeps min_saving_ratio honest in both cost models.
+        original_text_bytes = text_bytes(record)
+        if original_text_bytes < self.min_compress_bytes:
             # Too small for an LLM call to pay for itself. Evict it (cheap) so the
             # budget loop still makes progress.
-            log.info("[compress] %s too small to compress (%dB < %dB floor) → EVICT",
-                     victim_id, original_bytes, self.min_compress_bytes)
+            log.info("[compress] %s too small to compress (%dB text < %dB floor) → EVICT",
+                     victim_id, original_text_bytes, self.min_compress_bytes)
             return Evict(id=victim_id)
 
         prompt = self.prompt_template.format(text=record.text)
         try:
-            raw = self.llm.generate(prompt, max_tokens=self.max_tokens, temperature=0.0)
+            with phase("compress_llm"):
+                raw = self.llm.generate(prompt, max_tokens=self.max_tokens, temperature=0.0)
         except Exception as e:
             log.warning("[compress] %s LLM error → EVICT: %s", victim_id, e)
             return Evict(id=victim_id)
 
         compressed = _sanitise(raw)
         compressed_bytes = len(compressed.encode("utf-8"))
-        saving = 1 - (compressed_bytes / max(original_bytes, 1))
+        saving = 1 - (compressed_bytes / max(original_text_bytes, 1))
 
         # Full original/response text only at DEBUG so it doesn't flood INFO runs.
-        log.debug("[compress] %s ORIGINAL (%dB): %r", victim_id, original_bytes, record.text[:300])
+        log.debug("[compress] %s ORIGINAL (%dB text): %r", victim_id, original_text_bytes, record.text[:300])
         log.debug("[compress] %s RESPONSE (%dB): %r", victim_id, compressed_bytes, compressed[:300])
 
         if not compressed or saving < self.min_saving_ratio:
             # Can't shrink it enough and can't keep it (still over budget) → evict.
             # No retry: in the two-phase model each item is compressed at most once.
-            log.info("[compress] %s REJECT %dB→%dB saving=%.0f%% (need ≥%.0f%%) → EVICT",
-                     victim_id, original_bytes, compressed_bytes,
+            log.info("[compress] %s REJECT %dB→%dB text saving=%.0f%% (need ≥%.0f%%) → EVICT",
+                     victim_id, original_text_bytes, compressed_bytes,
                      100 * saving, 100 * self.min_saving_ratio)
             return Evict(id=victim_id)
 
-        log.info("[compress] %s APPLY %dB→%dB saving=%.0f%% (kept, marked compressed)",
-                 victim_id, original_bytes, compressed_bytes, 100 * saving)
+        log.info("[compress] %s APPLY %dB→%dB text saving=%.0f%% (kept, marked compressed)",
+                 victim_id, original_text_bytes, compressed_bytes, 100 * saving)
         return Compress(id=victim_id, new_text=compressed)
