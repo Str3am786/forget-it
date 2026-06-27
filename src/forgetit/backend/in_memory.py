@@ -6,6 +6,7 @@ from typing import Dict, Iterable, Optional, List
 from forgetit.retrieval import Retriever
 from forgetit.backend import Backend
 from forgetit.core.schema import MemRecord, Query, MemFeatures
+from forgetit.core.cost import record_cost
 
 
 class InMemoryBackend(Backend):
@@ -57,13 +58,13 @@ class InMemoryBackend(Backend):
     def scan_accounting(self) -> list[tuple[str, int]]:
         out: list[tuple[str, int]] = []
         for it in self._items.values():
-            b = it.bytes if it.bytes and it.bytes > 0 else len(it.text.encode("utf-8"))
+            b = it.bytes if it.bytes and it.bytes > 0 else record_cost(it)
             out.append((it.id, b))
         return out
 
     def scan_features(self):
         for it in self._items.values():
-            b = it.bytes if it.bytes and it.bytes > 0 else len(it.text.encode("utf-8"))
+            b = it.bytes if it.bytes and it.bytes > 0 else record_cost(it)
             yield MemFeatures(
                 id=it.id,
                 bytes=b,

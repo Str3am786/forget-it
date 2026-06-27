@@ -32,6 +32,18 @@ class QueryEval:
     mrr: float
     used_bytes_end: int
     latency_sec: float
+    # Ranking sufficient statistic: 1-based ranks of the gold items within the
+    # retrieved list, evaluated to RETRIEVAL_EVAL_DEPTH (≥ k). hit@k / nDCG@k /
+    # recall@k / MRR at ANY cutoff are derivable from this offline, so the metric
+    # set can change without re-running. n_gold is the relevance-set size (so
+    # recall — only meaningful for multi-gold — can be scoped to n_gold > 1).
+    n_gold: int = 0
+    n_retrieved: int = 0
+    gold_ranks: list[int] = field(default_factory=list)
+    # Pre-retrieval retrievability: cosine of the query to its NEAREST resident
+    # item — "can the kept set answer at all", independent of the ranker. NaN
+    # unless items are embedded (dense configs). See metrics.mean_query_coverage.
+    query_coverage: float = float("nan")
     retrieved: list[MemRecord] = field(default_factory=list)
     # True if the store exposes enough introspection (iter_ids + get) for the
     # survival/useful-byte metrics to be meaningful.  Opaque stores (Letta,
@@ -48,6 +60,9 @@ class QAFields:
     ref_answer: str = ""
     question_text: str = ""
     question_type: str = ""
+    # Deterministic headline grade (normalized EM/containment) + token-F1.
+    qa_correct: bool = False
+    qa_f1: float = 0.0
 
 
 # ── final per-query output ─────────────────────────────────────────
@@ -73,9 +88,9 @@ class EvalResult:
     evictions_total_at_query_time: int     # cumulative over the whole run (odometer, not per-query)
 
     # retriever verdict
-    hit_at_k: float
+    hit_at_k: float                        # hit@(configured k) — back-compat scalar
     hit_at_k_given_retained: float
-    mrr: float
+    mrr: float                             # reciprocal rank of first gold (over the eval depth)
 
     # cost
     used_bytes_end: int
@@ -96,10 +111,50 @@ class EvalResult:
     evictions_since_last_query: int = 0
     compressions_since_last_query: int = 0
 
+    # Ranking sufficient statistic for the retrieval curve (see QueryEval).
+    # gold_ranks is a JSON list of the 1-based ranks of gold items in the ranked
+    # list (e.g. "[1, 4]"; "[]" if no gold retrieved), evaluated to the eval
+    # depth. Hit@k / nDCG@k / Recall@k / MRR at any k are computed from these in
+    # metrics.py — so results.csv stays compact and k is not baked in.
+    n_gold: int = 0
+    n_retrieved: int = 0
+    gold_ranks: str = "[]"
+    # Pre-retrieval retrievability (max cosine query→nearest resident item); NaN
+    # unless the config embeds items (dense). A property of the kept set, not the
+    # ranker — the bridge from forgetting back to the content thesis.
+    query_coverage: float = float("nan")
+
+    # ── per-query ranking columns (the k-curve, one scalar per (metric, k)) ──
+    # A row is one query, so the curve isn't a per-row object — these flat scalars
+    # average across rows into Hit@k / nDCG@k / Recall@k / given-retained curves
+    # at plot time. Materialised from gold_ranks via metrics.ranking_columns so
+    # the columns and the summary aggregates can't diverge. Recall is raw here
+    # (== Hit@k for single-gold); its multi-gold scoping is a downstream filter.
+    hit_at_1: float = 0.0
+    hit_at_3: float = 0.0
+    hit_at_5: float = 0.0
+    hit_at_10: float = 0.0
+    hit_at_1_given_retained: float = float("nan")
+    hit_at_3_given_retained: float = float("nan")
+    hit_at_5_given_retained: float = float("nan")
+    hit_at_10_given_retained: float = float("nan")
+    ndcg_at_1: float = 0.0
+    ndcg_at_3: float = 0.0
+    ndcg_at_5: float = 0.0
+    ndcg_at_10: float = 0.0
+    recall_at_1: float = 0.0
+    recall_at_3: float = 0.0
+    recall_at_5: float = 0.0
+    recall_at_10: float = 0.0
+
     # reader verdict
     reader_answer: str = ""
     abstained: bool = False
     qa_latency_sec: float = 0.0
+    # Deterministic headline QA grade (normalized EM/containment) + token-F1.
+    # The reproducible primary; paraphrase/judge tiers refine it offline.
+    qa_correct: bool = False
+    qa_f1: float = 0.0
 
     # reference data
     ref_answer: str = ""

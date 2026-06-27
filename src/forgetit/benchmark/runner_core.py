@@ -1,15 +1,24 @@
 from __future__ import annotations
 
+import json
 import logging
 import time
 
 from forgetit.benchmark.workloads.base import Workload
 from forgetit.benchmark.schema import EvalResult, QueryEval, QAFields
+from forgetit.benchmark.metrics import EVAL_K_CURVE, ranking_columns
+from forgetit.benchmark.grading import grade
+from forgetit.core.timing import PhaseTimer, use_timer, phase
 from forgetit.memory_system.base import MemorySystem
 from forgetit.core import Question, Query
 from forgetit.llm import Reader
 
 log = logging.getLogger(__name__)
+
+# How deep to retrieve when scoring a query: enough to cover the whole hit/nDCG
+# curve (max cutoff). The reader still only sees the configured top-k; this just
+# lets us measure where gold lands beyond k (ranking vs recall diagnosis).
+RETRIEVAL_EVAL_DEPTH = max(EVAL_K_CURVE)
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -164,6 +173,11 @@ def _run_reader(
         max_tokens=answer_max_tokens,
     )
 
+    # Deterministic headline grade (reproducible, no models). The paraphrase
+    # (embedding) and judge tiers are offline refinements over reader_answer +
+    # ref_answer, which are both persisted — so past runs can always be re-graded.
+    g = grade(answer_result.answer, ref_answer, abstained=answer_result.abstained)
+
     return QAFields(
         reader_answer=answer_result.answer,
         abstained=answer_result.abstained,
@@ -171,7 +185,96 @@ def _run_reader(
         ref_answer=ref_answer,
         question_text=query.text,
         question_type=question_type,
+        qa_correct=g["correct"],
+        qa_f1=g["f1"],
     )
+
+
+def _collect_gold_snapshot(view: _StoreView, events, example_id: str) -> list[dict]:
+    """Per-example gold ANSWER-survival snapshot — the data the offline Tier-1
+    answer-survival pass needs that events.jsonl (bytes, not text) cannot give.
+
+    MUST be called at the END of an example's replay (store at its final
+    post-compression/post-eviction state), BEFORE the store is discarded — so
+    ``resident_text`` is R_g, the text the gold item ACTUALLY survived as, not
+    its pre-compression form. Reads only GOLD ids (not the whole store).
+
+    For each (query, gold_id):
+      original_text (O_g) — the item's text as FIRST inserted, taken straight
+        from this example's insert events (re-inserts carry forward, so first
+        wins). Pre-compression by construction; no separate capture needed.
+      resident_text (R_g) — the live store's current text for the gold id, or
+        "" if it was hard-evicted (so eviction-loss and compression-loss unify:
+        an evicted gold scores 0 on containment automatically).
+    """
+    # O_g: first-insert text/bytes per id, from the events we were handed (they
+    # already hold every MemRecord in memory — no runtime capture required).
+    first_text: dict[str, str] = {}
+    first_bytes: dict[str, int] = {}
+    for e in events:
+        if e.type == "insert" and e.item is not None and e.item.id not in first_text:
+            first_text[e.item.id] = e.item.text
+            first_bytes[e.item.id] = (
+                e.item.bytes if e.item.bytes > 0 else _safe_bytes(e.item.text)
+            )
+
+    rows: list[dict] = []
+    for e in events:
+        if e.type != "query" or e.query is None or not e.gold_item_ids:
+            continue
+        for gid in e.gold_item_ids:
+            rec = view.get_record(gid)                 # FINAL resident state
+            resident = rec is not None
+            resident_text = rec.text if resident else ""
+            rows.append({
+                "example_id": example_id,
+                "query_id": e.query.id,
+                "gold_id": gid,
+                "answer": e.ref_answer,
+                "question_type": e.question_type,
+                "original_text": first_text.get(gid, ""),
+                "orig_bytes": int(first_bytes.get(gid, 0)),
+                "resident_text": resident_text,
+                "resident_bytes": int(
+                    rec.bytes if (resident and rec.bytes > 0)
+                    else _safe_bytes(resident_text)
+                ),
+                "was_evicted": not resident,
+                # record.meta["compressed"] is set only by a successful compress
+                # (new_bytes < old_bytes); evicted items can't report it.
+                "was_compressed": bool(rec.meta.get("compressed", False)) if resident else False,
+            })
+    return rows
+
+
+def _query_coverage(view: _StoreView, query: Query, introspectable: bool) -> float:
+    """Max cosine between the query and any RESIDENT item vector (NaN if items
+    aren't embedded). Uses the store's embedder to embed the query (reusing
+    query.embedding when present). Scores the kept set's ability to answer at
+    all, before — and independent of — whichever retriever ranks."""
+    if not introspectable:
+        return float("nan")
+    embedder = getattr(view.store, "embedder", None)
+    if embedder is None:
+        return float("nan")
+
+    resident_vecs = []
+    for rid in view.retained_ids():
+        rec = view.get_record(rid)
+        if rec is not None and rec.embedding is not None:
+            resident_vecs.append(rec.embedding)
+    if not resident_vecs:
+        return float("nan")
+
+    import numpy as np
+    from forgetit.embeddings.similarity import max_cross_similarity
+
+    qv = query.embedding if query.embedding is not None else embedder.embed_one(query.text)
+    q = np.asarray([qv], dtype=np.float32)
+    mat = np.asarray(resident_vecs, dtype=np.float32)
+    # assume_normalized=False: the helper renormalises, so a pre-set (possibly
+    # unnormalised) query.embedding is handled correctly.
+    return float(max_cross_similarity(q, mat, assume_normalized=False)[0])
 
 
 def _evaluate_scored_query(
@@ -214,20 +317,32 @@ def _evaluate_scored_query(
         ubf = 0.0
         non_gold = 0.0
 
+    # Pre-retrieval retrievability ("query coverage"): cosine of the query to its
+    # NEAREST resident item — whether the kept set can answer at all, as a
+    # property of what the policy KEPT, independent of which retriever ranks.
+    # Only defined when items are embedded (dense configs carry store.embedder).
+    query_coverage = _query_coverage(view, query, introspectable)
+
+    # Retrieve deep enough to score the whole hit/nDCG curve (top-K_MAX), then
+    # hand only the configured top-k to the reader — so the QA context is
+    # unchanged by the metric depth. Probe (access-only) retrieval elsewhere
+    # stays at k, so eviction/retention is unperturbed.
+    eval_k = max(k, RETRIEVAL_EVAL_DEPTH)
     t0 = time.perf_counter()
-    retrieved = view.retrieve(query, k)
+    with phase("retrieve"):
+        retrieved_full = view.retrieve(query, eval_k)
     latency = time.perf_counter() - t0
 
-    retrieved_ids = [r.id for r in retrieved]
-    hit = 1.0 if any(rid in gold_ids for rid in retrieved_ids) else 0.0
+    retrieved_ids = [r.id for r in retrieved_full]
+    # 1-based ranks of gold within the ranked list — the sufficient statistic for
+    # hit@k / nDCG@k / recall@k / MRR at any cutoff (computed offline in metrics).
+    gold_ranks = [rank for rank, rid in enumerate(retrieved_ids, start=1) if rid in gold_ids]
+
+    # Back-compat scalars: hit at the configured k, MRR over the eval depth.
+    hit = 1.0 if any(r <= k for r in gold_ranks) else 0.0
     # For opaque stores we can't condition on survival, so this collapses to hit.
     hit_given_retained = hit if (gold_survived or not introspectable) else float('nan')
-
-    mrr = 0.0
-    for rank, rid in enumerate(retrieved_ids, start=1):
-        if rid in gold_ids:
-            mrr = 1.0 / rank
-            break
+    mrr = (1.0 / gold_ranks[0]) if gold_ranks else 0.0
 
     return QueryEval(
         gold_survived=gold_survived,
@@ -238,9 +353,13 @@ def _evaluate_scored_query(
         hit_at_k=hit,
         hit_at_k_given_retained=hit_given_retained,
         mrr=mrr,
+        n_gold=len(gold_ids),
+        n_retrieved=len(retrieved_ids),
+        gold_ranks=gold_ranks,
+        query_coverage=query_coverage,
         used_bytes_end=used_bytes,
         latency_sec=latency,
-        retrieved=retrieved,
+        retrieved=retrieved_full[:k],   # reader sees only the configured top-k
         introspectable=introspectable,
     )
 
@@ -260,6 +379,182 @@ def _apply_example_budget(store, frac: float, footprints, idx: int) -> None:
         return
     fp = footprints[idx] if idx < len(footprints) else footprints[-1]
     store.budget_bytes = max(1, round(frac * fp))
+
+
+def run_one_example(
+    events,
+    store: MemorySystem,
+    *,
+    k: int,
+    dataset: str,
+    store_label: str,
+    policy: str = "",
+    retriever_name: str = "",
+    budget_bytes_report: int = 0,
+    budget_frac: float = 0.0,
+    footprint: int | None = None,
+    seed: int = 0,
+    itemiser: str = "",
+    reader_name: str = "",
+    collect_reader_context: bool = False,
+    collect_events: bool = False,
+    collect_gold_snapshot: bool = False,
+    example_id: str = "",
+    answer_max_tokens: int = 128,
+) -> tuple[list[EvalResult], list[tuple], list[dict], list[dict]]:
+    """Replay ONE example's events against ONE fresh store.
+
+    This is the policy-neutral unit of the across-example concurrent runner
+    (see ``run_pipeline_concurrent``). Every eviction/compression decision
+    inside an example stays serial and identical to the single-store ``run``;
+    only the chains of *different* examples overlap.
+
+    Differences from ``run`` (all throughput-only, none change the science):
+      - The store is assumed FRESH and isolated — there is no ``reset``/``clear``
+        handling (isolation is by instantiation). The per-example budget is sized
+        once, before any insert, from this example's own ``footprint``.
+      - The reader is NEVER called here. Scored queries record their retrieved
+        context so a single concurrent Pass 2 can answer them all (race-free,
+        since the reader is a pure function of question+context). See the driver.
+      - Cumulative odometers (``evictions_total_at_query_time``, ``compressions``)
+        are naturally per-example here because the store is fresh — which is the
+        honest per-example number, not the run-wide odometer the serial path
+        reports. The retrieval metrics (gold_survived/hit_at_k/mrr/used_bytes_end)
+        are identical to the serial path.
+
+    Returns ``(results, context_rows, event_rows)``:
+      results      — one EvalResult per scored query (reader fields left default)
+      context_rows — ``(eval_result, query, retrieved, ref_answer, qtype)`` tuples
+                     for Pass 2; empty unless ``collect_reader_context``
+      event_rows   — this example's logger entries as dicts, for the merged
+                     events.jsonl; empty unless ``collect_events``
+    """
+    view = _StoreView(store)
+    view.safe_call("connect")
+
+    # Dense retrieval: if the store carries an embedder, attach a vector to each
+    # of this example's items in ONE batched call before replaying. The same
+    # embedder backs the store's EmbeddingRetriever (query vectors) and re-embed
+    # on compress, so item / query / compressed vectors are all from one model.
+    if getattr(store, "embedder", None) is not None:
+        from forgetit.embeddings.ingest import attach_embeddings
+        items = [e.item for e in events if e.type == "insert" and e.item is not None]
+        if items:
+            with phase("embed_ingest"):
+                attach_embeddings(items, store.embedder)
+
+    # Relative budget: size the fresh store to THIS example's own footprint
+    # before any insert (mirrors run()'s per-reset re-sizing, minus the reset).
+    if budget_frac > 0 and footprint is not None and hasattr(store, "budget_bytes"):
+        store.budget_bytes = max(1, round(budget_frac * footprint))
+
+    results: list[EvalResult] = []
+    context_rows: list[tuple] = []
+    insert_count = 0
+    prev_inserts = 0
+    prev_evicts = 0
+    prev_compresses = 0
+
+    for event in events:
+        if event.type == "insert":
+            if event.item is None:
+                raise ValueError("Insert event missing item.")
+            view.insert(event.item)
+            insert_count += 1
+            continue
+
+        if event.type == "reset":
+            # iter_examples() never emits resets; tolerate defensively (no-op,
+            # since each example already owns a fresh store).
+            continue
+
+        if event.type != "query":
+            raise ValueError(f"Unknown event type: {event.type}")
+        if event.query is None:
+            raise ValueError("Query event missing query.")
+
+        gold_ids = set(event.gold_item_ids or [])
+
+        # Unlabelled query: access signal only (LRU/LFU/Ebbinghaus warmup).
+        if not gold_ids:
+            with phase("retrieve"):
+                view.retrieve(event.query, k=k)
+            continue
+
+        # Record gold mapping for offline survival/regret/value-decay analysis.
+        view.log_event("gold", {"query_id": event.query.id, "gold_ids": sorted(gold_ids)})
+
+        base = _evaluate_scored_query(view=view, query=event.query, gold_ids=gold_ids, k=k)
+
+        inserts_delta = insert_count - prev_inserts
+        evicts_delta = base.evictions_total_at_query_time - prev_evicts
+        compresses_delta = base.compressions - prev_compresses
+        prev_inserts = insert_count
+        prev_evicts = base.evictions_total_at_query_time
+        prev_compresses = base.compressions
+
+        eval_budget = view.budget_bytes() if budget_frac > 0 else budget_bytes_report
+
+        # Reader fields default-empty; Pass 2 fills them via the context row.
+        qa = QAFields(ref_answer=event.ref_answer, question_text=event.query.text,
+                      question_type=event.question_type)
+
+        result = EvalResult(
+            dataset=dataset,
+            query_id=event.query.id,
+            policy=policy,
+            budget_bytes=eval_budget,
+            budget_frac=budget_frac,
+            k=k,
+            itemiser=itemiser,
+            retriever=retriever_name,
+            reader=reader_name,
+            seed=seed,
+            gold_survived=base.gold_survived,
+            useful_byte_fraction=base.useful_byte_fraction,
+            non_gold_byte_fraction=base.non_gold_byte_fraction,
+            evictions_total_at_query_time=base.evictions_total_at_query_time,
+            compressions=base.compressions,
+            inserts_since_last_query=inserts_delta,
+            evictions_since_last_query=evicts_delta,
+            compressions_since_last_query=compresses_delta,
+            hit_at_k=base.hit_at_k,
+            hit_at_k_given_retained=base.hit_at_k_given_retained,
+            mrr=base.mrr,
+            n_gold=base.n_gold,
+            n_retrieved=base.n_retrieved,
+            gold_ranks=json.dumps(base.gold_ranks),
+            query_coverage=base.query_coverage,
+            used_bytes_end=base.used_bytes_end,
+            latency_sec=base.latency_sec,
+            reader_answer=qa.reader_answer,
+            abstained=qa.abstained,
+            qa_latency_sec=qa.qa_latency_sec,
+            qa_correct=qa.qa_correct,
+            qa_f1=qa.qa_f1,
+            ref_answer=qa.ref_answer,
+            question_text=qa.question_text,
+            question_type=qa.question_type,
+            store=store_label,
+            introspectable=base.introspectable,
+            **ranking_columns(base.gold_ranks, base.n_gold,
+                              base.introspectable, base.gold_survived),
+        )
+        results.append(result)
+
+        if collect_reader_context:
+            context_rows.append((result, event.query, base.retrieved,
+                                 event.ref_answer, event.question_type))
+
+    event_rows: list[dict] = []
+    if collect_events:
+        logger = getattr(store, "logger", None)
+        entries = getattr(logger, "log", None) if logger is not None else None
+        if entries:
+            for e in entries:
+                event_rows.append({"name": e.name, "t": e.timestamp, **e.payload})
+
+    return results, context_rows, event_rows
 
 
 def run(
@@ -465,16 +760,24 @@ def run(
                 hit_at_k=base.hit_at_k,
                 hit_at_k_given_retained=base.hit_at_k_given_retained,
                 mrr=base.mrr,
+                n_gold=base.n_gold,
+                n_retrieved=base.n_retrieved,
+                gold_ranks=json.dumps(base.gold_ranks),
+                query_coverage=base.query_coverage,
                 used_bytes_end=base.used_bytes_end,
                 latency_sec=base.latency_sec,
                 reader_answer=qa.reader_answer,
                 abstained=qa.abstained,
                 qa_latency_sec=qa.qa_latency_sec,
+                qa_correct=qa.qa_correct,
+                qa_f1=qa.qa_f1,
                 ref_answer=qa.ref_answer,
                 question_text=qa.question_text,
                 question_type=qa.question_type,
                 store=store_label,
                 introspectable=base.introspectable,
+                **ranking_columns(base.gold_ranks, base.n_gold,
+                                  base.introspectable, base.gold_survived),
             )
         )
 
@@ -495,6 +798,8 @@ def run(
                 r.reader_answer = qa2.reader_answer
                 r.abstained = qa2.abstained
                 r.qa_latency_sec = qa2.qa_latency_sec
+                r.qa_correct = qa2.qa_correct
+                r.qa_f1 = qa2.qa_f1
 
     elapsed = time.perf_counter() - t_run_start
 
