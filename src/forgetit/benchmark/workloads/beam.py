@@ -644,25 +644,28 @@ class BeamWorkload:
                 continue
             yield conv
 
-    def events(self) -> Iterator[WorkloadEvent]:
+    def iter_examples(self) -> Iterator[tuple[str, list[WorkloadEvent]]]:
+        """Yield ``(conversation_id, events)`` per BEAM conversation, WITHOUT
+        inter-conversation ``reset`` events.
+
+        This is the per-example unit the across-example concurrent runner
+        consumes (one BEAM conversation = one example): each runs against its
+        own fresh store.  The synthetic ``ts`` clock carries forward across
+        conversations exactly as the serial path does, so the per-example
+        ``created_at`` values — and therefore every eviction decision — are
+        byte-identical whether replayed serially or concurrently.
+        """
         itemiser = self.itemiser
         n_conv = 0
         n_queries_emitted = 0
         n_queries_with_gold = 0
         ts = self._base_ts
-        first_conv = True
 
         for conv in self._iter_conversations():
             if self.limit is not None and n_conv >= self.limit:
                 break
             n_conv += 1
-
-            # Reset between conversations so each is evaluated in isolation.
-            if self.clear_between_examples and not first_conv:
-                yield WorkloadEvent(
-                    type="reset", timestamp=0.0, item=None, query=None, gold_item_ids=[],
-                )
-            first_conv = False
+            evs: list[WorkloadEvent] = []
 
             items, key_to_item = itemiser.itemise(conv.conversation_id, ts, conv.batches)
             if items:
@@ -674,17 +677,17 @@ class BeamWorkload:
             probe_i = 0
 
             for n, rec in enumerate(items, start=1):
-                yield WorkloadEvent(
+                evs.append(WorkloadEvent(
                     type="insert",
                     timestamp=rec.created_at,
                     item=rec,
                     query=None,
                     gold_item_ids=[],
-                )
+                ))
                 if self.probe_every > 0 and probe_texts and n % self.probe_every == 0:
                     probe_text = probe_texts[probe_i % len(probe_texts)]
                     probe_i += 1
-                    yield WorkloadEvent(
+                    evs.append(WorkloadEvent(
                         type="query",
                         timestamp=ts,
                         item=None,
@@ -698,7 +701,7 @@ class BeamWorkload:
                                   "probe": True},
                         ),
                         gold_item_ids=[],   # access-only — not scored
-                    )
+                    ))
 
             for q_idx, pq in enumerate(conv.probing_questions):
                 q_id = f"{conv.conversation_id}::q::{q_idx}::{pq.ability}"
@@ -734,7 +737,7 @@ class BeamWorkload:
                     },
                 )
 
-                yield WorkloadEvent(
+                evs.append(WorkloadEvent(
                     type="query",
                     timestamp=q_ts,
                     item=None,
@@ -742,16 +745,31 @@ class BeamWorkload:
                     gold_item_ids=gold_item_ids,
                     ref_answer=pq.answer,
                     question_type=pq.ability,
-                )
+                ))
                 n_queries_emitted += 1
                 if gold_item_ids:
                     n_queries_with_gold += 1
+
+            yield conv.conversation_id, evs
 
         log.info(
             "BEAM workload done: conversations=%d queries=%d with_gold=%d unresolved=%d (itemiser=%s)",
             n_conv, n_queries_emitted, n_queries_with_gold,
             n_queries_emitted - n_queries_with_gold, itemiser.name,
         )
+
+    def events(self) -> Iterator[WorkloadEvent]:
+        # Serial replay: flatten the per-conversation streams, inserting a reset
+        # between conversations so the single reused store is wiped at each
+        # boundary.  Shares iter_examples() so both runners see identical streams.
+        first_conv = True
+        for _conv_id, evs in self.iter_examples():
+            if self.clear_between_examples and not first_conv:
+                yield WorkloadEvent(
+                    type="reset", timestamp=0.0, item=None, query=None, gold_item_ids=[],
+                )
+            first_conv = False
+            yield from evs
 
 def iter_single_conversation(
     path: str | Path,

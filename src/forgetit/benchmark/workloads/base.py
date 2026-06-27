@@ -13,6 +13,19 @@ class Workload(Protocol):
         """
         ...
 
+    def iter_examples(self) -> Iterator[tuple[str, list[WorkloadEvent]]]:
+        """
+        Yield ``(example_id, events)`` one example at a time, WITHOUT the
+        inter-example ``reset`` events that :meth:`events` interleaves.
+
+        This is the unit of concurrency for the across-example runner: each
+        example is replayed against its own fresh store, so isolation comes from
+        instantiation, not from a ``reset``/``clear``.  ``events()`` is defined
+        in terms of this generator, so the two replays are byte-identical
+        per-example (which keeps the concurrent runner policy-neutral).
+        """
+        ...
+
 class Itemiser(Protocol):
     name: str
 

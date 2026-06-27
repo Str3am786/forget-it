@@ -206,22 +206,19 @@ class LongMemEvalWorkload:
 
         return gold_ids
 
-    def events(self) -> Iterator[WorkloadEvent]:
-        first_example = True
-        for example in self._load():
-            # Emit a reset event between examples so the runner can clear the
-            # store at each boundary (controlled by clear_between_examples).
-            # The very first example never needs a preceding reset.
-            if self.clear_between_examples and not first_example:
-                yield WorkloadEvent(
-                    type="reset",
-                    timestamp=0.0,
-                    item=None,
-                    query=None,
-                    gold_item_ids=[],
-                )
-            first_example = False
+    def iter_examples(self) -> Iterator[tuple[str, list[WorkloadEvent]]]:
+        """Yield ``(example_id, events)`` per LongMemEval example, WITHOUT
+        inter-example ``reset`` events.
 
+        This is the per-example unit the across-example concurrent runner
+        consumes: each example runs against its own fresh store, so isolation
+        comes from instantiation rather than from a ``reset``/``clear``.  The
+        serial :meth:`events` wraps these exact sequences with ``reset`` events,
+        so both runners replay byte-identical per-example event streams — that's
+        what makes the concurrent runner policy-neutral.
+        """
+        for example in self._load():
+            evs: list[WorkloadEvent] = []
             emitted_items_by_session: dict[str, list[MemRecord]] = {}
 
             session_ids = example["haystack_session_ids"]
@@ -247,13 +244,13 @@ class LongMemEvalWorkload:
                 emitted_items_by_session[sid] = items
 
                 for item in items:
-                    yield WorkloadEvent(
+                    evs.append(WorkloadEvent(
                         type="insert",
                         timestamp=item.created_at,
                         item=item,
                         query=None,
                         gold_item_ids=[],
-                    )
+                    ))
 
                 sessions_inserted += 1
 
@@ -273,13 +270,13 @@ class LongMemEvalWorkload:
                             "probe": True,
                         },
                     )
-                    yield WorkloadEvent(
+                    evs.append(WorkloadEvent(
                         type="query",
                         timestamp=q_ts,
                         item=None,
                         query=probe_query,
                         gold_item_ids=[],   # access-only — not scored
-                    )
+                    ))
 
             query = Query(
                 id=qid,
@@ -292,7 +289,7 @@ class LongMemEvalWorkload:
                 },
             )
 
-            yield WorkloadEvent(
+            evs.append(WorkloadEvent(
                 type="query",
                 timestamp=q_ts,
                 item=None,
@@ -300,4 +297,23 @@ class LongMemEvalWorkload:
                 gold_item_ids=self._resolve_gold(example, emitted_items_by_session),
                 ref_answer=ref_answer,
                 question_type=question_type
-            )
+            ))
+
+            yield qid, evs
+
+    def events(self) -> Iterator[WorkloadEvent]:
+        # Serial replay: flatten the per-example streams, inserting a reset
+        # between examples so the single reused store is wiped at each boundary.
+        # The very first example never needs a preceding reset.
+        first_example = True
+        for _example_id, evs in self.iter_examples():
+            if self.clear_between_examples and not first_example:
+                yield WorkloadEvent(
+                    type="reset",
+                    timestamp=0.0,
+                    item=None,
+                    query=None,
+                    gold_item_ids=[],
+                )
+            first_example = False
+            yield from evs
