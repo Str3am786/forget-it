@@ -54,6 +54,12 @@ from typing import Callable, Iterable, Iterator
 
 import numpy as np
 
+# Tier-1 answer-survival primitives live in grading.py (single source of truth
+# for normalization + the answerable/abstention split). Reused, never reinvented.
+from forgetit.benchmark.grading import (
+    is_answerable, answer_contained_any, answer_recall_any,
+)
+
 # Reuse the project's Mann-Whitney AUC primitive for value calibration.
 try:
     from forgetit.embeddings.similarity import auc_separation
@@ -539,11 +545,196 @@ class Funnel:
                 "n_answer": self.n_answer, "retrieval_attrition": ra, "answer_attrition": aa}
 
 
+# ───────────────── Tier-1: gold ANSWER survival (the !A side) ──────
+# id-survival (gold_survival_rate / annotation regret above) asks "did the gold
+# ITEM survive". This asks the harder question compression forces: did the gold
+# ANSWER STRING survive INSIDE the item's resident text. Embedder-independent —
+# reads the stored TEXT (O_g original vs R_g resident), never vectors. Needs the
+# gold_answer_snapshot.jsonl the runner emits under --event-log; without it this
+# whole block is skipped (the id-survival analysis above still runs).
+
+GOLD_SNAPSHOT_NAME = "gold_answer_snapshot.jsonl"
+
+
+def load_gold_snapshot(events_path: Path) -> list[dict] | None:
+    """Read the per-(query, gold-id) answer-survival snapshot sibling of
+    events.jsonl. Returns None when absent (run predates the snapshot, or
+    --event-log was off) so callers can degrade gracefully."""
+    p = events_path.parent / GOLD_SNAPSHOT_NAME
+    if not p.exists():
+        return None
+    return list(_read_jsonl(p))
+
+
+@dataclass
+class _AnsVerdict:
+    """Per (query, gold-id) answer-survival verdict. base_* score the ORIGINAL
+    inserted text O_g (the unavoidable/gold-mapping baseline); res_* score the
+    RESIDENT text R_g (post-compression, "" if evicted)."""
+    query_id: str
+    gold_id: str
+    answerable: bool
+    resident: bool
+    was_compressed: bool
+    base_contain: int
+    res_contain: int
+    base_recall: float
+    res_recall: float
+
+    @property
+    def localizable(self) -> bool:
+        # The answer was actually present in the item to begin with — only then
+        # is a later loss a COMPRESSION failure rather than a gold-mapping artifact.
+        return self.base_contain == 1
+
+
+def _verdicts_from_snapshot(rows: list[dict]) -> list[_AnsVerdict]:
+    out: list[_AnsVerdict] = []
+    for r in rows:
+        answers = [r.get("answer", "")]            # list = future multi-gold; max-over
+        O = r.get("original_text", "")
+        R = r.get("resident_text", "")
+        out.append(_AnsVerdict(
+            query_id=r.get("query_id", ""),
+            gold_id=r.get("gold_id", ""),
+            answerable=is_answerable(r.get("query_id", ""), r.get("question_type", "")),
+            resident=not bool(r.get("was_evicted", False)),
+            was_compressed=bool(r.get("was_compressed", False)),
+            base_contain=answer_contained_any(answers, O),
+            res_contain=answer_contained_any(answers, R),
+            base_recall=answer_recall_any(answers, O),
+            res_recall=answer_recall_any(answers, R),
+        ))
+    return out
+
+
+def _mean(xs) -> float:
+    xs = list(xs)
+    return (sum(xs) / len(xs)) if xs else float("nan")
+
+
+def answer_survival_report(rows: list[dict], *, n_compress: int, theta: float = 0.5) -> dict:
+    """Per-config answer-survival rollups over LOCALIZABLE, ANSWERABLE gold items.
+
+    Headline ``gold_answer_survival`` replaces the flat id-survival line for the
+    compression policy: a hard-evicted gold has R_g="" so it scores 0
+    automatically — unifying eviction-loss and compression-loss in one number."""
+    verdicts = _verdicts_from_snapshot(rows)
+    answerable = [v for v in verdicts if v.answerable]
+    n_abstention = len(verdicts) - len(answerable)
+    loc = [v for v in answerable if v.localizable]
+    nonloc = [v for v in answerable if not v.localizable]
+    n_loc = len(loc)
+
+    touched = [v for v in loc if v.was_compressed]      # compression actually rewrote it
+    resident_loc = [v for v in loc if v.resident]
+
+    retained = sum(1 for v in loc if v.res_contain == 1)
+    degraded = sum(1 for v in loc if v.res_contain == 0 and v.res_recall >= theta)
+    lost     = sum(1 for v in loc if v.res_contain == 0 and v.res_recall < theta)
+
+    return {
+        # headline + graded
+        "gold_answer_survival": _mean(v.res_contain for v in loc),
+        "gold_answer_recall":   _mean(v.res_recall for v in loc),
+        # the avoidable-loss term (Layer B): loss only on items compression touched
+        "compression_attributable_loss": (_mean(v.base_contain - v.res_contain for v in touched)
+                                           if touched else 0.0),
+        # same-scope id residency — the airtight upper bound for contract #1
+        "gold_id_survival": _mean(1.0 if v.resident else 0.0 for v in loc),
+        # resident-scoped survival — the airtight contract-#2 bug-catcher
+        "survival_resident_localizable": _mean(v.res_contain for v in resident_loc),
+        # counts
+        "n_localizable": n_loc,
+        "n_non_localizable": len(nonloc),
+        "n_abstention_items": n_abstention,
+        "n_gold_resident": sum(1 for v in loc if v.resident),
+        "n_gold_evicted": sum(1 for v in loc if not v.resident),
+        "n_compressed_localizable": len(touched),
+        # optional tiering (theta)
+        "theta": theta,
+        "frac_retained": (retained / n_loc) if n_loc else float("nan"),
+        "frac_degraded": (degraded / n_loc) if n_loc else float("nan"),
+        "frac_lost":     (lost / n_loc) if n_loc else float("nan"),
+        "n_compress": int(n_compress),
+    }
+
+
+def answer_survival_contracts(rep: dict, *, gold_survival_rate: float | None = None,
+                              tol: float = 1e-9) -> list[dict]:
+    """The bug-catchers, mirroring the existing 'query_rate == 1 - gold_survival'
+    check. Each is {name, ok, hard, detail}; a HARD failure must abort the pass."""
+    checks: list[dict] = []
+    n_loc = rep["n_localizable"]
+    surv = rep["gold_answer_survival"]
+    id_surv = rep["gold_id_survival"]
+
+    # Contract 1 — you cannot preserve an answer inside a gold item that did not
+    # itself survive. Asserted at the SAME (localizable-item) scope as survival,
+    # which makes it an exact invariant: res_contain<=resident per item.
+    if n_loc == 0:
+        checks.append({"name": "C1 answer<=id survival", "ok": True, "hard": True,
+                       "detail": "no localizable items"})
+    else:
+        checks.append({"name": "C1 answer<=id survival",
+                       "ok": surv <= id_surv + tol, "hard": True,
+                       "detail": f"{surv:.4f} <= {id_surv:.4f}"})
+    # Informational only: the query-level summary.gold_survival_rate is over a
+    # DIFFERENT denominator (all queries incl. abstention/non-localizable), so
+    # answer-survival sitting above it is a scope difference, not a bug.
+    if gold_survival_rate is not None and n_loc:
+        above = surv > gold_survival_rate + tol
+        checks.append({"name": "  vs summary.gold_survival_rate", "ok": True, "hard": False,
+                       "detail": f"{surv:.4f} vs {gold_survival_rate:.4f}"
+                                 + ("  (above — scope differs)" if above else "")})
+
+    # Contract 2 — no compression => resident gold keeps R_g==O_g => res_contain==1
+    # for every RESIDENT localizable item, and zero compression-attributable loss.
+    # This is the check that catches a wrong O_g/R_g source (it would show spurious
+    # loss on an untouched item). HARD — never downgrade to a warning.
+    if rep["n_compress"] == 0:
+        sr = rep["survival_resident_localizable"]
+        cal = rep["compression_attributable_loss"]
+        ok_sr = (sr != sr) or abs(sr - 1.0) <= tol          # NaN (no resident loc) -> vacuous
+        checks.append({"name": "C2 resident res_contain==1 (n_compress==0)", "ok": ok_sr,
+                       "hard": True, "detail": f"survival_resident_localizable={sr:.4f}"
+                       if sr == sr else "no resident localizable items"})
+        checks.append({"name": "C2 compression_attributable_loss==0", "ok": abs(cal) <= tol,
+                       "hard": True, "detail": f"cal={cal:.6f}"})
+        if rep["n_gold_evicted"] == 0 and n_loc:
+            checks.append({"name": "C2 headline==1.0 (no evictions)", "ok": abs(surv - 1.0) <= tol,
+                           "hard": True, "detail": f"gold_answer_survival={surv:.4f}"})
+
+    # Contract 3 — the tiers partition the localizable items.
+    if n_loc:
+        tot = rep["frac_retained"] + rep["frac_degraded"] + rep["frac_lost"]
+        checks.append({"name": "C3 tiers sum to 1", "ok": abs(tot - 1.0) <= 1e-9,
+                       "hard": True, "detail": f"sum={tot:.6f}"})
+    return checks
+
+
+def _read_gold_survival_rate(events_path: Path) -> float | None:
+    """Pull the query-level gold_survival_rate from the run's summary.csv (sibling
+    of events.jsonl) — the flat id-residency line answer-survival is replacing."""
+    import csv
+    p = events_path.parent / "summary.csv"
+    if not p.exists():
+        return None
+    try:
+        with p.open(encoding="utf-8") as f:
+            row = next(csv.DictReader(f), None)
+        return float(row["gold_survival_rate"]) if row and row.get("gold_survival_rate") else None
+    except (OSError, ValueError, KeyError):
+        return None
+
+
 # ───────────────────────── orchestration ──────────────────────────
 
 
 def analyze(run: Run, *, oracle_json: Path | None = None,
-            random_query_rate: float | None = None) -> dict:
+            random_query_rate: float | None = None,
+            gold_snapshot_rows: list[dict] | None = None,
+            gold_survival_rate: float | None = None) -> dict:
     """Annotation floor + magnitude + bracket + time-to-regret + recency calibration.
     The counterfactual stages are opt-in (need a retriever/reader); the funnel
     reports annotation-only here."""
@@ -556,7 +747,9 @@ def analyze(run: Run, *, oracle_json: Path | None = None,
         if ceil is not None:
             bracket = Bracket(policy=mag.query_rate, oracle=ceil, random=random_query_rate)
 
-    return {
+    comp = compression_stats(run)                                            # Layer D
+
+    out = {
         "dataset": run.dataset, "policy": run.policy, "budget_frac": run.budget_frac,
         "itemiser": run.meta.get("itemiser", ""), "retriever": run.meta.get("retriever", ""),
         "magnitude": mag.as_dict(),
@@ -564,9 +757,18 @@ def analyze(run: Run, *, oracle_json: Path | None = None,
         "bracket": (bracket.as_dict() if bracket else None),
         "time_to_regret": time_to_regret(run, ann).as_dict(),
         "eviction_classification": eviction_classification(run).as_dict(),   # Layer C
-        "compression": compression_stats(run),                               # Layer D
+        "compression": comp,
         "value_calibration_recency": value_calibration(run),
     }
+
+    # Tier-1 answer survival (the !A side) — only when the snapshot is present.
+    if gold_snapshot_rows is not None:
+        rep = answer_survival_report(gold_snapshot_rows,
+                                     n_compress=int(comp["n_compressions"]))
+        out["answer_survival"] = rep
+        out["answer_survival_contracts"] = answer_survival_contracts(
+            rep, gold_survival_rate=gold_survival_rate)
+    return out
 
 
 # ───────────────────────── CLI ────────────────────────────────────
@@ -620,6 +822,7 @@ def main() -> int:
         run = load_run(path, dataset=ident["dataset"], policy=ident["policy"],
                        budget_frac=ident["budget_frac"], results_csv=rcsv)
         run.meta.update(ident)
+        run.meta["events_path"] = str(path)            # to locate the gold snapshot
         runs.append(run)
 
     if not runs:
@@ -640,7 +843,11 @@ def main() -> int:
           f"{'q_regret':>9}{'items':>7}{'norm_avoid':>11}  ttr")
     for r in runs:
         key = (r.dataset, r.meta.get("itemiser"), r.meta.get("retriever"), r.budget_frac)
-        rep = analyze(r, oracle_json=args.oracle, random_query_rate=floor.get(key))
+        epath = Path(r.meta["events_path"])
+        snap = load_gold_snapshot(epath)
+        rep = analyze(r, oracle_json=args.oracle, random_query_rate=floor.get(key),
+                      gold_snapshot_rows=snap,
+                      gold_survival_rate=_read_gold_survival_rate(epath))
         rep["itemiser"] = r.meta.get("itemiser", "")
         rep["retriever"] = r.meta.get("retriever", "")
         reports.append(rep)
@@ -650,10 +857,74 @@ def main() -> int:
               f"{rep['magnitude']['query_rate']:9.3f}{rep['magnitude']['item_count']:7d}"
               f"{norm:>11}  {rep['time_to_regret']['verdict']}")
 
+    # ── Tier-1 answer-survival table + contract validation (the !A side) ──
+    n_violations = _print_answer_survival(reports)
+
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(reports, indent=2))
     print(f"\nwrote {args.out}  ({len(reports)} runs)")
+    if n_violations:
+        print(f"\n✗ {n_violations} HARD answer-survival contract violation(s) — see table above.")
+        return 2
     return 0
+
+
+def _fmt(x, w=8, p=3) -> str:
+    """Right-aligned float that renders NaN as a dash."""
+    try:
+        if x != x:                       # NaN
+            return f"{'-':>{w}}"
+        return f"{x:{w}.{p}f}"
+    except (TypeError, ValueError):
+        return f"{str(x):>{w}}"
+
+
+def _print_answer_survival(reports: list[dict]) -> int:
+    """Print the per-config answer-survival rollups and the contract validation
+    table; return the number of HARD contract violations. Configs without a gold
+    snapshot are listed so a missing-snapshot run is never silently skipped."""
+    have = [r for r in reports if "answer_survival" in r]
+    missing = [r for r in reports if "answer_survival" not in r]
+
+    print("\n══ Tier-1 gold ANSWER survival (resident-text containment; localizable, "
+          "answerable items) ══")
+    if not have:
+        print("  no gold_answer_snapshot.jsonl found for any config — re-run the "
+              "sweep with --event-log on the updated runner to emit it.")
+        return 0
+
+    print(f"{'dataset':12}{'itemiser':10}{'policy':12}{'retr':7}{'frac':>5} | "
+          f"{'ans_surv':>9}{'ans_rec':>9}{'id_surv':>9}{'cmp_loss':>9} | "
+          f"{'nLoc':>5}{'nNonL':>6}{'nEvct':>6}{'nCmp':>5} | ret/deg/lost")
+    for r in have:
+        a = r["answer_survival"]
+        tier = f"{_fmt(a['frac_retained'],4,2)}/{_fmt(a['frac_degraded'],4,2)}/{_fmt(a['frac_lost'],4,2)}"
+        print(f"{r['dataset']:12}{r.get('itemiser',''):10}{r['policy']:12}"
+              f"{r.get('retriever',''):7}{r['budget_frac']:5.2f} | "
+              f"{_fmt(a['gold_answer_survival'],9)}{_fmt(a['gold_answer_recall'],9)}"
+              f"{_fmt(a['gold_id_survival'],9)}{_fmt(a['compression_attributable_loss'],9)} | "
+              f"{a['n_localizable']:5d}{a['n_non_localizable']:6d}{a['n_gold_evicted']:6d}"
+              f"{a['n_compressed_localizable']:5d} | {tier}")
+
+    if missing:
+        print(f"\n  ({len(missing)} config(s) had no snapshot and were skipped for "
+              f"answer-survival: " + ", ".join(sorted(
+                  f"{m['policy']}/{m.get('retriever','')}/{m['budget_frac']:.2f}" for m in missing)) + ")")
+
+    # Contract validation table — like the existing 0/60-mismatch check.
+    print("\n── contract validation ──")
+    n_violations = 0
+    for r in have:
+        label = f"{r.get('itemiser',''):>8}/{r['policy']}/{r.get('retriever','')}/{r['budget_frac']:.2f}"
+        for c in r["answer_survival_contracts"]:
+            hard = c.get("hard", True)
+            ok = c["ok"]
+            mark = "✓" if ok else "✗"
+            tag = "" if hard else " (info)"
+            if hard and not ok:
+                n_violations += 1
+            print(f"  {mark} {label:34} {c['name']:38}{tag}  {c['detail']}")
+    return n_violations
 
 
 if __name__ == "__main__":
