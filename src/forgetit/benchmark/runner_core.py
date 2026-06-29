@@ -190,7 +190,8 @@ def _run_reader(
     )
 
 
-def _collect_gold_snapshot(view: _StoreView, events, example_id: str) -> list[dict]:
+def _collect_gold_snapshot(view: _StoreView, events, example_id: str,
+                           orig_text: dict[str, str], orig_bytes: dict[str, int]) -> list[dict]:
     """Per-example gold ANSWER-survival snapshot — the data the offline Tier-1
     answer-survival pass needs that events.jsonl (bytes, not text) cannot give.
 
@@ -200,23 +201,17 @@ def _collect_gold_snapshot(view: _StoreView, events, example_id: str) -> list[di
     its pre-compression form. Reads only GOLD ids (not the whole store).
 
     For each (query, gold_id):
-      original_text (O_g) — the item's text as FIRST inserted, taken straight
-        from this example's insert events (re-inserts carry forward, so first
-        wins). Pre-compression by construction; no separate capture needed.
+      original_text (O_g) — the item's text as FIRST inserted, passed in via
+        ``orig_text`` (captured at insert time in the replay loop). It CANNOT be
+        re-read from the events/store here: compression reassigns ``record.text``
+        in place on the very object the insert event holds, so by now that object
+        carries the COMPRESSED text. Capturing the original string at insert is
+        the only way to keep O_g truly pre-compression.
       resident_text (R_g) — the live store's current text for the gold id, or
         "" if it was hard-evicted (so eviction-loss and compression-loss unify:
         an evicted gold scores 0 on containment automatically).
     """
-    # O_g: first-insert text/bytes per id, from the events we were handed (they
-    # already hold every MemRecord in memory — no runtime capture required).
-    first_text: dict[str, str] = {}
-    first_bytes: dict[str, int] = {}
-    for e in events:
-        if e.type == "insert" and e.item is not None and e.item.id not in first_text:
-            first_text[e.item.id] = e.item.text
-            first_bytes[e.item.id] = (
-                e.item.bytes if e.item.bytes > 0 else _safe_bytes(e.item.text)
-            )
+    first_text, first_bytes = orig_text, orig_bytes
 
     rows: list[dict] = []
     for e in events:
@@ -428,6 +423,9 @@ def run_one_example(
                      for Pass 2; empty unless ``collect_reader_context``
       event_rows   — this example's logger entries as dicts, for the merged
                      events.jsonl; empty unless ``collect_events``
+      gold_rows    — per (query, gold-id) answer-survival snapshot rows (O_g/R_g
+                     text), captured AT FINAL STORE STATE; empty unless
+                     ``collect_gold_snapshot``. See :func:`_collect_gold_snapshot`.
     """
     view = _StoreView(store)
     view.safe_call("connect")
@@ -454,11 +452,21 @@ def run_one_example(
     prev_inserts = 0
     prev_evicts = 0
     prev_compresses = 0
+    # O_g capture: the original (pre-compression) text per id, snapshotted at
+    # insert time. Must be taken here — compression later reassigns record.text
+    # on this same object, so reading it after the loop would yield R_g, not O_g.
+    orig_text: dict[str, str] = {}
+    orig_bytes: dict[str, int] = {}
 
     for event in events:
         if event.type == "insert":
             if event.item is None:
                 raise ValueError("Insert event missing item.")
+            if collect_gold_snapshot and event.item.id not in orig_text:
+                orig_text[event.item.id] = event.item.text          # first insert wins
+                orig_bytes[event.item.id] = (
+                    event.item.bytes if event.item.bytes > 0 else _safe_bytes(event.item.text)
+                )
             view.insert(event.item)
             insert_count += 1
             continue
@@ -554,7 +562,16 @@ def run_one_example(
             for e in entries:
                 event_rows.append({"name": e.name, "t": e.timestamp, **e.payload})
 
-    return results, context_rows, event_rows
+    # Answer-survival snapshot: read GOLD text at the store's FINAL state, here —
+    # after the replay loop, before the caller disposes the store. Doing this any
+    # earlier would capture pre-compression text and make every answer look
+    # retained (the exact blindness this metric removes).
+    gold_rows: list[dict] = (
+        _collect_gold_snapshot(view, events, example_id, orig_text, orig_bytes)
+        if collect_gold_snapshot else []
+    )
+
+    return results, context_rows, event_rows, gold_rows
 
 
 def run(

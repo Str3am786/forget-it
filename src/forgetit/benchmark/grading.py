@@ -63,6 +63,145 @@ def token_f1(answer: str, ref: str) -> float:
     return 2 * p * r / (p + r)
 
 
+# ════════════════════════════════════════════════════════════════════
+# Answer-survival primitives (Tier-1 "is the gold ANSWER still recoverable
+# from the resident item text"). Scored offline by scripts/eviction_regret.py
+# over a (possibly long) item text T, NOT over a reader answer. These reuse the
+# SQuAD ``normalize_answer`` above so the headline survival number and the QA
+# grade share one normalization. See the module docstring there.
+# ════════════════════════════════════════════════════════════════════
+
+# LongMemEval marks abstention questions with a ``_abs`` question_id suffix (the
+# base question_type is unchanged); BEAM marks them with ability=="abstention".
+# A question is "answerable" iff it is neither — answer-survival is only defined
+# where there is an answer in the haystack to preserve.
+_ABSTENTION_QUESTION_TYPES = frozenset({"abstention"})
+
+
+def is_answerable(query_id: str, question_type: str) -> bool:
+    """Whether a question expects an answer present in memory (vs. an abstention
+    'no-info' question). Answer-survival rollups are scoped to these. This is the
+    single source of truth for the answerable/abstention split across workloads."""
+    if (query_id or "").endswith("_abs"):          # LongMemEval abstention convention
+        return False
+    if (question_type or "").strip().lower() in _ABSTENTION_QUESTION_TYPES:   # BEAM
+        return False
+    return True
+
+
+def tokens(s: str) -> list[str]:
+    """``normalize_answer`` then whitespace-split — the answer-token primitive."""
+    return normalize_answer(s).split()
+
+
+# ── numeric / date normalization (so "two million"==2000000, "May"==05) ─────
+_NUM_WORDS = {
+    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+    "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12,
+    "thirteen": 13, "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17,
+    "eighteen": 18, "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40,
+    "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
+}
+_SCALE_WORDS = {"hundred": 100, "thousand": 1_000, "million": 1_000_000,
+                "billion": 1_000_000_000}
+_MONTHS = {
+    "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
+    "july": 7, "august": 8, "september": 9, "october": 10, "november": 11,
+    "december": 12,
+}
+_NUMBER_RUN_WORDS = set(_NUM_WORDS) | set(_SCALE_WORDS) | {"and"}
+
+
+def _eval_number_run(run: list[str]) -> int | None:
+    """Fold a maximal run of cardinal-number words into one integer.
+    ``["two", "million"] -> 2000000``; ``["forty", "five"] -> 45``;
+    ``["two", "hundred", "thirty", "four"] -> 234``. None if the run held no
+    actual number word (e.g. a lone "and")."""
+    run = [w for w in run if w != "and"]
+    result = current = 0
+    seen = False
+    for w in run:
+        if w in _NUM_WORDS:
+            current += _NUM_WORDS[w]
+            seen = True
+        elif w in _SCALE_WORDS:
+            sc = _SCALE_WORDS[w]
+            if sc == 100:
+                current = (current or 1) * 100
+            else:
+                result += (current or 1) * sc
+                current = 0
+            seen = True
+    return (result + current) if seen else None
+
+
+def digit_normalize(s: str) -> str:
+    """``normalize_answer`` + map month names and spelled cardinals to digits, so
+    a numeric/date answer matches whichever surface form the item text used. Only
+    ADDS digit forms; it never removes a token, so it can only turn a near-miss
+    into a hit (used as the max with the plain containment test)."""
+    toks = tokens(s)
+    toks = [str(_MONTHS[t]) if t in _MONTHS else t for t in toks]
+    out: list[str] = []
+    i, n = 0, len(toks)
+    while i < n:
+        if toks[i] in _NUM_WORDS or toks[i] in _SCALE_WORDS:
+            j = i
+            run: list[str] = []
+            while j < n and toks[j] in _NUMBER_RUN_WORDS:
+                run.append(toks[j])
+                j += 1
+            while run and run[-1] == "and":     # don't swallow a trailing "and"
+                run.pop()
+                j -= 1
+            val = _eval_number_run(run)
+            if val is not None:
+                out.append(str(val))
+            else:
+                out.extend(run)
+            i = j
+        else:
+            out.append(toks[i])
+            i += 1
+    return " ".join(out)
+
+
+def answer_in_text(answer: str, text: str) -> bool:
+    """Containment primitive: the normalized gold answer is a substring of the
+    normalized item text. Tries a digit-normalized variant too (for numeric/date
+    answers) and takes the max. ``T`` is a haystack, so this is the headline
+    "the exact answer phrase is still present" signal."""
+    na, nt = normalize_answer(answer), normalize_answer(text)
+    if na and na in nt:
+        return True
+    da, dt = digit_normalize(answer), digit_normalize(text)
+    return bool(da) and da in dt
+
+
+def answer_recall(answer: str, text: str) -> float:
+    """ROUGE-1 RECALL of the answer span against the item text: the fraction of
+    the answer's tokens (with multiplicity) present in the text. Precision is
+    deliberately omitted — ``text`` is a haystack so precision≈0 and is
+    meaningless; recall alone captures "are the answer tokens still present"."""
+    ta = tokens(answer)
+    if not ta:
+        return 0.0
+    ca, ct = Counter(ta), Counter(tokens(text))
+    overlap = sum(min(c, ct[w]) for w, c in ca.items())
+    return overlap / len(ta)
+
+
+def answer_contained_any(answers, text: str) -> int:
+    """Binary containment maxed over a set of acceptable gold answers (mirrors
+    grade()'s multi-ref handling). 1 if ANY acceptable answer is contained."""
+    return 1 if any(answer_in_text(a, text) for a in answers if a) else 0
+
+
+def answer_recall_any(answers, text: str) -> float:
+    """Graded recall maxed over a set of acceptable gold answers."""
+    return max((answer_recall(a, text) for a in answers if a), default=0.0)
+
+
 def embedding_similarity(answer: str, ref: str, embedder) -> float:
     """Cosine between answer and ref under the project embedder (paraphrase tier).
     Reuses the shared max_cross_similarity primitive; same model => same number."""

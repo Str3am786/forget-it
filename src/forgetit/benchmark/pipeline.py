@@ -196,6 +196,20 @@ def _write_events_jsonl(path: Path, event_groups: list[list[dict]]) -> None:
                 seq += 1
 
 
+def _write_gold_snapshot_jsonl(path: Path, rows: list[dict]) -> None:
+    """Write the per-(query, gold-id) answer-survival snapshot to one JSONL.
+
+    Each row already carries ``example_id``, so unlike events.jsonl no synthetic
+    ``clear`` separators are needed — the offline pass joins by (example_id,
+    query_id, gold_id). Gold ids only (a handful per example), so this stays tiny
+    next to events.jsonl even though it carries text. See
+    runner_core._collect_gold_snapshot for field semantics (O_g / R_g)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        for row in rows:
+            f.write(json.dumps(row) + "\n")
+
+
 def _flatten_timing(timing: dict, wall_s: float | None = None) -> dict[str, float]:
     """Flat ``time_<phase>_s`` + ``n_<phase>`` columns for summary.csv. Coarse
     phases sum to ``time_total_work_s`` (work-seconds, summed over concurrent
@@ -279,7 +293,7 @@ def run_pipeline_concurrent(
 
     wall_t0 = time.perf_counter()
 
-    def _task(idx: int, evs: list) -> tuple[int, list, list, list, dict]:
+    def _task(idx: int, example_id: str, evs: list) -> tuple[int, list, list, list, list, dict]:
         store = store_factory()                 # fresh, isolated store per example
         view = _StoreView(store)
         timer = PhaseTimer()                    # per-example, thread-local-scoped
@@ -289,29 +303,32 @@ def run_pipeline_concurrent(
                 else (footprints[-1] if footprints else None)
             )
             with use_timer(timer):
-                results, ctx, event_rows = run_one_example(
+                results, ctx, event_rows, gold_rows = run_one_example(
                     evs, store,
                     k=k, dataset=dataset, store_label=store_label,
                     policy=policy_label, retriever_name=retriever_label,
                     budget_bytes_report=budget_bytes, budget_frac=budget_frac,
                     footprint=fp, seed=seed, itemiser=itemiser, reader_name=reader,
                     collect_reader_context=collect_ctx, collect_events=write_events,
+                    collect_gold_snapshot=write_events, example_id=example_id,
                     answer_max_tokens=answer_max_tokens,
                 )
         finally:
             # Dispose the per-example store (frees memory; isolation already
-            # guaranteed). Event rows were snapshotted inside run_one_example
-            # BEFORE this clear, so no spurious clear leaks into the trace.
+            # guaranteed). Event AND gold rows were snapshotted inside
+            # run_one_example BEFORE this clear — the gold snapshot reads the
+            # FINAL store state, so it must precede disposal (it does).
             clear_fn = getattr(store, "clear", None)
             if callable(clear_fn):
                 clear_fn()
             view.safe_call("close")
-        return idx, results, ctx, event_rows, timer.as_dict()
+        return idx, results, ctx, event_rows, gold_rows, timer.as_dict()
 
     # ── Pass 1: process examples (concurrent when example_workers > 1) ──
     # Keep results in example order so CSVs are deterministic regardless of the
     # completion order of the futures.
-    indexed = list(enumerate(evs for _eid, evs in workload.iter_examples()))
+    indexed = [(idx, eid, evs)
+               for idx, (eid, evs) in enumerate(workload.iter_examples())]
     collected: list[tuple | None] = [None] * len(indexed)
 
     if example_workers > 1 and len(indexed) > 1:
@@ -319,28 +336,30 @@ def run_pipeline_concurrent(
         log.info("  [%s] Pass 1: %d examples across %d workers",
                  store_label, len(indexed), example_workers)
         with ThreadPoolExecutor(max_workers=example_workers) as pool:
-            futs = [pool.submit(_task, idx, evs) for idx, evs in indexed]
+            futs = [pool.submit(_task, idx, eid, evs) for idx, eid, evs in indexed]
             for fut in as_completed(futs):
-                idx, results, ctx, event_rows, timing = fut.result()
-                collected[idx] = (results, ctx, event_rows, timing)
+                idx, results, ctx, event_rows, gold_rows, timing = fut.result()
+                collected[idx] = (results, ctx, event_rows, gold_rows, timing)
     else:
-        for idx, evs in indexed:
-            _, results, ctx, event_rows, timing = _task(idx, evs)
-            collected[idx] = (results, ctx, event_rows, timing)
+        for idx, eid, evs in indexed:
+            _, results, ctx, event_rows, gold_rows, timing = _task(idx, eid, evs)
+            collected[idx] = (results, ctx, event_rows, gold_rows, timing)
 
     all_results: list = []
     all_ctx: list = []
     event_groups: list[list[dict]] = []
+    gold_rows_all: list[dict] = []
     timings: list[dict] = []
     for item in collected:
         if item is None:
             continue
-        results, ctx, event_rows, timing = item
+        results, ctx, event_rows, gold_rows, timing = item
         all_results.extend(results)
         all_ctx.extend(ctx)
         timings.append(timing)
         if write_events:
             event_groups.append(event_rows)
+            gold_rows_all.extend(gold_rows)
 
     # ── Pass 2: concurrent reader over recorded contexts (store-free) ──
     if all_ctx:
@@ -370,6 +389,7 @@ def run_pipeline_concurrent(
 
     if write_events:
         _write_events_jsonl(base / "events.jsonl", event_groups)
+        _write_gold_snapshot_jsonl(base / "gold_answer_snapshot.jsonl", gold_rows_all)
 
     # Merge per-example phase timers; the reader ran in Pass 2 (separate threads),
     # so add it from the per-query qa_latency we already measured.
