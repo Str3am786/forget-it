@@ -11,12 +11,22 @@ vector to a single SQLite file keyed by a content hash, so:
 
 ``CachingEmbedder`` wraps any :class:`Embedder`: cache hits are served from disk,
 only misses hit the provider, and misses are written back in one transaction.
+
+THREAD SAFETY: the across-example runner shares ONE ``CachingEmbedder`` (hence one
+``EmbeddingCache`` / one sqlite connection) across a ThreadPoolExecutor. A single
+sqlite connection is NOT safe under concurrent use even with
+``check_same_thread=False`` — two threads issuing ``executemany``/``commit`` on the
+same connection raise ``sqlite3.InterfaceError: bad parameter or other API misuse``.
+We therefore guard every connection access with a lock. The expensive part (the
+provider ``embed`` call) happens OUTSIDE the lock, so embedding stays parallel;
+only the fast sqlite read/write is serialized.
 """
 from __future__ import annotations
 
 import hashlib
 import sqlite3
 import struct
+import threading
 from pathlib import Path
 
 from .base import Embedder
@@ -36,15 +46,22 @@ def _unpack(blob: bytes) -> list[float]:
 
 
 class EmbeddingCache:
-    """Tiny SQLite key->vector store. Safe for the thread-pool runner: each
-    connection is opened per-process with WAL so concurrent readers don't block."""
+    """SQLite key->vector store, safe under the thread-pool runner.
+
+    One connection per process (WAL for file-level reader/writer concurrency) plus
+    a process-local lock so the pool's threads can't drive the same connection
+    object concurrently. ``busy_timeout`` additionally lets it wait rather than
+    error if a second *process* ever shares the file.
+    """
 
     def __init__(self, path: str | Path):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.Lock()
         self._con = sqlite3.connect(str(self.path), check_same_thread=False)
         self._con.execute("PRAGMA journal_mode=WAL;")
         self._con.execute("PRAGMA synchronous=NORMAL;")
+        self._con.execute("PRAGMA busy_timeout=30000;")
         self._con.execute(
             "CREATE TABLE IF NOT EXISTS emb (k TEXT PRIMARY KEY, v BLOB NOT NULL)"
         )
@@ -52,24 +69,28 @@ class EmbeddingCache:
 
     def get_many(self, keys: list[str]) -> dict[str, list[float]]:
         out: dict[str, list[float]] = {}
-        cur = self._con.cursor()
-        # chunk the IN() to stay under SQLite's variable limit
-        for i in range(0, len(keys), 900):
-            chunk = keys[i:i + 900]
-            q = f"SELECT k, v FROM emb WHERE k IN ({','.join('?' * len(chunk))})"
-            for k, v in cur.execute(q, chunk):
-                out[k] = _unpack(v)
+        with self._lock:
+            cur = self._con.cursor()
+            # chunk the IN() to stay under SQLite's variable limit
+            for i in range(0, len(keys), 900):
+                chunk = keys[i:i + 900]
+                q = f"SELECT k, v FROM emb WHERE k IN ({','.join('?' * len(chunk))})"
+                for k, v in cur.execute(q, chunk):
+                    out[k] = _unpack(v)
         return out
 
     def put_many(self, items: list[tuple[str, list[float]]]) -> None:
-        self._con.executemany(
-            "INSERT OR REPLACE INTO emb (k, v) VALUES (?, ?)",
-            [(k, _pack(vec)) for k, vec in items],
-        )
-        self._con.commit()
+        rows = [(k, _pack(vec)) for k, vec in items]
+        with self._lock:
+            self._con.executemany(
+                "INSERT OR REPLACE INTO emb (k, v) VALUES (?, ?)",
+                rows,
+            )
+            self._con.commit()
 
     def close(self) -> None:
-        self._con.close()
+        with self._lock:
+            self._con.close()
 
 
 class CachingEmbedder(Embedder):
@@ -107,6 +128,7 @@ class CachingEmbedder(Embedder):
                 miss_texts.append(t)
 
         if miss_texts:
+            # NB: provider call is OUTSIDE the cache lock — embedding stays parallel.
             new_vecs = self.inner.embed(miss_texts)
             self.cache.put_many(list(zip(miss_keys, new_vecs)))
             # Round-trip freshly-computed vectors through the same float32
