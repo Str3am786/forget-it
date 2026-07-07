@@ -61,14 +61,36 @@ class OpenAiEmbedder(Embedder):
 
     @property
     def name(self) -> str:
-        return f"{self.model}{'+l2' if self.normalize else ''}"
+        # Identity used as the cache-key namespace (cache.py:_key). It MUST capture
+        # every input that changes the produced vector — including the input-length
+        # cap, because truncation happens in _embed_batch AFTER keying. Omitting it
+        # let a cache built under one EMBED_MAX_INPUT_CHARS silently serve
+        # differently-truncated vectors under another. ``@<cap>`` (or ``@full`` when
+        # uncapped) closes that. NOTE: this changes the namespace, so any cache built
+        # by a previous version is a clean miss and will re-embed — intended.
+        cap = self.max_input_chars if self.max_input_chars else "full"
+        return f"{self.model}{'+l2' if self.normalize else ''}@{cap}"
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
         out: list[list[float]] = []
-        for i in range(0, len(texts), self.batch_size):
+        # Progress is emitted at DEBUG only, so it is SILENT at the default INFO
+        # level — the benchmark's many small per-example embed() calls across
+        # 16 shards × N workers won't spam. Set this module's logger to DEBUG to
+        # watch throughput on a bulk embed (offline corpus build / analysis). No
+        # interface change and no per-item cost when DEBUG is off (isEnabledFor
+        # short-circuits before any formatting). The batch boundary lives here, not
+        # in CachingEmbedder, so this is the only layer that can report progress.
+        debug = log.isEnabledFor(logging.DEBUG)
+        n = len(texts)
+        t0 = time.perf_counter() if debug else 0.0
+        for i in range(0, n, self.batch_size):
             out.extend(self._embed_batch(texts[i:i + self.batch_size]))
+            if debug:
+                done = min(i + self.batch_size, n)
+                rate = done / max(time.perf_counter() - t0, 1e-9)
+                log.debug("[embed] %s: %d/%d (%.0f items/s)", self.model, done, n, rate)
         if self.dim is None and out:
             self.dim = len(out[0])
         return out
