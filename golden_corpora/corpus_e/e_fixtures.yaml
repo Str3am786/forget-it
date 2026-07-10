@@ -1,0 +1,162 @@
+# corpus_e — eviction fixtures. Sizes in bytes. Events execute in listed order.
+# Semantics assumptions are EXPLICIT per fixture — verify each against the implementation
+# before trusting a pass/fail. Budget loop: after each insert, evict until total <= budget.
+
+- id: e001
+  class: lru_touch
+  verified: false
+  assumptions: ["touch updates recency", "eviction loop runs inside insert only"]
+  input:
+    policy: lru
+    budget: 100
+    events:
+      - {op: insert, item: A, size: 40}
+      - {op: insert, item: B, size: 40}
+      - {op: touch,  item: A}
+      - {op: insert, item: C, size: 40}   # total 120 > 100 -> evict once
+  expected:
+    evictions: [B]
+    resident: [A, C]
+  rationale: >
+    At C's insert, recency order oldest-first is B (t2) < A (touched t3) < C (t4).
+    Evict B -> total 80 <= 100. One eviction only.
+
+- id: e002
+  class: lru_touch
+  verified: false
+  assumptions: ["no touches => recency order == insertion order (FIFO degeneration)"]
+  input:
+    policy: lru
+    budget: 100
+    events:
+      - {op: insert, item: A, size: 40}
+      - {op: insert, item: B, size: 40}
+      - {op: insert, item: C, size: 40}
+  expected:
+    evictions: [A]
+    resident: [B, C]
+  rationale: >
+    Identical to e001 minus the touch. Victim flips from B to A. The e001/e002 pair
+    is the minimal demonstration that touch bookkeeping is live — and the unit-scale
+    version of the E3 finding.
+
+- id: e003
+  class: lru_multi_evict_loop
+  verified: false
+  assumptions: ["loop evicts repeatedly until total <= budget"]
+  input:
+    policy: lru
+    budget: 100
+    events:
+      - {op: insert, item: A, size: 80}
+      - {op: insert, item: B, size: 80}   # 160 > 100 -> evict A (80 <= 100)
+      - {op: insert, item: C, size: 30}   # 110 > 100 -> evict B (30 <= 100)
+  expected:
+    evictions: [A, B]
+    resident: [C]
+  rationale: >
+    Two separate budget-loop activations, one eviction each. Tests loop termination
+    and that the loop re-reads recency state between evictions.
+
+- id: e004
+  class: lfu_tiebreak
+  verified: false
+  assumptions: ["freq counts touches only (inserts do not count)", "tie-break = insertion order (VERIFY: this is the documented rule)"]
+  input:
+    policy: lfu
+    budget: 100
+    events:
+      - {op: insert, item: A, size: 40}
+      - {op: insert, item: B, size: 40}
+      - {op: insert, item: C, size: 40}   # freqs A=0,B=0,C=0 -> tie -> oldest insert
+  expected:
+    evictions: [A]
+    resident: [B, C]
+  rationale: >
+    All frequencies equal; the tie-break IS the policy here. This fixture pins the
+    documented tie-break (insertion order) — the rule whose silence made blind-LFU
+    equal blind-LRU in E3. If the implementation tie-breaks differently, the
+    ASSUMPTION is wrong, not the code — update both together, deliberately.
+
+- id: e005
+  class: lfu_freq
+  verified: false
+  assumptions: ["freq counts touches only"]
+  input:
+    policy: lfu
+    budget: 100
+    events:
+      - {op: insert, item: A, size: 40}
+      - {op: insert, item: B, size: 40}
+      - {op: touch,  item: B}
+      - {op: touch,  item: B}
+      - {op: touch,  item: A}
+      - {op: insert, item: C, size: 40}   # freqs A=1, B=2, C=0 -> evict C? NO — see rationale
+  expected:
+    evictions: [C]
+    resident: [A, B]
+  assumptions_note: "incoming item IS eligible for eviction (freq 0 at insert). If the implementation exempts the incoming item, expected becomes [A] — VERIFY and record which."
+  rationale: >
+    Lowest frequency is C (0). This fixture deliberately exposes the
+    incoming-item-eligibility semantics; whichever rule the code implements must be
+    written down, because it changes victims under pressure spikes.
+
+- id: e006
+  class: fifo
+  verified: false
+  assumptions: ["FIFO is first-class (VERIFICATION.md S3)", "eviction order == insertion order, touches ignored"]
+  input:
+    policy: fifo
+    budget: 100
+    events:
+      - {op: insert, item: A, size: 40}
+      - {op: insert, item: B, size: 40}
+      - {op: touch,  item: A}             # must be ignored
+      - {op: insert, item: C, size: 40}   # evict A despite the touch
+      - {op: insert, item: D, size: 40}   # evict B
+  expected:
+    evictions: [A, B]
+    resident: [C, D]
+  rationale: >
+    Same trace as e001 plus D. FIFO must evict A even though A was touched —
+    the touch-ignoring is the point. Pairs with e001 as the FIFO/LRU discriminator.
+
+- id: e007
+  class: size_policy_arith
+  verified: false
+  assumptions: ["evict-largest = keep-smallest victim rule", "incoming item eligible"]
+  input:
+    policy: keep_smallest   # evicts largest resident
+    budget: 100
+    events:
+      - {op: insert, item: A, size: 10}
+      - {op: insert, item: B, size: 60}
+      - {op: insert, item: C, size: 50}   # 120 > 100 -> largest is B(60)
+  expected:
+    evictions: [B]
+    resident: [A, C]
+  rationale: >
+    Largest resident at pressure time is B (60 > 50 > 10). Evict B -> 60 <= 100.
+    Sizes chosen so the incoming item is NOT the largest, avoiding the eligibility
+    ambiguity here (e005 covers it).
+
+- id: e008
+  class: scripted_eviction
+  verified: false
+  assumptions: ["scripted_eviction fixture policy exists (VERIFICATION.md §7 Corpus E)"]
+  input:
+    policy: scripted_eviction
+    script: {evict_at_step: {4: [B]}}
+    budget: 1000000          # budget must never trigger; only the script evicts
+    events:
+      - {op: insert, item: A, size: 40}
+      - {op: insert, item: B, size: 40}
+      - {op: insert, item: C, size: 40}
+      - {op: step}            # step 4: script fires
+  expected:
+    evictions: [B]
+    resident: [A, C]
+  rationale: >
+    The fiat policy: eviction trace must equal the script exactly, independent of
+    sizes, budget, and access history. This is the fixture that manufactures
+    predetermined store states for corpus_r and corpus_a downstream tests.

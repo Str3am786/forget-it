@@ -1,0 +1,123 @@
+# corpus_a_reader — reader behavior fixtures. Evidence is given verbatim (or by
+# template for the position triplets). Grade behavior, not phrasing: `expected`
+# specifies must_answer/must_abstain plus content checks, never exact strings.
+# Run at temperature 0 on the pinned reader tag; canaries per VERIFICATION.md S6.
+
+- id: a001
+  class: verbatim_present_answer
+  verified: false
+  input:
+    evidence:
+      - "User: I finally booked the flights. We land in Lisbon on May 14th and fly back on May 21st."
+    question: "When does the user arrive in Lisbon?"
+  expected:
+    must_answer: true
+    answer_must_contain_any: ["May 14"]
+    min_token_f1: 0.5
+  rationale: >
+    Answer verbatim in a single short evidence item. Failure = prompt or
+    post-processing bug, never a knowledge issue.
+
+- id: a002
+  class: absent_abstain
+  verified: false
+  input:
+    evidence:
+      - "User: I finally booked the flights. We land in Lisbon on May 14th and fly back on May 21st."
+    question: "Which hotel did the user book in Lisbon?"
+  expected:
+    must_abstain: true
+  rationale: >
+    Related topic, absent fact. Answering here is hallucination; this class pairs
+    with a001 as the answer/abstain discriminator.
+
+- id: a003
+  class: derivation_compute
+  verified: false
+  input:
+    evidence:
+      - "User: The cooling loop was serviced on March 3rd."
+      - "User: The follow-up inspection happened on March 16th."
+    question: "How many days passed between the servicing and the follow-up inspection?"
+  expected:
+    must_answer: true
+    answer_must_contain_any: ["13", "thirteen"]
+  rationale: >
+    Both facts present; answer requires arithmetic (16 - 3 = 13). This is the
+    false-refusal class from the probe (q18): a prompt that forbids derivation
+    fails here BY DESIGN. This fixture is the acceptance test for the revised prompt.
+
+- id: a004
+  class: enumeration_full_list
+  verified: false
+  input:
+    evidence:
+      - "User: The deploy procedure is: first freeze the branch, second run the migration
+         dry-run, third apply the migration, fourth restart the workers."
+    question: "List the steps of the deploy procedure in order."
+  expected:
+    must_answer: true
+    answer_must_contain_all: ["freeze", "dry-run", "apply", "restart"]
+  rationale: >
+    All four steps must survive generation AND post-processing. Catches the
+    _clean_answer first-line mutilation and the generation-cap mid-list cut —
+    grade the FINAL recorded answer, not the raw stream.
+
+- id: a005
+  class: hedged_not_abstention
+  verified: false
+  input:
+    evidence:
+      - "User: We'll probably go with the blue vendor — their quote was 12k versus 15k."
+    question: "Which vendor is the user leaning toward and why?"
+  expected:
+    must_answer: true
+    answer_must_contain_any: ["blue"]
+    must_not_be_flagged_abstention: true
+  rationale: >
+    A correct answer that legitimately contains hedging language. Guards the
+    _is_abstention matcher against substring false positives ("IDK if..." class
+    from the probe, finding vii).
+
+# --- position triplet: identical QA, needle placed at head / mid / tail of ~3000
+# tokens of neutral filler. Agent generates filler (coherent unrelated diary text,
+# NO dates or vendor names that collide with the needle). Same expected block for
+# all three — divergence between the three IS the position-bias measurement.
+
+- id: a006
+  class: position_head
+  verified: false
+  input:
+    filler_tokens: 3000
+    needle: "User: The vault access code was changed to 4471 on Tuesday."
+    needle_position: head
+    question: "What was the vault access code changed to?"
+  expected: {must_answer: true, answer_must_contain_any: ["4471"]}
+  rationale: &pos_rationale >
+    Needle-in-haystack triplet. All three positions must pass on the 16k serving
+    tag; a head-only failure reproduces the num_ctx front-truncation bug (caught
+    2026-07-08) — this triplet is its permanent regression test. Tail-only failure
+    indicates back-truncation in evidence assembly; mid degradation is genuine
+    position bias and gets REPORTED in the instrument error budget, not hidden.
+
+- id: a007
+  class: position_mid
+  verified: false
+  input:
+    filler_tokens: 3000
+    needle: "User: The vault access code was changed to 4471 on Tuesday."
+    needle_position: mid
+    question: "What was the vault access code changed to?"
+  expected: {must_answer: true, answer_must_contain_any: ["4471"]}
+  rationale: *pos_rationale
+
+- id: a008
+  class: position_tail
+  verified: false
+  input:
+    filler_tokens: 3000
+    needle: "User: The vault access code was changed to 4471 on Tuesday."
+    needle_position: tail
+    question: "What was the vault access code changed to?"
+  expected: {must_answer: true, answer_must_contain_any: ["4471"]}
+  rationale: *pos_rationale

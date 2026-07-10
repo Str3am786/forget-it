@@ -1,0 +1,79 @@
+# corpus_a_judge — part 1: verdict triplets (reference, answer, expected verdict).
+# These calibrate BOTH the deterministic tiers and the LLM judge. Deterministic
+# tiers must reproduce their subset at 100%; the judge must reach kappa >= 0.85
+# against the full author-verified set.
+
+- id: j001
+  class: exact_match
+  verified: false
+  input: {reference: "May 14th", answer: "May 14th", question: "When does the user arrive in Lisbon?"}
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Normalization-level equality. Deterministic EM must catch this without the judge."
+
+- id: j002
+  class: paraphrase
+  verified: false
+  input: {reference: "The cooling loop was serviced on March 3rd",
+          answer: "Maintenance on the heat-exchange system took place March 3.",
+          question: "What happened to the cooling system and when?"}
+  expected: CORRECT
+  tier: judge_or_embedding
+  rationale: "Full semantic equivalence, near-zero lexical overlap. The class string containment cannot see — the reason the bracket exists."
+
+- id: j003
+  class: partial_list
+  verified: false
+  input: {reference: "freeze the branch; run the migration dry-run; apply the migration; restart the workers",
+          answer: "Freeze the branch, then run the migration dry-run.",
+          question: "List the steps of the deploy procedure."}
+  expected: INCORRECT
+  tier: judge
+  rubric_note: "Rubric v1: list types require >=75% key-step coverage for CORRECT. 2/4 fails. RUBRIC-SENSITIVE — if the rubric changes, this fixture's expected changes WITH it, deliberately and in the same commit."
+  rationale: "Half a procedure is not the procedure; also the shape _clean_answer used to produce, so this doubles as a mutilation detector at the judge layer."
+
+- id: j004
+  class: abstain_wrong
+  verified: false
+  input: {reference: "May 14th", answer: "IDK", question: "When does the user arrive in Lisbon?"}
+  expected: INCORRECT
+  tier: deterministic
+  rationale: "Reference exists; abstention is a failure HERE. Pairs with j005 — the abstention sign test."
+
+- id: j005
+  class: abstain_correct
+  verified: false
+  input: {reference: null, reference_type: unanswerable, answer: "IDK",
+          question: "Which hotel did the user book?"}
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable type; abstention is the right action. This is the fixture the old grade() failed on LongMemEval (29/30 correct abstentions scored wrong) — its permanent regression test."
+
+- id: j006
+  class: hallucination
+  verified: false
+  input: {reference: "the blue vendor, because their quote was 12k versus 15k",
+          answer: "The user chose the green vendor because of faster delivery times.",
+          question: "Which vendor is the user leaning toward and why?"}
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: "Fluent, confident, wrong entity and wrong reason. The judge must not be swayed by fluency — verbosity/fluency bias probe."
+
+- id: j007
+  class: numeric_format
+  verified: false
+  input: {reference: "13 days", answer: "Thirteen days passed between the two.", question: "How many days passed?"}
+  expected: CORRECT
+  tier: judge_or_alias
+  rationale: "Format variance on a correct value. Deterministic EM fails; alias table or judge must pass it. Calibrates the alias tier."
+
+- id: j008
+  class: superset_answer
+  verified: false
+  input: {reference: "May 14th",
+          answer: "May 14th — and they're staying at the Hilton near the waterfront.",
+          question: "When does the user arrive in Lisbon?"}
+  expected: CORRECT
+  tier: judge
+  rubric_note: "Rubric v1: unsupported EXTRA content does not flip a covered reference to INCORRECT unless it contradicts it. The hotel claim is unsupported (hallucinated garnish) — record it, don't fail it. RUBRIC-SENSITIVE."
+  rationale: "Pins the superset policy explicitly so it is a decision, not judge mood."

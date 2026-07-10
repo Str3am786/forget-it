@@ -1,0 +1,104 @@
+# corpus_r — retrieval fixtures. Docs are inline; agent bulk pass varies surface
+# content, keeps class logic. Doc lengths kept comparable within a fixture to
+# avoid length-normalization surprises (assumption noted where it matters).
+
+- id: r001
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions: ["query term appears in exactly one doc"]
+  input:
+    k: 5
+    docs:
+      d1: "The quarterly budget review covered travel costs and staffing plans for the region."
+      d2: "Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday."
+      d3: "The zyqbrontide dosage was set at 40mg after the March consultation with Dr. Aalto."
+      d4: "Weather delayed the shipment; the port authority rescheduled unloading to Friday."
+      d5: "Annual review templates were updated to include the new competency framework."
+      d6: "Basketball practice moved to the east gym while the main court is resurfaced."
+    query: "zyqbrontide dosage"
+  expected:
+    rank_of: {d3: 1}
+  rationale: >
+    "zyqbrontide" occurs in exactly one document; any lexical retriever must rank d3
+    first. A miss here is an indexing or tokenization bug, not a relevance judgment.
+
+- id: r002
+  class: paraphrase_needle_dense
+  verified: false
+  retriever: dense
+  assumptions: ["dense retriever is the configured embedder", "top-3 tolerance reflects embedder variance — needle must beat 5 unrelated distractors"]
+  input:
+    k: 5
+    docs:
+      d1: "The reactor's cooling loop was serviced on March 3rd by the night crew."
+      d2: "Lunch options near the office now include a Vietnamese place on Elm Street."
+      d3: "Her thesis defense was rescheduled because two committee members were traveling."
+      d4: "The garden needs mulching before the first frost arrives in late October."
+      d5: "Ticket prices for the festival increase after the early-bird window closes."
+      d6: "The quarterly earnings call is set for the second Tuesday of next month."
+    query: "when was the heat-exchange system maintained?"
+  expected:
+    rank_of: {d1: {lte: 3}}
+  rationale: >
+    Zero lexical overlap between query and needle ("cooling loop"/"serviced" vs
+    "heat-exchange"/"maintained"); semantic match only. Distractors are unrelated,
+    so top-3 is a lenient, stable bar. BM25 is EXPECTED to fail this fixture —
+    it is dense-only by design.
+
+- id: r003
+  class: graded_overlap_order
+  verified: false
+  retriever: bm25
+  assumptions: ["docs of comparable length so term overlap dominates length normalization"]
+  input:
+    k: 4
+    docs:
+      d1: "The red bicycle repair shop opened early on Saturday morning downtown."   # 3 terms
+      d2: "A red bicycle leaned against the fence outside the busy bakery there."    # 2 terms
+      d3: "The bicycle lane on Fifth Avenue was repainted after the storm passed."   # 1 term
+      d4: "The museum's new exhibit features maritime paintings from the 1800s era." # 0 terms
+    query: "red bicycle repair"
+  expected:
+    order: [d1, d2, d3, d4]
+  rationale: >
+    Strict overlap gradient 3>2>1>0 with comparable doc lengths. BM25 order must be
+    monotone in overlap. Guards score computation and ranking stability.
+
+- id: r004
+  class: composition_m_gt_k
+  verified: false
+  retriever: any
+  assumptions: ["harness computes composition_bound per query from gold multiplicity vs k"]
+  input:
+    k: 5
+    gold_ids: [g1, g2, g3, g4, g5, g6, g7]     # m=7 > k=5
+    docs: "seven gold docs (ordered steps of one procedure) + five distractors — agent fills, pattern: event_ordering"
+    query: "list the steps of the procedure in order"
+  expected:
+    max_gold_in_topk: 5
+    composition_bound_flag: true
+  rationale: >
+    Arithmetic ceiling: 7 gold cannot fit in top-5. The TEST is the accounting —
+    the harness must label this query composition-bound rather than scoring the
+    answer stage as a policy failure. Verifies MEMORY.md artifact #4 consequence (c).
+
+- id: r005
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions: ["scripted_eviction available", "index updated on evict"]
+  input:
+    k: 5
+    setup:
+      - {op: insert, item: n1, text: "The vorplex calibration constant is 7.31 for unit twelve."}
+      - {op: insert, item: n2, text: "Cafeteria menu rotates weekly; Thursday is soup day."}
+      - {op: evict_scripted, item: n1}
+    query: "vorplex calibration constant"
+  expected:
+    results_containing: {n1: never}
+  rationale: >
+    The index-consistency invariant (VERIFICATION.md S5) as a fixture: an evicted
+    item must be unreachable by any subsequent retrieval. A ghost hit here silently
+    corrupts EVERY reach number in the study — this is the highest-stakes fixture
+    in corpus_r.
