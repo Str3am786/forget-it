@@ -81,7 +81,8 @@
 - id: e005
   class: lfu_freq
   verified: false
-  assumptions: ["freq counts touches only"]
+  assumptions: ["freq counts touches only",
+                "incoming item is EXEMPT from eviction (budget loop runs BEFORE the admit — author ruling Q1, sprint 2)"]
   input:
     policy: lfu
     budget: 100
@@ -91,15 +92,19 @@
       - {op: touch,  item: B}
       - {op: touch,  item: B}
       - {op: touch,  item: A}
-      - {op: insert, item: C, size: 40}   # freqs A=1, B=2, C=0 -> evict C? NO — see rationale
+      - {op: insert, item: C, size: 40}   # freqs at pressure: A=1, B=2; C not yet resident
   expected:
-    evictions: [C]
-    resident: [A, B]
-  assumptions_note: "incoming item IS eligible for eviction (freq 0 at insert). If the implementation exempts the incoming item, expected becomes [A] — VERIFY and record which."
+    evictions: [A]
+    resident: [B, C]
+  assumptions_note: "ELIGIBLE-variant (kept per Q1 ruling for the record): if an implementation
+    admitted the incoming item before its budget loop, C (freq 0) would be the victim and
+    expected would be evictions [C], resident [A, B]. This implementation exempts the incoming
+    item, so the victim is the lowest-frequency RESIDENT: A (freq 1 < B's 2)."
   rationale: >
-    Lowest frequency is C (0). This fixture deliberately exposes the
-    incoming-item-eligibility semantics; whichever rule the code implements must be
-    written down, because it changes victims under pressure spikes.
+    The budget loop runs inside insert BEFORE the incoming item is admitted
+    (custom_manager._ensure_budget precedes the upsert), so C cannot be its own
+    victim. Candidates are the residents {A: freq 1, B: freq 2}; LFU evicts A.
+    This fixture pins the incoming-item-exemption semantics explicitly.
 
 - id: e006
   class: fifo

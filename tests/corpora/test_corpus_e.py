@@ -3,15 +3,11 @@
 Deterministic stage → the acceptance bar is 100% (VERIFICATION.md §7); a
 failure here is a bug (in code, fixture, or harness), never a rate.
 
-e005 is SKIPPED as OPEN, per AGENT.md rule 10: its primary ``expected`` block
-assumes the incoming item is eviction-eligible, but the implementation runs
-the budget loop BEFORE admitting the incoming item (custom_manager.py
-``_ensure_budget`` precedes the upsert), so the incoming item can never be its
-own victim. The fixture's own ``assumptions_note`` anticipated exactly this
-fork ("expected becomes [A]"). Which reading is intended is the author's call
-— see report/QUESTIONS.md Q1. The measured behavior is pinned by
-``test_e005_measured_behavior_incoming_exempt`` below so the resolution is a
-one-line fixture edit, not an investigation.
+e005: the author ruled (sprint 2, Q1) that incoming-item EXEMPTION is the
+intended semantics — the fixture's ``expected`` is now [A] and the
+eligible-variant reading is preserved as its ``assumptions_note``. The former
+OPEN skip is retired; ``test_e005_measured_behavior_incoming_exempt`` remains
+as the code-path regression twin.
 """
 from __future__ import annotations
 
@@ -21,16 +17,9 @@ from tests.corpora.harness import load_fixtures, run_e_fixture
 
 _FIXTURES = {fx["id"]: fx for fx in load_fixtures("corpus_e")}
 
-OPEN_FIXTURES = {
-    "e005": "OPEN — QUESTIONS.md Q1: incoming-item eligibility "
-            "(fixture assumes eligible; implementation exempts it)",
-}
-
 
 @pytest.mark.parametrize("fixture_id", sorted(_FIXTURES))
 def test_corpus_e_exemplar(fixture_id):
-    if fixture_id in OPEN_FIXTURES:
-        pytest.skip(OPEN_FIXTURES[fixture_id])
     fx = _FIXTURES[fixture_id]
     got = run_e_fixture(fx)
     expected = fx["expected"]
@@ -55,10 +44,10 @@ def test_corpus_e_exemplar(fixture_id):
 
 
 def test_e005_measured_behavior_incoming_exempt():
-    """Pins what the implementation ACTUALLY does on e005's trace, so the code
-    path is regression-guarded while the fixture's expected value stays OPEN.
-    Under incoming-exemption the LFU candidates at C's insert are {A: freq 1,
-    B: freq 2} → victim A (the fixture's own alternative reading)."""
+    """Regression twin of e005 (author ruling Q1: incoming item exempt).
+    The LFU candidates at C's insert are the residents {A: freq 1, B: freq 2}
+    → victim A. Kept alongside the fixture so a future budget-loop reordering
+    fails two independent tests, not one."""
     got = run_e_fixture(_FIXTURES["e005"])
     assert got["evictions"] == ["A"]
     assert got["resident"] == ["B", "C"]

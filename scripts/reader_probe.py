@@ -20,8 +20,14 @@ Bench metrics (per condition):
   false_refusal     — IDK on VISIBLE rows (answer_recall(ref, shown) ≥ 0.7):
                       the reader refusing answers it was shown
   answered_absent   — non-IDK on ABSENT rows (recall < 0.3): hallucination proxy
-  sent_boundary     — answered rows whose RAW output ends at a sentence
-                      boundary (fix-iii acceptance: ≥ 0.95)
+  sent_boundary_prose — answered PROSE-type rows whose RAW output ends at a
+                      sentence boundary (fix-iii acceptance: ≥ 0.95 on prose).
+                      Author ruling (sprint 2): the boundary heuristic applies
+                      to prose types ONLY; list abilities (LIST_ANSWER_TYPES)
+                      are graded by enumeration COMPLETENESS instead, which
+                      the corpus a004 class measures — a list answer cut
+                      mid-item fails contain_all there. Per-row
+                      ``ends_sentence`` is still recorded for every row.
 
 NOTE: the July-08 numbers were measured on the 4096-ctx tag (before the
 front-truncation discovery); this bench defaults to the 16k tag, so absolute
@@ -152,11 +158,16 @@ def main() -> None:
                "clean_mode": args.clean_mode, "max_tokens": args.max_tokens,
                "max_tokens_list": args.max_tokens_list,
                "elapsed_s": round(time.time() - t0, 1), "conditions": {}}
+    from forgetit.llm.readers.text_reader import LIST_ANSWER_TYPES as _LIST
     for name in readers:
         cs = [r["conds"][name] for r in rows]
         vis = [c for c in cs if c["recall_ref_in_shown"] >= VISIBLE]
         absent = [c for c in cs if c["recall_ref_in_shown"] < ABSENT]
         answered = [c for c in cs if not c["abstained"]]
+        # per-type boundary ruling: prose rows only enter the boundary metric
+        answered_prose = [r["conds"][name] for r in rows
+                          if not r["conds"][name]["abstained"]
+                          and r["qtype"] not in _LIST]
         summary["conditions"][name] = {
             "n": len(cs),
             "idk": sum(c["abstained"] for c in cs),
@@ -169,8 +180,9 @@ def main() -> None:
             "n_absent": len(absent),
             "answered_absent": (round(sum(not c["abstained"] for c in absent) / len(absent), 4)
                                 if absent else None),
-            "sent_boundary": (round(sum(c["ends_sentence"] for c in answered) / len(answered), 4)
-                              if answered else None),
+            "sent_boundary_prose": (round(sum(c["ends_sentence"] for c in answered_prose)
+                                          / len(answered_prose), 4)
+                                    if answered_prose else None),
         }
     (OUT_DIR / f"{args.label}.summary.json").write_text(json.dumps(summary, indent=1))
     print(json.dumps(summary["conditions"], indent=1))
