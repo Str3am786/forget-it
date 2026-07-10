@@ -352,20 +352,30 @@ def _evaluate_scored_query(
     # Only defined when items are embedded (dense configs carry store.embedder).
     query_coverage = _query_coverage(view, query, introspectable)
 
-    # Retrieve deep enough to score the whole hit/nDCG curve (top-K_MAX), then
-    # hand only the configured top-k to the reader — so the QA context is
-    # unchanged by the metric depth. Probe (access-only) retrieval elsewhere
-    # stays at k, so eviction/retention is unperturbed.
+    # S1: retrieve the FULL resident ranking so gold's TRUE rank is logged
+    # unconditionally (no display-depth censoring); the reader still sees only
+    # the configured top-k, and every LEGACY column below is computed from the
+    # depth-limited PREFIX so its values stay identical to historical runs.
+    # Touch audit: scored queries already touched their eval-depth results;
+    # full-depth touching is inert for eviction because both workloads fire
+    # scored queries after an example's last insert (store frozen during the
+    # scored block — verified sprint 1). Probes elsewhere stay at k.
     eval_k = max(k, RETRIEVAL_EVAL_DEPTH)
+    full_k = max(eval_k, n_resident) if introspectable else eval_k
     t0 = time.perf_counter()
     with phase("retrieve"):
-        retrieved_full = view.retrieve(query, eval_k)
+        retrieved_all = view.retrieve(query, full_k)
     latency = time.perf_counter() - t0
 
-    retrieved_ids = [r.id for r in retrieved_full]
-    # 1-based ranks of gold within the ranked list — the sufficient statistic for
-    # hit@k / nDCG@k / recall@k / MRR at any cutoff (computed offline in metrics).
-    gold_ranks = [rank for rank, rid in enumerate(retrieved_ids, start=1) if rid in gold_ids]
+    ids_all = [r.id for r in retrieved_all]
+    # Exact 1-based ranks over the full ranking (S1, unconditional).
+    gold_ranks_true = [rank for rank, rid in enumerate(ids_all, start=1) if rid in gold_ids]
+
+    # Legacy statistics from the depth-limited prefix — value-identical to
+    # pre-S1 runs (same retriever, deterministic ordering, same prefix).
+    retrieved_full = retrieved_all[:eval_k]
+    retrieved_ids = ids_all[:eval_k]
+    gold_ranks = [rank for rank in gold_ranks_true if rank <= eval_k]
 
     # Back-compat scalars: hit at the configured k, MRR over the eval depth.
     hit = 1.0 if any(r <= k for r in gold_ranks) else 0.0
@@ -386,6 +396,7 @@ def _evaluate_scored_query(
         n_retrieved=len(retrieved_ids),
         n_resident=n_resident,
         gold_ranks=gold_ranks,
+        gold_ranks_true=gold_ranks_true,
         query_coverage=query_coverage,
         used_bytes_end=used_bytes,
         latency_sec=latency,
@@ -583,6 +594,7 @@ def run_one_example(
             n_gold=base.n_gold,
             n_retrieved=base.n_retrieved,
             gold_ranks=json.dumps(base.gold_ranks),
+            gold_ranks_true=json.dumps(base.gold_ranks_true),
             query_coverage=base.query_coverage,
             used_bytes_end=base.used_bytes_end,
             latency_sec=base.latency_sec,
@@ -602,7 +614,7 @@ def run_one_example(
             introspectable=base.introspectable,
             **ranking_columns(base.gold_ranks, base.n_gold,
                               base.introspectable, base.gold_survived),
-            **composition_columns(base.gold_ranks, base.n_resident,
+            **composition_columns(base.gold_ranks_true, base.n_resident,
                                   base.introspectable, base.gold_survived),
         )
         results.append(result)
@@ -852,6 +864,7 @@ def run(
                 n_gold=base.n_gold,
                 n_retrieved=base.n_retrieved,
                 gold_ranks=json.dumps(base.gold_ranks),
+                gold_ranks_true=json.dumps(base.gold_ranks_true),
                 query_coverage=base.query_coverage,
                 used_bytes_end=base.used_bytes_end,
                 latency_sec=base.latency_sec,
@@ -871,7 +884,7 @@ def run(
                 introspectable=base.introspectable,
                 **ranking_columns(base.gold_ranks, base.n_gold,
                                   base.introspectable, base.gold_survived),
-                **composition_columns(base.gold_ranks, base.n_resident,
+                **composition_columns(base.gold_ranks_true, base.n_resident,
                                       base.introspectable, base.gold_survived),
             )
         )

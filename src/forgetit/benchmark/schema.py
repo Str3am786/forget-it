@@ -40,6 +40,13 @@ class QueryEval:
     n_gold: int = 0
     n_retrieved: int = 0
     gold_ranks: list[int] = field(default_factory=list)
+    # S1: exact 1-based ranks of ALL gold items over the FULL resident ranking
+    # (never censored by a display-depth constant). gold_ranks above remains
+    # the depth-limited legacy statistic so historical CSVs stay comparable.
+    # Caveat: "full ranking" = the retriever's ranking — a dense retriever
+    # ranks only embedded residents (attach_embeddings covers all items in
+    # dense configs, so this matters only for hand-built stores).
+    gold_ranks_true: list[int] = field(default_factory=list)
     # Residents at query time (0 = unknown / opaque store). The denominator of
     # the composition-invariant rank metrics: at equal BYTE budget different
     # policies hold different ITEM counts, so any fixed-k cutoff conflates
@@ -148,6 +155,11 @@ class EvalResult:
     n_gold: int = 0
     n_retrieved: int = 0
     gold_ranks: str = "[]"
+    # S1: exact gold ranks over the FULL resident ranking (JSON list, 1-based,
+    # unconditional — no depth censoring). Legacy gold_ranks stays depth-10 so
+    # old and new CSVs remain value-comparable; true-rank MRR/hit@k at any
+    # cutoff are derivable offline from this column + n_resident_at_query.
+    gold_ranks_true: str = "[]"
     # ── composition-invariant rank columns (the k-confound fix) ──
     # n_resident_at_query: residents when the scored retrieval ran (0 = unknown;
     # opaque stores and pre-change CSVs). gold_rank_percentile: BEST gold rank ÷

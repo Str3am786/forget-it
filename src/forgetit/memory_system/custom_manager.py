@@ -156,7 +156,13 @@ class RetentionManager(MemorySystem):
                 it.last_access = float(self._tick)
                 self.backend.upsert(it)
 
-        self.logger.event("retrieve", {"q": query.id, "hits": [r.id for r in results],
+        # Log at most the top-50 hit ids (S1): scored-query eval now retrieves
+        # the FULL resident ranking for exact gold ranks, and logging hundreds
+        # of ids per retrieve would bloat events.jsonl. Every pre-S1 call site
+        # requested k <= 10, so this cap is byte-identical for historical
+        # paths; the full-ranking statistics live in results.csv
+        # (gold_ranks_true, n_resident_at_query).
+        self.logger.event("retrieve", {"q": query.id, "hits": [r.id for r in results[:50]],
                                        "probe": is_probe, "touched": touch})
         return results
 
