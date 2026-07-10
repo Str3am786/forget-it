@@ -17,11 +17,15 @@ dependencies = [
     "letta-client",
     "humanize", # Decide to keep or not
     "pandas",
+    "numpy",     # core: embeddings/similarity, runner query_coverage
+    "pyyaml",    # core-adjacent: golden corpora tooling + tests
 ]
 
 [project.optional-dependencies]
 test = ["pytest>=8.0"]
 dev  = ["pytest>=8.0", "ruff", "mypy"]
+# everything the offline analysis / E3 analyzer / figures need
+analysis = ["scipy", "matplotlib"]
 
 [tool.setuptools]
 package-dir = { "" = "src" }
