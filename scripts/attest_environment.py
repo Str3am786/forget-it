@@ -142,6 +142,7 @@ def main() -> int:
     model = reader_model()
     client = OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY or "sk-noauth")
     record = {"attested_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+              "attested_epoch": time.time(),
               "llm_base_url": LLM_BASE_URL, "reader_model": model,
               "embed_base_url": EMBED_BASE_URL, "embed_model": EMBED_MODEL,
               "fingerprint": stack_fingerprint(model), "sections": {}}
