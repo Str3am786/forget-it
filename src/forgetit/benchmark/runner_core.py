@@ -6,8 +6,9 @@ import time
 
 from forgetit.benchmark.workloads.base import Workload
 from forgetit.benchmark.schema import EvalResult, QueryEval, QAFields
-from forgetit.benchmark.metrics import EVAL_K_CURVE, ranking_columns
-from forgetit.benchmark.grading import grade
+from forgetit.benchmark.metrics import EVAL_K_CURVE, ranking_columns, composition_columns
+from forgetit.benchmark.grading import grade, grade_with_abstention, is_answerable
+from forgetit.llm.readers.text_reader import LIST_ANSWER_TYPES
 from forgetit.core.timing import PhaseTimer, use_timer, phase
 from forgetit.memory_system.base import MemorySystem
 from forgetit.core import Question, Query
@@ -153,11 +154,15 @@ def _run_reader(
     answer_max_tokens: int,
     ref_answer: str,
     question_type: str,
+    abstention_accounting: bool = False,
+    answer_max_tokens_list: int = 0,
 ) -> QAFields:
+    grading_mode = "abstention_aware" if abstention_accounting else "legacy"
     if reader_impl is None:
         return QAFields(ref_answer=ref_answer,
                         question_text=query.text,
-                        question_type=question_type
+                        question_type=question_type,
+                        grading_mode=grading_mode,
                         )
 
     question = Question(
@@ -167,16 +172,39 @@ def _run_reader(
         meta=query.meta.copy(),
     )
 
+    # D4 fix iii: list-type abilities get a raised generation cap (their
+    # reference answers are enumerations the default cap cuts mid-list).
+    tok_limit = answer_max_tokens
+    if answer_max_tokens_list > 0 and question_type in LIST_ANSWER_TYPES:
+        tok_limit = answer_max_tokens_list
+
     answer_result = reader_impl.answer(
         question,
         retrieved,
-        max_tokens=answer_max_tokens,
+        max_tokens=tok_limit,
     )
 
     # Deterministic headline grade (reproducible, no models). The paraphrase
     # (embedding) and judge tiers are offline refinements over reader_answer +
     # ref_answer, which are both persisted — so past runs can always be re-graded.
-    g = grade(answer_result.answer, ref_answer, abstained=answer_result.abstained)
+    # D4 fix i (flagged): abstention-aware grading scores unanswerable
+    # questions correct-when-abstained; the legacy default is unchanged.
+    answerable = is_answerable(query.id, question_type)
+
+    def _grade(text: str) -> dict:
+        if abstention_accounting:
+            return grade_with_abstention(text, ref_answer,
+                                         abstained=answer_result.abstained,
+                                         answerable=answerable)
+        return grade(text, ref_answer, abstained=answer_result.abstained)
+
+    g = _grade(answer_result.answer)
+    # D4 fix ii: grade the RAW output under the same regime, recorded beside
+    # the cleaned headline. The abstention flag is the reader's per-answer
+    # decision (made on the cleaned text) — shared by both grades so the raw
+    # column isolates the TEXT cost of cleaning, not a detection difference.
+    raw_text = str(answer_result.meta.get("raw_output", "") or answer_result.answer)
+    g_raw = _grade(raw_text)
 
     return QAFields(
         reader_answer=answer_result.answer,
@@ -187,6 +215,10 @@ def _run_reader(
         question_type=question_type,
         qa_correct=g["correct"],
         qa_f1=g["f1"],
+        reader_answer_raw=raw_text,
+        qa_correct_raw=g_raw["correct"],
+        qa_f1_raw=g_raw["f1"],
+        grading_mode=grading_mode,
     )
 
 
@@ -291,6 +323,7 @@ def _evaluate_scored_query(
 
     if introspectable:
         retained = view.retained_ids()
+        n_resident = len(retained)
         survived_gold = gold_ids & retained
         gold_survived = len(survived_gold) > 0
 
@@ -303,6 +336,7 @@ def _evaluate_scored_query(
         # Opaque store: we can't tell what survived.  Set sentinels.
         gold_survived = False   # "unknown unless measured"
         gold_bytes = 0
+        n_resident = 0          # unknown
 
     used_bytes = view.used_bytes()
     if introspectable and used_bytes > 0:
@@ -350,6 +384,7 @@ def _evaluate_scored_query(
         mrr=mrr,
         n_gold=len(gold_ids),
         n_retrieved=len(retrieved_ids),
+        n_resident=n_resident,
         gold_ranks=gold_ranks,
         query_coverage=query_coverage,
         used_bytes_end=used_bytes,
@@ -398,6 +433,7 @@ def run_one_example(
     answer_max_tokens: int = 128,
     probe_touch_mode: str = "original",
     reader_token_budget: int = 0,
+    abstention_accounting: bool = False,
 ) -> tuple[list[EvalResult], list[tuple], list[dict], list[dict]]:
     """Replay ONE example's events against ONE fresh store.
 
@@ -486,13 +522,24 @@ def run_one_example(
         gold_ids = set(event.gold_item_ids or [])
 
         # Unlabelled query: access signal only (LRU/LFU/Ebbinghaus warmup).
-        if not gold_ids:
+        # D4 fix i (flagged): under abstention accounting, ABSTENTION-CLASS
+        # questions (typed, unanswerable per is_answerable) get a scored row
+        # instead of vanishing — today one of BEAM's ten abilities is silently
+        # missing from every results.csv. Typed-but-unresolved gold questions
+        # still replay access-only (they are answerable; scoring them goldless
+        # would grade the reader against evidence we failed to label).
+        score_as_abstention = (
+            abstention_accounting and bool(event.question_type)
+            and not is_answerable(event.query.id, event.question_type)
+        )
+        if not gold_ids and not score_as_abstention:
             with phase("retrieve"):
                 view.retrieve(event.query, k=k)
             continue
 
         # Record gold mapping for offline survival/regret/value-decay analysis.
-        view.log_event("gold", {"query_id": event.query.id, "gold_ids": sorted(gold_ids)})
+        if gold_ids:
+            view.log_event("gold", {"query_id": event.query.id, "gold_ids": sorted(gold_ids)})
 
         base = _evaluate_scored_query(view=view, query=event.query, gold_ids=gold_ids, k=k)
 
@@ -544,6 +591,10 @@ def run_one_example(
             qa_latency_sec=qa.qa_latency_sec,
             qa_correct=qa.qa_correct,
             qa_f1=qa.qa_f1,
+            reader_answer_raw=qa.reader_answer_raw,
+            qa_correct_raw=qa.qa_correct_raw,
+            qa_f1_raw=qa.qa_f1_raw,
+            grading_mode="abstention_aware" if abstention_accounting else "legacy",
             ref_answer=qa.ref_answer,
             question_text=qa.question_text,
             question_type=qa.question_type,
@@ -551,6 +602,8 @@ def run_one_example(
             introspectable=base.introspectable,
             **ranking_columns(base.gold_ranks, base.n_gold,
                               base.introspectable, base.gold_survived),
+            **composition_columns(base.gold_ranks, base.n_resident,
+                                  base.introspectable, base.gold_survived),
         )
         results.append(result)
 
@@ -598,6 +651,8 @@ def run(
     reader_workers: int = 1,
     probe_touch_mode: str = "original",
     reader_token_budget: int = 0,
+    abstention_accounting: bool = False,
+    answer_max_tokens_list: int = 0,
 ) -> list[EvalResult]:
     """
     Replay a workload chronologically against the store.
@@ -691,7 +746,13 @@ def run(
         gold_ids = set(event.gold_item_ids or [])
 
         # Unlabelled query: only creates access signal for LRU/LFU.
-        if not gold_ids:
+        # (Same D4 fix-i carve-out as run_one_example: abstention-class
+        # questions get a scored row under abstention accounting.)
+        score_as_abstention = (
+            abstention_accounting and bool(event.question_type)
+            and not is_answerable(event.query.id, event.question_type)
+        )
+        if not gold_ids and not score_as_abstention:
             view.retrieve(event.query, k=k)
             skip_count += 1
             log.debug("  [query skip]  id=%s  (no gold labels)", event.query.id)
@@ -701,7 +762,8 @@ def run(
 
         # Record which items are gold for this query — needed offline to compute
         # survival / regret / value-decay curves from the event log.
-        view.log_event("gold", {"query_id": event.query.id, "gold_ids": sorted(gold_ids)})
+        if gold_ids:
+            view.log_event("gold", {"query_id": event.query.id, "gold_ids": sorted(gold_ids)})
 
         # ── retrieval evaluation ──
         base = _evaluate_scored_query(
@@ -729,7 +791,9 @@ def run(
         else:
             qa = _run_reader(reader_impl=reader_impl, query=event.query, retrieved=base.retrieved,
                              answer_max_tokens=answer_max_tokens, ref_answer=event.ref_answer,
-                             question_type=event.question_type)
+                             question_type=event.question_type,
+                             abstention_accounting=abstention_accounting,
+                             answer_max_tokens_list=answer_max_tokens_list)
 
         # For opaque stores, "SURVIVED/EVICTED" is just noise.  Show a hyphen.
         if base.introspectable:
@@ -796,6 +860,10 @@ def run(
                 qa_latency_sec=qa.qa_latency_sec,
                 qa_correct=qa.qa_correct,
                 qa_f1=qa.qa_f1,
+                reader_answer_raw=qa.reader_answer_raw,
+                qa_correct_raw=qa.qa_correct_raw,
+                qa_f1_raw=qa.qa_f1_raw,
+                grading_mode="abstention_aware" if abstention_accounting else "legacy",
                 ref_answer=qa.ref_answer,
                 question_text=qa.question_text,
                 question_type=qa.question_type,
@@ -803,6 +871,8 @@ def run(
                 introspectable=base.introspectable,
                 **ranking_columns(base.gold_ranks, base.n_gold,
                                   base.introspectable, base.gold_survived),
+                **composition_columns(base.gold_ranks, base.n_resident,
+                                      base.introspectable, base.gold_survived),
             )
         )
 
@@ -815,7 +885,9 @@ def run(
             idx, query, retrieved, ref, qtype = task
             return idx, _run_reader(reader_impl=reader_impl, query=query, retrieved=retrieved,
                                     answer_max_tokens=answer_max_tokens, ref_answer=ref,
-                                    question_type=qtype)
+                                    question_type=qtype,
+                                    abstention_accounting=abstention_accounting,
+                                    answer_max_tokens_list=answer_max_tokens_list)
 
         with ThreadPoolExecutor(max_workers=reader_workers) as pool:
             for idx, qa2 in pool.map(_answer, deferred):
@@ -825,6 +897,9 @@ def run(
                 r.qa_latency_sec = qa2.qa_latency_sec
                 r.qa_correct = qa2.qa_correct
                 r.qa_f1 = qa2.qa_f1
+                r.reader_answer_raw = qa2.reader_answer_raw
+                r.qa_correct_raw = qa2.qa_correct_raw
+                r.qa_f1_raw = qa2.qa_f1_raw
 
     elapsed = time.perf_counter() - t_run_start
 

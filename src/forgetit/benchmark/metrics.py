@@ -87,6 +87,63 @@ def ranking_columns(gold_ranks: list[int], n_gold: int,
     return cols
 
 
+# ── composition-invariant rank metrics (the k-confound fix) ─────────
+# At equal BYTE budget, different policies hold different ITEM counts; every
+# fixed-k cutoff above therefore penalizes item-rich stores (compression,
+# keep-smallest) with more distractors — it measures store composition, not
+# policy merit. Two invariant alternatives, both derived from the same
+# per-row sufficient statistic (gold_ranks) plus the resident count:
+#
+#   gold_rank_percentile — best gold rank ÷ n_resident: WHERE the gold sits in
+#     the ranking, normalized by how many items were being ranked.
+#   hit@kprop — hit under a PROPORTIONAL cutoff k = max(k_floor, ceil(c·n)):
+#     the sensitivity analysis of the same idea (k scales with the store).
+#
+# Censoring: gold_ranks is only logged to the eval depth (max(EVAL_K_CURVE)).
+# A surviving gold that surfaced nowhere within depth has an UNKNOWN rank in
+# (depth, n_resident] — percentile is right-censored, not zero and not 1.
+# Aggregations must carry bounds (censored→depth+1/n optimistic, →1.0
+# pessimistic) or report the censored fraction alongside.
+
+
+def gold_rank_percentile(ranks: list[int], n_resident: int) -> float:
+    """Best-gold rank ÷ resident count ∈ (0, 1]; lower = better. NaN when no
+    gold rank was observed (censored or evicted) or n_resident is unknown."""
+    if not ranks or n_resident <= 0:
+        return float("nan")
+    return min(ranks) / n_resident
+
+
+def kprop(n_resident: int, c: float, k_floor: int = 5) -> int:
+    """Proportional cutoff k = max(k_floor, ceil(c·n_resident)). Calibrate c so
+    the MEDIAN store of the comparison population gets k = k_floor
+    (c = k_floor / median(n_resident))."""
+    if n_resident <= 0:
+        return k_floor
+    return max(k_floor, math.ceil(c * n_resident))
+
+
+def composition_columns(gold_ranks: list[int], n_resident: int,
+                        introspectable: bool, gold_survived: bool) -> dict[str, float]:
+    """Per-row columns: n_resident_at_query / gold_rank_percentile /
+    gold_rank_censored (see EvalResult docs). hit@kprop is NOT materialised
+    per-row because its c is a property of the comparison population, not of
+    one run — compute it offline from these columns."""
+    ranks = gold_ranks or []
+    pct = gold_rank_percentile(ranks, n_resident)
+    if not introspectable or not gold_survived:
+        censored = float("nan")      # evicted / unknowable — not a rank question
+    elif ranks:
+        censored = 0.0               # observed
+    else:
+        censored = 1.0               # survived but beyond the eval depth
+    return {
+        "n_resident_at_query": n_resident,
+        "gold_rank_percentile": pct,
+        "gold_rank_censored": censored,
+    }
+
+
 def _row_hit_at(r: EvalResult, k: int) -> float:
     return _hit(_gold_ranks(r), k)
 
@@ -255,6 +312,56 @@ def mean_query_coverage(results: list[EvalResult]) -> float:
     vals = [r.query_coverage for r in results
             if isinstance(r.query_coverage, (int, float)) and not math.isnan(r.query_coverage)]
     return (sum(vals) / len(vals)) if vals else float("nan")
+
+
+# ── policy aggregation unit (coupled identity, D3) ──────────────────
+# LRU/LFU build their state from retrieval TOUCHES, and touches come from the
+# retriever — so "lru under bm25" and "lru under dense" are different policies
+# sharing a name. Averaging a history policy's scores across retrievers
+# launders a policy×retriever interaction into a "policy" score. The
+# aggregation unit for these policies is therefore (policy, retriever);
+# name-level pooling is allowed ONLY in outputs explicitly labeled
+# name_level_view (and by_policy stamps that label into every key so it
+# travels with the numbers into any table they land in).
+
+# Every touch-based policy must be listed here (exact lowercase name as it
+# appears in the results `policy` column). Blind/content/size policies
+# aggregate under their bare name.
+HISTORY_POLICIES = frozenset({"lru", "lfu"})
+
+NAME_LEVEL_PREFIX = "name_level_view:"
+
+
+def is_history_policy(policy: str) -> bool:
+    return (policy or "").strip().lower() in HISTORY_POLICIES
+
+
+def policy_unit(policy: str, retriever: str) -> str:
+    """The key a policy's scores may be pooled under: ``lru@bm25`` for history
+    policies (their identity includes the touch source), bare name otherwise."""
+    if is_history_policy(policy):
+        return f"{policy}@{retriever or 'unknown'}"
+    return policy
+
+
+def by_policy(results: list[EvalResult], metric_fn,
+              *, name_level_view: bool = False) -> dict[str, float]:
+    """Group by the POLICY AGGREGATION UNIT and apply a metric per group.
+
+    Default: history policies (LRU/LFU) key as ``policy@retriever`` — no
+    unlabeled cross-retriever mean can exist in the output. With
+    ``name_level_view=True`` every key is prefixed ``name_level_view:`` and
+    history policies pool across retrievers — the label is part of the key
+    precisely so it survives into whatever CSV/table the dict is written to.
+    """
+    buckets: dict[str, list[EvalResult]] = defaultdict(list)
+    for r in results:
+        if name_level_view:
+            key = NAME_LEVEL_PREFIX + (r.policy or "_unknown")
+        else:
+            key = policy_unit(r.policy or "_unknown", r.retriever or "")
+        buckets[key].append(r)
+    return {k: metric_fn(rs) for k, rs in sorted(buckets.items())}
 
 
 # ── breakdowns ────────────────────────────────────────────────────

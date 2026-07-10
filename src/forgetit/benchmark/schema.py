@@ -40,6 +40,12 @@ class QueryEval:
     n_gold: int = 0
     n_retrieved: int = 0
     gold_ranks: list[int] = field(default_factory=list)
+    # Residents at query time (0 = unknown / opaque store). The denominator of
+    # the composition-invariant rank metrics: at equal BYTE budget different
+    # policies hold different ITEM counts, so any fixed-k cutoff conflates
+    # store composition with ranking quality (the k-confound). See
+    # metrics.gold_rank_percentile / kprop.
+    n_resident: int = 0
     # Pre-retrieval retrievability: cosine of the query to its NEAREST resident
     # item — "can the kept set answer at all", independent of the ranker. NaN
     # unless items are embedded (dense configs). See metrics.mean_query_coverage.
@@ -63,6 +69,15 @@ class QAFields:
     # Deterministic headline grade (normalized EM/containment) + token-F1.
     qa_correct: bool = False
     qa_f1: float = 0.0
+    # D4 fix ii: the RAW model output and its grade, recorded beside the
+    # cleaned headline (post-processing cost becomes measurable per row).
+    reader_answer_raw: str = ""
+    qa_correct_raw: bool = False
+    qa_f1_raw: float = 0.0
+    # D4 fix i: which grading regime produced qa_correct/qa_f1 —
+    # "legacy" (abstention always wrong) or "abstention_aware" (unanswerable
+    # questions grade correct-when-abstained). Config label, never pool across.
+    grading_mode: str = "legacy"
 
 
 # ── final per-query output ─────────────────────────────────────────
@@ -87,8 +102,12 @@ class EvalResult:
     non_gold_byte_fraction: float          # 1 - useful_byte_fraction (non-gold share of used bytes)
     evictions_total_at_query_time: int     # cumulative over the whole run (odometer, not per-query)
 
-    # retriever verdict
-    hit_at_k: float                        # hit@(configured k) — back-compat scalar
+    # retriever verdict — FIXED-K family: cutoffs are constant item counts, so
+    # at equal BYTE budget they penalize item-rich stores (more residents = more
+    # distractors above any fixed k). Composition-sensitive by construction;
+    # pair with gold_rank_percentile / hit_at_kprop (metrics.py) when comparing
+    # policies that hold different item counts (the k-confound).
+    hit_at_k: float                        # hit@(configured k) — back-compat scalar, fixed-k
     hit_at_k_given_retained: float
     mrr: float                             # reciprocal rank of first gold (over the eval depth)
 
@@ -129,6 +148,19 @@ class EvalResult:
     n_gold: int = 0
     n_retrieved: int = 0
     gold_ranks: str = "[]"
+    # ── composition-invariant rank columns (the k-confound fix) ──
+    # n_resident_at_query: residents when the scored retrieval ran (0 = unknown;
+    # opaque stores and pre-change CSVs). gold_rank_percentile: BEST gold rank ÷
+    # n_resident_at_query — rank-position normalized by store composition, so
+    # item-rich stores (compression, keep-smallest) are not penalized by a fixed
+    # cutoff. NaN when no gold surfaced within the eval depth (right-censored;
+    # see gold_rank_censored) or the denominator is unknown.
+    # gold_rank_censored: 1.0 = gold survived but surfaced nowhere in the eval
+    # depth (its percentile is only bounded below by depth/n_resident);
+    # 0.0 = percentile observed; NaN = gold evicted or store opaque.
+    n_resident_at_query: int = 0
+    gold_rank_percentile: float = float("nan")
+    gold_rank_censored: float = float("nan")
     # Pre-retrieval retrievability (max cosine query→nearest resident item); NaN
     # unless the config embeds items (dense). A property of the kept set, not the
     # ranker — the bridge from forgetting back to the content thesis.
@@ -165,6 +197,14 @@ class EvalResult:
     # The reproducible primary; paraphrase/judge tiers refine it offline.
     qa_correct: bool = False
     qa_f1: float = 0.0
+    # D4 fix ii: raw (pre-cleaning) answer + its grade under the same regime —
+    # the per-row measurement of what post-processing costs/saves.
+    reader_answer_raw: str = ""
+    qa_correct_raw: bool = False
+    qa_f1_raw: float = 0.0
+    # D4 fix i: grading regime label ("legacy" | "abstention_aware").
+    # Config label, not a metric — never pool rows across different values.
+    grading_mode: str = "legacy"
 
     # reference data
     ref_answer: str = ""

@@ -249,3 +249,31 @@ def grade(
             return {"correct": True, "f1": f1, "tier": "embedding", "similarity": sim}
 
     return {"correct": False, "f1": f1, "tier": "miss", "similarity": sim}
+
+
+def grade_with_abstention(
+    answer: str,
+    ref: str,
+    *,
+    abstained: bool,
+    answerable: bool,
+    **grade_kwargs,
+) -> dict:
+    """Abstention-aware tier over :func:`grade` (D4 fix i, flagged).
+
+    For ANSWERABLE questions this defers to ``grade()`` unchanged (abstention
+    stays a failure there — that is correct behavior). For UNANSWERABLE
+    questions (LongMemEval ``_abs`` ids, BEAM ability=="abstention" — see
+    :func:`is_answerable`), abstaining IS the reference behavior: correct iff
+    abstained. f1 mirrors correctness (1.0/0.0) so mean-F1 rollups don't
+    silently punish the rows the binary grade rewards. Tiers
+    ``abstain_correct`` / ``abstain_missed`` keep these rows countable apart
+    from content grades.
+    """
+    if answerable:
+        return grade(answer, ref, abstained=abstained, **grade_kwargs)
+    if abstained:
+        return {"correct": True, "f1": 1.0, "tier": "abstain_correct",
+                "similarity": float("nan")}
+    return {"correct": False, "f1": 0.0, "tier": "abstain_missed",
+            "similarity": float("nan")}

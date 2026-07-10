@@ -32,7 +32,7 @@ from forgetit.backend.in_memory import InMemoryBackend
 from forgetit.core.logging import BenchmarkLogger
 from forgetit.retrieval import LexicalOverlapRetriever, BM25Retriever, EmbeddingRetriever
 from forgetit.policies import (
-    LRUPolicy, LFUPolicy, RandomPolicy,
+    FIFOPolicy, LRUPolicy, LFUPolicy, RandomPolicy,
     LLMCompressionPolicy, EbbinghausPolicy, MemoryBankCompressionPolicy,
     KeepSmallestPolicy, EvictSmallestPolicy,
     SemanticRedundancyPolicy, SemanticCoveragePolicy,
@@ -125,6 +125,7 @@ RetrieverSpec = tuple[str, Callable]
 def default_policy_specs(llm, seed: int = 42) -> list[PolicySpec]:
     """Zero-arg factories for every policy. Edit here to add/remove policies."""
     specs: list[PolicySpec] = [
+        ("fifo",           lambda: FIFOPolicy()),            # insertion order, touch-blind
         ("lru",            lambda: LRUPolicy()),
         ("lfu",            lambda: LFUPolicy()),
         ("random",         lambda: RandomPolicy(seed=seed)),
@@ -248,6 +249,37 @@ def parse_args() -> argparse.Namespace:
                         "Budgeted is the documented choice for new runs; ~375 matches "
                         "the legacy prompt size. Recorded in the reader label "
                         "(PlainTextReader_rtokN) and the reader_token_budget column.")
+    p.add_argument("--reader-prompt-version", choices=["v1", "v2"], default="v1",
+                   help="D4 fix iv: v2 permits combining/computing from the "
+                        "memories and drops the one-sentence cap (keeps exact-"
+                        "form IDK). Default v1 reproduces historical prompts "
+                        "byte-for-byte. Non-default renames the reader (_pv2).")
+    p.add_argument("--abstention-match", choices=["loose", "exact"], default="loose",
+                   help="D4 fix v: exact = the whole answer must BE an "
+                        "abstention phrase (hedged answers never flag). "
+                        "Default loose = legacy substring matching. "
+                        "Non-default renames the reader (_absexact).")
+    p.add_argument("--clean-mode", choices=["firstline", "full"], default="firstline",
+                   help="D4 fix ii: full keeps the whole noise-stripped answer "
+                        "(lists survive post-processing). Default firstline = "
+                        "legacy. Non-default renames the reader (_cleanfull).")
+    p.add_argument("--answer-max-tokens-list", type=int, default=0, metavar="N",
+                   help="D4 fix iii: raised generation cap for list-type "
+                        "abilities (event_ordering/summarization). 0 = off "
+                        "(legacy 128 cap for all types).")
+    p.add_argument("--abstention-accounting", action="store_true",
+                   help="D4 fix i: grade unanswerable questions (LongMemEval "
+                        "_abs ids, BEAM ability=abstention) correct-when-"
+                        "abstained, and give BEAM abstention questions a "
+                        "scored row (today they are replayed access-only and "
+                        "vanish). Stamps grading_mode=abstention_aware.")
+    p.add_argument("--no-floor", action="store_true",
+                   help="D8: suppress the STANDING empty-store floor configs. By "
+                        "default every grid run (with a reader) also emits one "
+                        "floor/empty_store config per itemiser — the parametric-"
+                        "knowledge floor rows (policy=empty_store_floor) every "
+                        "end-to-end number is reported as lift over. The floor is "
+                        "meaningless without a reader, so --no-reader implies it.")
     p.add_argument("--empty-store-control", action="store_true",
                    help="E2b parametric-knowledge floor: replace the policy grid with a "
                         "single empty-store config per itemiser — scored queries reach "
@@ -299,7 +331,11 @@ def main() -> None:
         reader_name = "none"
     else:
         llm = get_llm()
-        reader_impl = PlainTextReader(llm, token_budget=args.reader_token_budget)
+        reader_impl = PlainTextReader(
+            llm, token_budget=args.reader_token_budget,
+            prompt_version=args.reader_prompt_version,
+            abstention_match=args.abstention_match,
+            clean_mode=args.clean_mode)
         reader_name = getattr(reader_impl, "name", type(reader_impl).__name__)
 
     itemisers = [BeamTurnItemiser(), BeamTurnPairItemiser(), BeamBatchItemiser()]
@@ -363,6 +399,14 @@ def main() -> None:
             ):
                 all_configs.append((itemiser, label, factory))
 
+        # D8: the empty-store floor is a STANDING config — every grid run with
+        # a reader also emits one floor config per itemiser (policy=
+        # empty_store_floor rows), suppressed only by an explicit --no-floor.
+        if not args.no_floor and not args.no_reader:
+            for itemiser in itemisers:
+                all_configs.append((itemiser, "floor/empty_store",
+                                    lambda: build_empty_store()))
+
     my_configs = all_configs[args.shard::args.num_shards]
     log.info(
         "shard %d/%d: running %d of %d configs (limit=%s, reader=%s)",
@@ -416,6 +460,8 @@ def main() -> None:
             write_events=args.event_log,
             example_footprints=footprints.get(itemiser.name),
             reader_token_budget=args.reader_token_budget or 0,
+            abstention_accounting=args.abstention_accounting,
+            answer_max_tokens_list=args.answer_max_tokens_list,
             **extras,
         )
         return (f"itemiser={itemiser.name:<16} store={label:<45} reader={reader_name:<12} "

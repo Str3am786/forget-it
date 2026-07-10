@@ -60,6 +60,39 @@ def save_summary_by_qtype_csv(results, path: str | Path) -> None:
         writer.writerows(rows)
 
 
+def _answer_contexts_inline(ctx_rows, *, reader_impl, answer_max_tokens,
+                            abstention_accounting=False, answer_max_tokens_list=0,
+                            reader_workers: int = 1) -> None:
+    """Pass 2 (shared): answer recorded contexts and write the QA fields back
+    onto their EvalResults in place. Pure function of (question, context) —
+    race-free, store-free. Used by run_pipeline_concurrent and by tests."""
+    def _answer(task):
+        result, query, retrieved, ref, qtype = task
+        qa = _run_reader(reader_impl=reader_impl, query=query, retrieved=retrieved,
+                         answer_max_tokens=answer_max_tokens, ref_answer=ref,
+                         question_type=qtype,
+                         abstention_accounting=abstention_accounting,
+                         answer_max_tokens_list=answer_max_tokens_list)
+        return result, qa
+
+    if reader_workers > 1 and len(ctx_rows) > 1:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=reader_workers) as pool:
+            answered = list(pool.map(_answer, ctx_rows))
+    else:
+        answered = [_answer(t) for t in ctx_rows]
+
+    for result, qa in answered:
+        result.reader_answer = qa.reader_answer
+        result.abstained = qa.abstained
+        result.qa_latency_sec = qa.qa_latency_sec
+        result.qa_correct = qa.qa_correct
+        result.qa_f1 = qa.qa_f1
+        result.reader_answer_raw = qa.reader_answer_raw
+        result.qa_correct_raw = qa.qa_correct_raw
+        result.qa_f1_raw = qa.qa_f1_raw
+
+
 def run_pipeline(
     *,
     dataset: str,
@@ -80,6 +113,8 @@ def run_pipeline(
     retriever_label: str = "",
     probe_touch_mode: str = "original",
     reader_token_budget: int = 0,
+    abstention_accounting: bool = False,
+    answer_max_tokens_list: int = 0,
     out_dir: str = "artifacts/benchmark",
     clear_after: bool = True,
     write_events: bool = False,
@@ -147,6 +182,8 @@ def run_pipeline(
                 reader_workers=reader_workers,
                 probe_touch_mode=probe_touch_mode,
                 reader_token_budget=reader_token_budget,
+                abstention_accounting=abstention_accounting,
+                answer_max_tokens_list=answer_max_tokens_list,
             )
     finally:
         # TODO need to think of a clear_between_examples=True flag
@@ -263,6 +300,8 @@ def run_pipeline_concurrent(
     retriever_label: str = "",
     probe_touch_mode: str = "original",
     reader_token_budget: int = 0,
+    abstention_accounting: bool = False,
+    answer_max_tokens_list: int = 0,
     out_dir: str = "artifacts/benchmark",
     write_events: bool = False,
 ) -> tuple[list, dict[str, float]]:
@@ -320,6 +359,7 @@ def run_pipeline_concurrent(
                     answer_max_tokens=answer_max_tokens,
                     probe_touch_mode=probe_touch_mode,
                     reader_token_budget=reader_token_budget,
+                    abstention_accounting=abstention_accounting,
                 )
         finally:
             # Dispose the per-example store (frees memory; isolation already
@@ -373,27 +413,11 @@ def run_pipeline_concurrent(
     if all_ctx:
         log.info("  [%s] Pass 2: %d reader calls across %d workers",
                  store_label, len(all_ctx), reader_workers)
-
-        def _answer(task):
-            result, query, retrieved, ref, qtype = task
-            qa = _run_reader(reader_impl=reader_impl, query=query, retrieved=retrieved,
-                             answer_max_tokens=answer_max_tokens, ref_answer=ref,
-                             question_type=qtype)
-            return result, qa
-
-        if reader_workers > 1 and len(all_ctx) > 1:
-            from concurrent.futures import ThreadPoolExecutor
-            with ThreadPoolExecutor(max_workers=reader_workers) as pool:
-                answered = list(pool.map(_answer, all_ctx))
-        else:
-            answered = [_answer(t) for t in all_ctx]
-
-        for result, qa in answered:
-            result.reader_answer = qa.reader_answer
-            result.abstained = qa.abstained
-            result.qa_latency_sec = qa.qa_latency_sec
-            result.qa_correct = qa.qa_correct
-            result.qa_f1 = qa.qa_f1
+        _answer_contexts_inline(all_ctx, reader_impl=reader_impl,
+                                answer_max_tokens=answer_max_tokens,
+                                abstention_accounting=abstention_accounting,
+                                answer_max_tokens_list=answer_max_tokens_list,
+                                reader_workers=reader_workers)
 
     if write_events:
         _write_events_jsonl(base / "events.jsonl", event_groups)
