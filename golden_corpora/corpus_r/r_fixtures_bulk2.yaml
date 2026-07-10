@@ -1,0 +1,2754 @@
+# corpus_r sprint-2 growth (deterministic classes).
+- id: r051
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: Annual review templates were updated to include the new competency framework.
+      d2: The garden needs mulching before the first frost arrives in late October.
+      d3: The zwoptrax gauge settled at thirty units after the autumn service visit.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+      d5: Her thesis defense was rescheduled because two committee members were traveling.
+      d6: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+    query: zwoptrax gauge
+  expected:
+    rank_of:
+      d3: 1
+  rationale: "'zwoptrax' occurs in exactly one document \u2014 must rank first."
+- id: r052
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: The quarterly budget review covered travel costs and staffing plans for the region.
+      d2: Her thesis defense was rescheduled because two committee members were traveling.
+      d3: The museum's new exhibit features maritime paintings from the previous century.
+      d4: The garden needs mulching before the first frost arrives in late October.
+      d5: The skopthramp gauge settled at thirty units after the autumn service visit.
+      d6: Lunch options near the office now include a Vietnamese place on Elm Street.
+    query: skopthramp gauge
+  expected:
+    rank_of:
+      d5: 1
+  rationale: "'skopthramp' occurs in exactly one document \u2014 must rank first."
+- id: r053
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+      d2: The museum's new exhibit features maritime paintings from the previous century.
+      d3: The garden needs mulching before the first frost arrives in late October.
+      d4: The quarterly budget review covered travel costs and staffing plans for the region.
+      d5: The flanthryx gauge settled at thirty units after the autumn service visit.
+      d6: Basketball practice moved to the east gym while the main court is resurfaced.
+    query: flanthryx gauge
+  expected:
+    rank_of:
+      d5: 1
+  rationale: "'flanthryx' occurs in exactly one document \u2014 must rank first."
+- id: r054
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: The flelvrine gauge settled at thirty units after the autumn service visit.
+      d2: The museum's new exhibit features maritime paintings from the previous century.
+      d3: Lunch options near the office now include a Vietnamese place on Elm Street.
+      d4: Her thesis defense was rescheduled because two committee members were traveling.
+      d5: The quarterly budget review covered travel costs and staffing plans for the region.
+      d6: Annual review templates were updated to include the new competency framework.
+    query: flelvrine gauge
+  expected:
+    rank_of:
+      d1: 1
+  rationale: "'flelvrine' occurs in exactly one document \u2014 must rank first."
+- id: r055
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: The garden needs mulching before the first frost arrives in late October.
+      d2: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+      d3: Basketball practice moved to the east gym while the main court is resurfaced.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+      d5: The thribzwamp gauge settled at thirty units after the autumn service visit.
+      d6: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+    query: thribzwamp gauge
+  expected:
+    rank_of:
+      d5: 1
+  rationale: "'thribzwamp' occurs in exactly one document \u2014 must rank first."
+- id: r056
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: Lunch options near the office now include a Vietnamese place on Elm Street.
+      d2: The quarterly budget review covered travel costs and staffing plans for the region.
+      d3: Basketball practice moved to the east gym while the main court is resurfaced.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+      d5: The brurkrax gauge settled at thirty units after the autumn service visit.
+      d6: Her thesis defense was rescheduled because two committee members were traveling.
+    query: brurkrax gauge
+  expected:
+    rank_of:
+      d5: 1
+  rationale: "'brurkrax' occurs in exactly one document \u2014 must rank first."
+- id: r057
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+      d2: Annual review templates were updated to include the new competency framework.
+      d3: The museum's new exhibit features maritime paintings from the previous century.
+      d4: The garden needs mulching before the first frost arrives in late October.
+      d5: Her thesis defense was rescheduled because two committee members were traveling.
+      d6: The vrelplost gauge settled at thirty units after the autumn service visit.
+    query: vrelplost gauge
+  expected:
+    rank_of:
+      d6: 1
+  rationale: "'vrelplost' occurs in exactly one document \u2014 must rank first."
+- id: r058
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: Basketball practice moved to the east gym while the main court is resurfaced.
+      d2: Lunch options near the office now include a Vietnamese place on Elm Street.
+      d3: The thranzwax gauge settled at thirty units after the autumn service visit.
+      d4: Ticket prices for the festival increase after the early-bird window closes.
+      d5: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+      d6: The garden needs mulching before the first frost arrives in late October.
+    query: thranzwax gauge
+  expected:
+    rank_of:
+      d3: 1
+  rationale: "'thranzwax' occurs in exactly one document \u2014 must rank first."
+- id: r059
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: The museum's new exhibit features maritime paintings from the previous century.
+      d2: Ticket prices for the festival increase after the early-bird window closes.
+      d3: Annual review templates were updated to include the new competency framework.
+      d4: Basketball practice moved to the east gym while the main court is resurfaced.
+      d5: The quarterly budget review covered travel costs and staffing plans for the region.
+      d6: The vravdreth gauge settled at thirty units after the autumn service visit.
+    query: vravdreth gauge
+  expected:
+    rank_of:
+      d6: 1
+  rationale: "'vravdreth' occurs in exactly one document \u2014 must rank first."
+- id: r060
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: Basketball practice moved to the east gym while the main court is resurfaced.
+      d2: Ticket prices for the festival increase after the early-bird window closes.
+      d3: The quarterly budget review covered travel costs and staffing plans for the region.
+      d4: The garden needs mulching before the first frost arrives in late October.
+      d5: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+      d6: The clavclyx gauge settled at thirty units after the autumn service visit.
+    query: clavclyx gauge
+  expected:
+    rank_of:
+      d6: 1
+  rationale: "'clavclyx' occurs in exactly one document \u2014 must rank first."
+- id: r061
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: Annual review templates were updated to include the new competency framework.
+      d2: The garden needs mulching before the first frost arrives in late October.
+      d3: Lunch options near the office now include a Vietnamese place on Elm Street.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+      d5: The quursnarn gauge settled at thirty units after the autumn service visit.
+      d6: The quarterly budget review covered travel costs and staffing plans for the region.
+    query: quursnarn gauge
+  expected:
+    rank_of:
+      d5: 1
+  rationale: "'quursnarn' occurs in exactly one document \u2014 must rank first."
+- id: r062
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: The gribplule gauge settled at thirty units after the autumn service visit.
+      d2: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+      d3: Basketball practice moved to the east gym while the main court is resurfaced.
+      d4: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+      d5: The garden needs mulching before the first frost arrives in late October.
+      d6: Annual review templates were updated to include the new competency framework.
+    query: gribplule gauge
+  expected:
+    rank_of:
+      d1: 1
+  rationale: "'gribplule' occurs in exactly one document \u2014 must rank first."
+- id: r063
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: The vrexvrax gauge settled at thirty units after the autumn service visit.
+      d2: The quarterly budget review covered travel costs and staffing plans for the region.
+      d3: Her thesis defense was rescheduled because two committee members were traveling.
+      d4: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+      d5: Annual review templates were updated to include the new competency framework.
+      d6: The garden needs mulching before the first frost arrives in late October.
+    query: vrexvrax gauge
+  expected:
+    rank_of:
+      d1: 1
+  rationale: "'vrexvrax' occurs in exactly one document \u2014 must rank first."
+- id: r064
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: The quarterly budget review covered travel costs and staffing plans for the region.
+      d2: Ticket prices for the festival increase after the early-bird window closes.
+      d3: The vroqtrine gauge settled at thirty units after the autumn service visit.
+      d4: Lunch options near the office now include a Vietnamese place on Elm Street.
+      d5: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+      d6: Basketball practice moved to the east gym while the main court is resurfaced.
+    query: vroqtrine gauge
+  expected:
+    rank_of:
+      d3: 1
+  rationale: "'vroqtrine' occurs in exactly one document \u2014 must rank first."
+- id: r065
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: Lunch options near the office now include a Vietnamese place on Elm Street.
+      d2: Her thesis defense was rescheduled because two committee members were traveling.
+      d3: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+      d5: The zwopquine gauge settled at thirty units after the autumn service visit.
+      d6: Basketball practice moved to the east gym while the main court is resurfaced.
+    query: zwopquine gauge
+  expected:
+    rank_of:
+      d5: 1
+  rationale: "'zwopquine' occurs in exactly one document \u2014 must rank first."
+- id: r066
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: The garden needs mulching before the first frost arrives in late October.
+      d2: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+      d3: Ticket prices for the festival increase after the early-bird window closes.
+      d4: Basketball practice moved to the east gym while the main court is resurfaced.
+      d5: The drurthreth gauge settled at thirty units after the autumn service visit.
+      d6: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+    query: drurthreth gauge
+  expected:
+    rank_of:
+      d5: 1
+  rationale: "'drurthreth' occurs in exactly one document \u2014 must rank first."
+- id: r067
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: Annual review templates were updated to include the new competency framework.
+      d2: Ticket prices for the festival increase after the early-bird window closes.
+      d3: The zwexbrax gauge settled at thirty units after the autumn service visit.
+      d4: The garden needs mulching before the first frost arrives in late October.
+      d5: Basketball practice moved to the east gym while the main court is resurfaced.
+      d6: Her thesis defense was rescheduled because two committee members were traveling.
+    query: zwexbrax gauge
+  expected:
+    rank_of:
+      d3: 1
+  rationale: "'zwexbrax' occurs in exactly one document \u2014 must rank first."
+- id: r068
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: The garden needs mulching before the first frost arrives in late October.
+      d2: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+      d3: The quarterly budget review covered travel costs and staffing plans for the region.
+      d4: The flumzwune gauge settled at thirty units after the autumn service visit.
+      d5: Annual review templates were updated to include the new competency framework.
+      d6: The museum's new exhibit features maritime paintings from the previous century.
+    query: flumzwune gauge
+  expected:
+    rank_of:
+      d4: 1
+  rationale: "'flumzwune' occurs in exactly one document \u2014 must rank first."
+- id: r069
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: Lunch options near the office now include a Vietnamese place on Elm Street.
+      d2: Annual review templates were updated to include the new competency framework.
+      d3: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+      d4: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+      d5: The museum's new exhibit features maritime paintings from the previous century.
+      d6: The thropgryx gauge settled at thirty units after the autumn service visit.
+    query: thropgryx gauge
+  expected:
+    rank_of:
+      d6: 1
+  rationale: "'thropgryx' occurs in exactly one document \u2014 must rank first."
+- id: r070
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+      d2: Annual review templates were updated to include the new competency framework.
+      d3: The troqgramp gauge settled at thirty units after the autumn service visit.
+      d4: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+      d5: Her thesis defense was rescheduled because two committee members were traveling.
+      d6: The quarterly budget review covered travel costs and staffing plans for the region.
+    query: troqgramp gauge
+  expected:
+    rank_of:
+      d3: 1
+  rationale: "'troqgramp' occurs in exactly one document \u2014 must rank first."
+- id: r071
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: The skurplost gauge settled at thirty units after the autumn service visit.
+      d2: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+      d3: Lunch options near the office now include a Vietnamese place on Elm Street.
+      d4: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+      d5: The garden needs mulching before the first frost arrives in late October.
+      d6: The museum's new exhibit features maritime paintings from the previous century.
+    query: skurplost gauge
+  expected:
+    rank_of:
+      d1: 1
+  rationale: "'skurplost' occurs in exactly one document \u2014 must rank first."
+- id: r072
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: The quarterly budget review covered travel costs and staffing plans for the region.
+      d2: The zwopgrost gauge settled at thirty units after the autumn service visit.
+      d3: Lunch options near the office now include a Vietnamese place on Elm Street.
+      d4: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+      d5: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+      d6: The garden needs mulching before the first frost arrives in late October.
+    query: zwopgrost gauge
+  expected:
+    rank_of:
+      d2: 1
+  rationale: "'zwopgrost' occurs in exactly one document \u2014 must rank first."
+- id: r073
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: Annual review templates were updated to include the new competency framework.
+      d2: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+      d3: The zwexgrost gauge settled at thirty units after the autumn service visit.
+      d4: The garden needs mulching before the first frost arrives in late October.
+      d5: The museum's new exhibit features maritime paintings from the previous century.
+      d6: Ticket prices for the festival increase after the early-bird window closes.
+    query: zwexgrost gauge
+  expected:
+    rank_of:
+      d3: 1
+  rationale: "'zwexgrost' occurs in exactly one document \u2014 must rank first."
+- id: r074
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: The broqplarn gauge settled at thirty units after the autumn service visit.
+      d2: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+      d3: Ticket prices for the festival increase after the early-bird window closes.
+      d4: Annual review templates were updated to include the new competency framework.
+      d5: Her thesis defense was rescheduled because two committee members were traveling.
+      d6: The quarterly budget review covered travel costs and staffing plans for the region.
+    query: broqplarn gauge
+  expected:
+    rank_of:
+      d1: 1
+  rationale: "'broqplarn' occurs in exactly one document \u2014 must rank first."
+- id: r075
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: Lunch options near the office now include a Vietnamese place on Elm Street.
+      d2: Ticket prices for the festival increase after the early-bird window closes.
+      d3: Annual review templates were updated to include the new competency framework.
+      d4: The trelfleth gauge settled at thirty units after the autumn service visit.
+      d5: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+      d6: The museum's new exhibit features maritime paintings from the previous century.
+    query: trelfleth gauge
+  expected:
+    rank_of:
+      d4: 1
+  rationale: "'trelfleth' occurs in exactly one document \u2014 must rank first."
+- id: r076
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: Basketball practice moved to the east gym while the main court is resurfaced.
+      d2: The quarterly budget review covered travel costs and staffing plans for the region.
+      d3: Annual review templates were updated to include the new competency framework.
+      d4: The garden needs mulching before the first frost arrives in late October.
+      d5: The kribplost gauge settled at thirty units after the autumn service visit.
+      d6: Her thesis defense was rescheduled because two committee members were traveling.
+    query: kribplost gauge
+  expected:
+    rank_of:
+      d5: 1
+  rationale: "'kribplost' occurs in exactly one document \u2014 must rank first."
+- id: r077
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: Ticket prices for the festival increase after the early-bird window closes.
+      d2: The garden needs mulching before the first frost arrives in late October.
+      d3: Basketball practice moved to the east gym while the main court is resurfaced.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+      d5: The clilkrine gauge settled at thirty units after the autumn service visit.
+      d6: The quarterly budget review covered travel costs and staffing plans for the region.
+    query: clilkrine gauge
+  expected:
+    rank_of:
+      d5: 1
+  rationale: "'clilkrine' occurs in exactly one document \u2014 must rank first."
+- id: r078
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: The garden needs mulching before the first frost arrives in late October.
+      d2: Basketball practice moved to the east gym while the main court is resurfaced.
+      d3: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+      d4: Lunch options near the office now include a Vietnamese place on Elm Street.
+      d5: Ticket prices for the festival increase after the early-bird window closes.
+      d6: The floptrune gauge settled at thirty units after the autumn service visit.
+    query: floptrune gauge
+  expected:
+    rank_of:
+      d6: 1
+  rationale: "'floptrune' occurs in exactly one document \u2014 must rank first."
+- id: r079
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: Her thesis defense was rescheduled because two committee members were traveling.
+      d2: The triltrune gauge settled at thirty units after the autumn service visit.
+      d3: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+      d4: Annual review templates were updated to include the new competency framework.
+      d5: The quarterly budget review covered travel costs and staffing plans for the region.
+      d6: Basketball practice moved to the east gym while the main court is resurfaced.
+    query: triltrune gauge
+  expected:
+    rank_of:
+      d2: 1
+  rationale: "'triltrune' occurs in exactly one document \u2014 must rank first."
+- id: r080
+  class: unique_term_needle_bm25
+  verified: false
+  retriever: bm25
+  assumptions:
+  - query term appears in exactly one doc
+  input:
+    k: 5
+    docs:
+      d1: Annual review templates were updated to include the new competency framework.
+      d2: The grumdrune gauge settled at thirty units after the autumn service visit.
+      d3: The museum's new exhibit features maritime paintings from the previous century.
+      d4: The quarterly budget review covered travel costs and staffing plans for the region.
+      d5: Basketball practice moved to the east gym while the main court is resurfaced.
+      d6: The garden needs mulching before the first frost arrives in late October.
+    query: grumdrune gauge
+  expected:
+    rank_of:
+      d2: 1
+  rationale: "'grumdrune' occurs in exactly one document \u2014 must rank first."
+- id: r081
+  class: graded_overlap_order
+  verified: false
+  retriever: bm25
+  assumptions:
+  - comparable doc lengths
+  input:
+    k: 4
+    docs:
+      d1: The finial on the walnut bench was replaced early on Saturday morning.
+      d2: A walnut bench stood by the doorway while the movers worked upstairs.
+      d3: The bench was cleaned and put away before the guests arrived tonight.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+    query: walnut bench finial
+  expected:
+    order:
+    - d1
+    - d2
+    - d3
+    - d4
+  rationale: "Overlap gradient 3>2>1>0, comparable lengths \u2014 BM25 order must be monotone."
+- id: r082
+  class: graded_overlap_order
+  verified: false
+  retriever: bm25
+  assumptions:
+  - comparable doc lengths
+  input:
+    k: 4
+    docs:
+      d1: The ferrule on the crimson carpet was replaced early on Saturday morning.
+      d2: A crimson carpet stood by the doorway while the movers worked upstairs.
+      d3: The carpet was cleaned and put away before the guests arrived tonight.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+    query: crimson carpet ferrule
+  expected:
+    order:
+    - d1
+    - d2
+    - d3
+    - d4
+  rationale: "Overlap gradient 3>2>1>0, comparable lengths \u2014 BM25 order must be monotone."
+- id: r083
+  class: graded_overlap_order
+  verified: false
+  retriever: bm25
+  assumptions:
+  - comparable doc lengths
+  input:
+    k: 4
+    docs:
+      d1: The gudgeon on the wicker mirror was replaced early on Saturday morning.
+      d2: A wicker mirror stood by the doorway while the movers worked upstairs.
+      d3: The mirror was cleaned and put away before the guests arrived tonight.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+    query: wicker mirror gudgeon
+  expected:
+    order:
+    - d1
+    - d2
+    - d3
+    - d4
+  rationale: "Overlap gradient 3>2>1>0, comparable lengths \u2014 BM25 order must be monotone."
+- id: r084
+  class: graded_overlap_order
+  verified: false
+  retriever: bm25
+  assumptions:
+  - comparable doc lengths
+  input:
+    k: 4
+    docs:
+      d1: The trunnion on the pewter bucket was replaced early on Saturday morning.
+      d2: A pewter bucket stood by the doorway while the movers worked upstairs.
+      d3: The bucket was cleaned and put away before the guests arrived tonight.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+    query: pewter bucket trunnion
+  expected:
+    order:
+    - d1
+    - d2
+    - d3
+    - d4
+  rationale: "Overlap gradient 3>2>1>0, comparable lengths \u2014 BM25 order must be monotone."
+- id: r085
+  class: graded_overlap_order
+  verified: false
+  retriever: bm25
+  assumptions:
+  - comparable doc lengths
+  input:
+    k: 4
+    docs:
+      d1: The escutcheon on the indigo teapot was replaced early on Saturday morning.
+      d2: A indigo teapot stood by the doorway while the movers worked upstairs.
+      d3: The teapot was cleaned and put away before the guests arrived tonight.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+    query: indigo teapot escutcheon
+  expected:
+    order:
+    - d1
+    - d2
+    - d3
+    - d4
+  rationale: "Overlap gradient 3>2>1>0, comparable lengths \u2014 BM25 order must be monotone."
+- id: r086
+  class: graded_overlap_order
+  verified: false
+  retriever: bm25
+  assumptions:
+  - comparable doc lengths
+  input:
+    k: 4
+    docs:
+      d1: The spandrel on the linen cabinet was replaced early on Saturday morning.
+      d2: A linen cabinet stood by the doorway while the movers worked upstairs.
+      d3: The cabinet was cleaned and put away before the guests arrived tonight.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+    query: linen cabinet spandrel
+  expected:
+    order:
+    - d1
+    - d2
+    - d3
+    - d4
+  rationale: "Overlap gradient 3>2>1>0, comparable lengths \u2014 BM25 order must be monotone."
+- id: r087
+  class: graded_overlap_order
+  verified: false
+  retriever: bm25
+  assumptions:
+  - comparable doc lengths
+  input:
+    k: 4
+    docs:
+      d1: The newel on the cobalt stroller was replaced early on Saturday morning.
+      d2: A cobalt stroller stood by the doorway while the movers worked upstairs.
+      d3: The stroller was cleaned and put away before the guests arrived tonight.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+    query: cobalt stroller newel
+  expected:
+    order:
+    - d1
+    - d2
+    - d3
+    - d4
+  rationale: "Overlap gradient 3>2>1>0, comparable lengths \u2014 BM25 order must be monotone."
+- id: r088
+  class: graded_overlap_order
+  verified: false
+  retriever: bm25
+  assumptions:
+  - comparable doc lengths
+  input:
+    k: 4
+    docs:
+      d1: The mullion on the maple satchel was replaced early on Saturday morning.
+      d2: A maple satchel stood by the doorway while the movers worked upstairs.
+      d3: The satchel was cleaned and put away before the guests arrived tonight.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+    query: maple satchel mullion
+  expected:
+    order:
+    - d1
+    - d2
+    - d3
+    - d4
+  rationale: "Overlap gradient 3>2>1>0, comparable lengths \u2014 BM25 order must be monotone."
+- id: r089
+  class: graded_overlap_order
+  verified: false
+  retriever: bm25
+  assumptions:
+  - comparable doc lengths
+  input:
+    k: 4
+    docs:
+      d1: The voussoir on the slate trellis was replaced early on Saturday morning.
+      d2: A slate trellis stood by the doorway while the movers worked upstairs.
+      d3: The trellis was cleaned and put away before the guests arrived tonight.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+    query: slate trellis voussoir
+  expected:
+    order:
+    - d1
+    - d2
+    - d3
+    - d4
+  rationale: "Overlap gradient 3>2>1>0, comparable lengths \u2014 BM25 order must be monotone."
+- id: r090
+  class: graded_overlap_order
+  verified: false
+  retriever: bm25
+  assumptions:
+  - comparable doc lengths
+  input:
+    k: 4
+    docs:
+      d1: The cotter on the amber dinghy was replaced early on Saturday morning.
+      d2: A amber dinghy stood by the doorway while the movers worked upstairs.
+      d3: The dinghy was cleaned and put away before the guests arrived tonight.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+    query: amber dinghy cotter
+  expected:
+    order:
+    - d1
+    - d2
+    - d3
+    - d4
+  rationale: "Overlap gradient 3>2>1>0, comparable lengths \u2014 BM25 order must be monotone."
+- id: r091
+  class: graded_overlap_order
+  verified: false
+  retriever: bm25
+  assumptions:
+  - comparable doc lengths
+  input:
+    k: 4
+    docs:
+      d1: The pintle on the birch easel was replaced early on Saturday morning.
+      d2: A birch easel stood by the doorway while the movers worked upstairs.
+      d3: The easel was cleaned and put away before the guests arrived tonight.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+    query: birch easel pintle
+  expected:
+    order:
+    - d1
+    - d2
+    - d3
+    - d4
+  rationale: "Overlap gradient 3>2>1>0, comparable lengths \u2014 BM25 order must be monotone."
+- id: r092
+  class: graded_overlap_order
+  verified: false
+  retriever: bm25
+  assumptions:
+  - comparable doc lengths
+  input:
+    k: 4
+    docs:
+      d1: The tang on the russet bellows was replaced early on Saturday morning.
+      d2: A russet bellows stood by the doorway while the movers worked upstairs.
+      d3: The bellows was cleaned and put away before the guests arrived tonight.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+    query: russet bellows tang
+  expected:
+    order:
+    - d1
+    - d2
+    - d3
+    - d4
+  rationale: "Overlap gradient 3>2>1>0, comparable lengths \u2014 BM25 order must be monotone."
+- id: r093
+  class: graded_overlap_order
+  verified: false
+  retriever: bm25
+  assumptions:
+  - comparable doc lengths
+  input:
+    k: 4
+    docs:
+      d1: The swage on the ochre hammock was replaced early on Saturday morning.
+      d2: A ochre hammock stood by the doorway while the movers worked upstairs.
+      d3: The hammock was cleaned and put away before the guests arrived tonight.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+    query: ochre hammock swage
+  expected:
+    order:
+    - d1
+    - d2
+    - d3
+    - d4
+  rationale: "Overlap gradient 3>2>1>0, comparable lengths \u2014 BM25 order must be monotone."
+- id: r094
+  class: graded_overlap_order
+  verified: false
+  retriever: bm25
+  assumptions:
+  - comparable doc lengths
+  input:
+    k: 4
+    docs:
+      d1: The chamfer on the teak quilt was replaced early on Saturday morning.
+      d2: A teak quilt stood by the doorway while the movers worked upstairs.
+      d3: The quilt was cleaned and put away before the guests arrived tonight.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+    query: teak quilt chamfer
+  expected:
+    order:
+    - d1
+    - d2
+    - d3
+    - d4
+  rationale: "Overlap gradient 3>2>1>0, comparable lengths \u2014 BM25 order must be monotone."
+- id: r095
+  class: graded_overlap_order
+  verified: false
+  retriever: bm25
+  assumptions:
+  - comparable doc lengths
+  input:
+    k: 4
+    docs:
+      d1: The kerf on the sage tricycle was replaced early on Saturday morning.
+      d2: A sage tricycle stood by the doorway while the movers worked upstairs.
+      d3: The tricycle was cleaned and put away before the guests arrived tonight.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+    query: sage tricycle kerf
+  expected:
+    order:
+    - d1
+    - d2
+    - d3
+    - d4
+  rationale: "Overlap gradient 3>2>1>0, comparable lengths \u2014 BM25 order must be monotone."
+- id: r096
+  class: graded_overlap_order
+  verified: false
+  retriever: bm25
+  assumptions:
+  - comparable doc lengths
+  input:
+    k: 4
+    docs:
+      d1: The rabbet on the umber barrow was replaced early on Saturday morning.
+      d2: A umber barrow stood by the doorway while the movers worked upstairs.
+      d3: The barrow was cleaned and put away before the guests arrived tonight.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+    query: umber barrow rabbet
+  expected:
+    order:
+    - d1
+    - d2
+    - d3
+    - d4
+  rationale: "Overlap gradient 3>2>1>0, comparable lengths \u2014 BM25 order must be monotone."
+- id: r097
+  class: graded_overlap_order
+  verified: false
+  retriever: bm25
+  assumptions:
+  - comparable doc lengths
+  input:
+    k: 4
+    docs:
+      d1: The dado on the sable kennel was replaced early on Saturday morning.
+      d2: A sable kennel stood by the doorway while the movers worked upstairs.
+      d3: The kennel was cleaned and put away before the guests arrived tonight.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+    query: sable kennel dado
+  expected:
+    order:
+    - d1
+    - d2
+    - d3
+    - d4
+  rationale: "Overlap gradient 3>2>1>0, comparable lengths \u2014 BM25 order must be monotone."
+- id: r098
+  class: graded_overlap_order
+  verified: false
+  retriever: bm25
+  assumptions:
+  - comparable doc lengths
+  input:
+    k: 4
+    docs:
+      d1: The spline on the flax sundial was replaced early on Saturday morning.
+      d2: A flax sundial stood by the doorway while the movers worked upstairs.
+      d3: The sundial was cleaned and put away before the guests arrived tonight.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+    query: flax sundial spline
+  expected:
+    order:
+    - d1
+    - d2
+    - d3
+    - d4
+  rationale: "Overlap gradient 3>2>1>0, comparable lengths \u2014 BM25 order must be monotone."
+- id: r099
+  class: graded_overlap_order
+  verified: false
+  retriever: bm25
+  assumptions:
+  - comparable doc lengths
+  input:
+    k: 4
+    docs:
+      d1: The gusset on the onyx harp was replaced early on Saturday morning.
+      d2: A onyx harp stood by the doorway while the movers worked upstairs.
+      d3: The harp was cleaned and put away before the guests arrived tonight.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+    query: onyx harp gusset
+  expected:
+    order:
+    - d1
+    - d2
+    - d3
+    - d4
+  rationale: "Overlap gradient 3>2>1>0, comparable lengths \u2014 BM25 order must be monotone."
+- id: r100
+  class: graded_overlap_order
+  verified: false
+  retriever: bm25
+  assumptions:
+  - comparable doc lengths
+  input:
+    k: 4
+    docs:
+      d1: The cleat on the rowan anvil was replaced early on Saturday morning.
+      d2: A rowan anvil stood by the doorway while the movers worked upstairs.
+      d3: The anvil was cleaned and put away before the guests arrived tonight.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+    query: rowan anvil cleat
+  expected:
+    order:
+    - d1
+    - d2
+    - d3
+    - d4
+  rationale: "Overlap gradient 3>2>1>0, comparable lengths \u2014 BM25 order must be monotone."
+- id: r101
+  class: graded_overlap_order
+  verified: false
+  retriever: bm25
+  assumptions:
+  - comparable doc lengths
+  input:
+    k: 4
+    docs:
+      d1: The batten on the aspen plinth was replaced early on Saturday morning.
+      d2: A aspen plinth stood by the doorway while the movers worked upstairs.
+      d3: The plinth was cleaned and put away before the guests arrived tonight.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+    query: aspen plinth batten
+  expected:
+    order:
+    - d1
+    - d2
+    - d3
+    - d4
+  rationale: "Overlap gradient 3>2>1>0, comparable lengths \u2014 BM25 order must be monotone."
+- id: r102
+  class: graded_overlap_order
+  verified: false
+  retriever: bm25
+  assumptions:
+  - comparable doc lengths
+  input:
+    k: 4
+    docs:
+      d1: The purlin on the coral gazebo was replaced early on Saturday morning.
+      d2: A coral gazebo stood by the doorway while the movers worked upstairs.
+      d3: The gazebo was cleaned and put away before the guests arrived tonight.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+    query: coral gazebo purlin
+  expected:
+    order:
+    - d1
+    - d2
+    - d3
+    - d4
+  rationale: "Overlap gradient 3>2>1>0, comparable lengths \u2014 BM25 order must be monotone."
+- id: r103
+  class: graded_overlap_order
+  verified: false
+  retriever: bm25
+  assumptions:
+  - comparable doc lengths
+  input:
+    k: 4
+    docs:
+      d1: The corbel on the basalt lectern was replaced early on Saturday morning.
+      d2: A basalt lectern stood by the doorway while the movers worked upstairs.
+      d3: The lectern was cleaned and put away before the guests arrived tonight.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+    query: basalt lectern corbel
+  expected:
+    order:
+    - d1
+    - d2
+    - d3
+    - d4
+  rationale: "Overlap gradient 3>2>1>0, comparable lengths \u2014 BM25 order must be monotone."
+- id: r104
+  class: graded_overlap_order
+  verified: false
+  retriever: bm25
+  assumptions:
+  - comparable doc lengths
+  input:
+    k: 4
+    docs:
+      d1: The boss on the sienna spinet was replaced early on Saturday morning.
+      d2: A sienna spinet stood by the doorway while the movers worked upstairs.
+      d3: The spinet was cleaned and put away before the guests arrived tonight.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+    query: sienna spinet boss
+  expected:
+    order:
+    - d1
+    - d2
+    - d3
+    - d4
+  rationale: "Overlap gradient 3>2>1>0, comparable lengths \u2014 BM25 order must be monotone."
+- id: r105
+  class: graded_overlap_order
+  verified: false
+  retriever: bm25
+  assumptions:
+  - comparable doc lengths
+  input:
+    k: 4
+    docs:
+      d1: The quoin on the madder churn was replaced early on Saturday morning.
+      d2: A madder churn stood by the doorway while the movers worked upstairs.
+      d3: The churn was cleaned and put away before the guests arrived tonight.
+      d4: The museum's new exhibit features maritime paintings from the previous century.
+    query: madder churn quoin
+  expected:
+    order:
+    - d1
+    - d2
+    - d3
+    - d4
+  rationale: "Overlap gradient 3>2>1>0, comparable lengths \u2014 BM25 order must be monotone."
+- id: r106
+  class: composition_m_gt_k
+  verified: false
+  retriever: bm25
+  assumptions:
+  - composition_bound computed from gold multiplicity vs k
+  input:
+    k: 5
+    docs:
+      g1: 'Step 1 of the pottery glazing procedure: prepare the surface.'
+      g2: 'Step 2 of the pottery glazing procedure: check the tension.'
+      g3: 'Step 3 of the pottery glazing procedure: warm the medium.'
+      g4: 'Step 4 of the pottery glazing procedure: mark the reference line.'
+      g5: 'Step 5 of the pottery glazing procedure: clean the joints.'
+      g6: 'Step 6 of the pottery glazing procedure: confirm the fit.'
+      x1: Ticket prices for the festival increase after the early-bird window closes.
+      x2: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+      x3: Basketball practice moved to the east gym while the main court is resurfaced.
+      x4: Lunch options near the office now include a Vietnamese place on Elm Street.
+      x5: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+    gold_ids:
+    - g1
+    - g2
+    - g3
+    - g4
+    - g5
+    - g6
+    query: list the steps of the pottery glazing procedure in order
+  expected:
+    max_gold_in_topk: 5
+    composition_bound_flag: true
+  rationale: "m=6 > k=5 \u2014 the accounting must label this composition-bound."
+- id: r107
+  class: composition_m_gt_k
+  verified: false
+  retriever: bm25
+  assumptions:
+  - composition_bound computed from gold multiplicity vs k
+  input:
+    k: 5
+    docs:
+      g1: 'Step 1 of the sail rigging procedure: prepare the surface.'
+      g2: 'Step 2 of the sail rigging procedure: check the tension.'
+      g3: 'Step 3 of the sail rigging procedure: warm the medium.'
+      g4: 'Step 4 of the sail rigging procedure: mark the reference line.'
+      g5: 'Step 5 of the sail rigging procedure: clean the joints.'
+      g6: 'Step 6 of the sail rigging procedure: confirm the fit.'
+      g7: 'Step 7 of the sail rigging procedure: secure the clamps.'
+      x1: The museum's new exhibit features maritime paintings from the previous century.
+      x2: Lunch options near the office now include a Vietnamese place on Elm Street.
+      x3: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+      x4: The quarterly budget review covered travel costs and staffing plans for the region.
+      x5: Ticket prices for the festival increase after the early-bird window closes.
+    gold_ids:
+    - g1
+    - g2
+    - g3
+    - g4
+    - g5
+    - g6
+    - g7
+    query: list the steps of the sail rigging procedure in order
+  expected:
+    max_gold_in_topk: 5
+    composition_bound_flag: true
+  rationale: "m=7 > k=5 \u2014 the accounting must label this composition-bound."
+- id: r108
+  class: composition_m_gt_k
+  verified: false
+  retriever: bm25
+  assumptions:
+  - composition_bound computed from gold multiplicity vs k
+  input:
+    k: 5
+    docs:
+      g1: 'Step 1 of the hive splitting procedure: prepare the surface.'
+      g2: 'Step 2 of the hive splitting procedure: check the tension.'
+      g3: 'Step 3 of the hive splitting procedure: warm the medium.'
+      g4: 'Step 4 of the hive splitting procedure: mark the reference line.'
+      g5: 'Step 5 of the hive splitting procedure: clean the joints.'
+      g6: 'Step 6 of the hive splitting procedure: confirm the fit.'
+      g7: 'Step 7 of the hive splitting procedure: secure the clamps.'
+      g8: 'Step 8 of the hive splitting procedure: record the measurement.'
+      x1: Her thesis defense was rescheduled because two committee members were traveling.
+      x2: The museum's new exhibit features maritime paintings from the previous century.
+      x3: Annual review templates were updated to include the new competency framework.
+      x4: Ticket prices for the festival increase after the early-bird window closes.
+      x5: Basketball practice moved to the east gym while the main court is resurfaced.
+    gold_ids:
+    - g1
+    - g2
+    - g3
+    - g4
+    - g5
+    - g6
+    - g7
+    - g8
+    query: list the steps of the hive splitting procedure in order
+  expected:
+    max_gold_in_topk: 5
+    composition_bound_flag: true
+  rationale: "m=8 > k=5 \u2014 the accounting must label this composition-bound."
+- id: r109
+  class: composition_m_gt_k
+  verified: false
+  retriever: bm25
+  assumptions:
+  - composition_bound computed from gold multiplicity vs k
+  input:
+    k: 5
+    docs:
+      g1: 'Step 1 of the lens polishing procedure: prepare the surface.'
+      g2: 'Step 2 of the lens polishing procedure: check the tension.'
+      g3: 'Step 3 of the lens polishing procedure: warm the medium.'
+      g4: 'Step 4 of the lens polishing procedure: mark the reference line.'
+      g5: 'Step 5 of the lens polishing procedure: clean the joints.'
+      g6: 'Step 6 of the lens polishing procedure: confirm the fit.'
+      x1: The quarterly budget review covered travel costs and staffing plans for the region.
+      x2: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+      x3: The garden needs mulching before the first frost arrives in late October.
+      x4: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+      x5: Annual review templates were updated to include the new competency framework.
+    gold_ids:
+    - g1
+    - g2
+    - g3
+    - g4
+    - g5
+    - g6
+    query: list the steps of the lens polishing procedure in order
+  expected:
+    max_gold_in_topk: 5
+    composition_bound_flag: true
+  rationale: "m=6 > k=5 \u2014 the accounting must label this composition-bound."
+- id: r110
+  class: composition_m_gt_k
+  verified: false
+  retriever: bm25
+  assumptions:
+  - composition_bound computed from gold multiplicity vs k
+  input:
+    k: 5
+    docs:
+      g1: 'Step 1 of the barrel coopering procedure: prepare the surface.'
+      g2: 'Step 2 of the barrel coopering procedure: check the tension.'
+      g3: 'Step 3 of the barrel coopering procedure: warm the medium.'
+      g4: 'Step 4 of the barrel coopering procedure: mark the reference line.'
+      g5: 'Step 5 of the barrel coopering procedure: clean the joints.'
+      g6: 'Step 6 of the barrel coopering procedure: confirm the fit.'
+      g7: 'Step 7 of the barrel coopering procedure: secure the clamps.'
+      x1: The quarterly budget review covered travel costs and staffing plans for the region.
+      x2: Lunch options near the office now include a Vietnamese place on Elm Street.
+      x3: The museum's new exhibit features maritime paintings from the previous century.
+      x4: The garden needs mulching before the first frost arrives in late October.
+      x5: Annual review templates were updated to include the new competency framework.
+    gold_ids:
+    - g1
+    - g2
+    - g3
+    - g4
+    - g5
+    - g6
+    - g7
+    query: list the steps of the barrel coopering procedure in order
+  expected:
+    max_gold_in_topk: 5
+    composition_bound_flag: true
+  rationale: "m=7 > k=5 \u2014 the accounting must label this composition-bound."
+- id: r111
+  class: composition_m_gt_k
+  verified: false
+  retriever: bm25
+  assumptions:
+  - composition_bound computed from gold multiplicity vs k
+  input:
+    k: 5
+    docs:
+      g1: 'Step 1 of the fresco preparation procedure: prepare the surface.'
+      g2: 'Step 2 of the fresco preparation procedure: check the tension.'
+      g3: 'Step 3 of the fresco preparation procedure: warm the medium.'
+      g4: 'Step 4 of the fresco preparation procedure: mark the reference line.'
+      g5: 'Step 5 of the fresco preparation procedure: clean the joints.'
+      g6: 'Step 6 of the fresco preparation procedure: confirm the fit.'
+      g7: 'Step 7 of the fresco preparation procedure: secure the clamps.'
+      g8: 'Step 8 of the fresco preparation procedure: record the measurement.'
+      x1: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+      x2: The quarterly budget review covered travel costs and staffing plans for the region.
+      x3: The garden needs mulching before the first frost arrives in late October.
+      x4: The museum's new exhibit features maritime paintings from the previous century.
+      x5: Basketball practice moved to the east gym while the main court is resurfaced.
+    gold_ids:
+    - g1
+    - g2
+    - g3
+    - g4
+    - g5
+    - g6
+    - g7
+    - g8
+    query: list the steps of the fresco preparation procedure in order
+  expected:
+    max_gold_in_topk: 5
+    composition_bound_flag: true
+  rationale: "m=8 > k=5 \u2014 the accounting must label this composition-bound."
+- id: r112
+  class: composition_m_gt_k
+  verified: false
+  retriever: bm25
+  assumptions:
+  - composition_bound computed from gold multiplicity vs k
+  input:
+    k: 5
+    docs:
+      g1: 'Step 1 of the violin varnishing procedure: prepare the surface.'
+      g2: 'Step 2 of the violin varnishing procedure: check the tension.'
+      g3: 'Step 3 of the violin varnishing procedure: warm the medium.'
+      g4: 'Step 4 of the violin varnishing procedure: mark the reference line.'
+      g5: 'Step 5 of the violin varnishing procedure: clean the joints.'
+      g6: 'Step 6 of the violin varnishing procedure: confirm the fit.'
+      x1: The museum's new exhibit features maritime paintings from the previous century.
+      x2: Annual review templates were updated to include the new competency framework.
+      x3: Her thesis defense was rescheduled because two committee members were traveling.
+      x4: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+      x5: Lunch options near the office now include a Vietnamese place on Elm Street.
+    gold_ids:
+    - g1
+    - g2
+    - g3
+    - g4
+    - g5
+    - g6
+    query: list the steps of the violin varnishing procedure in order
+  expected:
+    max_gold_in_topk: 5
+    composition_bound_flag: true
+  rationale: "m=6 > k=5 \u2014 the accounting must label this composition-bound."
+- id: r113
+  class: composition_m_gt_k
+  verified: false
+  retriever: bm25
+  assumptions:
+  - composition_bound computed from gold multiplicity vs k
+  input:
+    k: 5
+    docs:
+      g1: 'Step 1 of the net mending procedure: prepare the surface.'
+      g2: 'Step 2 of the net mending procedure: check the tension.'
+      g3: 'Step 3 of the net mending procedure: warm the medium.'
+      g4: 'Step 4 of the net mending procedure: mark the reference line.'
+      g5: 'Step 5 of the net mending procedure: clean the joints.'
+      g6: 'Step 6 of the net mending procedure: confirm the fit.'
+      g7: 'Step 7 of the net mending procedure: secure the clamps.'
+      x1: The quarterly budget review covered travel costs and staffing plans for the region.
+      x2: The museum's new exhibit features maritime paintings from the previous century.
+      x3: The garden needs mulching before the first frost arrives in late October.
+      x4: Her thesis defense was rescheduled because two committee members were traveling.
+      x5: Basketball practice moved to the east gym while the main court is resurfaced.
+    gold_ids:
+    - g1
+    - g2
+    - g3
+    - g4
+    - g5
+    - g6
+    - g7
+    query: list the steps of the net mending procedure in order
+  expected:
+    max_gold_in_topk: 5
+    composition_bound_flag: true
+  rationale: "m=7 > k=5 \u2014 the accounting must label this composition-bound."
+- id: r114
+  class: composition_m_gt_k
+  verified: false
+  retriever: bm25
+  assumptions:
+  - composition_bound computed from gold multiplicity vs k
+  input:
+    k: 5
+    docs:
+      g1: 'Step 1 of the kite bridling procedure: prepare the surface.'
+      g2: 'Step 2 of the kite bridling procedure: check the tension.'
+      g3: 'Step 3 of the kite bridling procedure: warm the medium.'
+      g4: 'Step 4 of the kite bridling procedure: mark the reference line.'
+      g5: 'Step 5 of the kite bridling procedure: clean the joints.'
+      g6: 'Step 6 of the kite bridling procedure: confirm the fit.'
+      g7: 'Step 7 of the kite bridling procedure: secure the clamps.'
+      g8: 'Step 8 of the kite bridling procedure: record the measurement.'
+      x1: The quarterly budget review covered travel costs and staffing plans for the region.
+      x2: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+      x3: Annual review templates were updated to include the new competency framework.
+      x4: Her thesis defense was rescheduled because two committee members were traveling.
+      x5: Lunch options near the office now include a Vietnamese place on Elm Street.
+    gold_ids:
+    - g1
+    - g2
+    - g3
+    - g4
+    - g5
+    - g6
+    - g7
+    - g8
+    query: list the steps of the kite bridling procedure in order
+  expected:
+    max_gold_in_topk: 5
+    composition_bound_flag: true
+  rationale: "m=8 > k=5 \u2014 the accounting must label this composition-bound."
+- id: r115
+  class: composition_m_gt_k
+  verified: false
+  retriever: bm25
+  assumptions:
+  - composition_bound computed from gold multiplicity vs k
+  input:
+    k: 5
+    docs:
+      g1: 'Step 1 of the scythe peening procedure: prepare the surface.'
+      g2: 'Step 2 of the scythe peening procedure: check the tension.'
+      g3: 'Step 3 of the scythe peening procedure: warm the medium.'
+      g4: 'Step 4 of the scythe peening procedure: mark the reference line.'
+      g5: 'Step 5 of the scythe peening procedure: clean the joints.'
+      g6: 'Step 6 of the scythe peening procedure: confirm the fit.'
+      x1: The garden needs mulching before the first frost arrives in late October.
+      x2: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+      x3: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+      x4: Annual review templates were updated to include the new competency framework.
+      x5: The museum's new exhibit features maritime paintings from the previous century.
+    gold_ids:
+    - g1
+    - g2
+    - g3
+    - g4
+    - g5
+    - g6
+    query: list the steps of the scythe peening procedure in order
+  expected:
+    max_gold_in_topk: 5
+    composition_bound_flag: true
+  rationale: "m=6 > k=5 \u2014 the accounting must label this composition-bound."
+- id: r116
+  class: composition_m_gt_k
+  verified: false
+  retriever: bm25
+  assumptions:
+  - composition_bound computed from gold multiplicity vs k
+  input:
+    k: 5
+    docs:
+      g1: 'Step 1 of the bell tuning procedure: prepare the surface.'
+      g2: 'Step 2 of the bell tuning procedure: check the tension.'
+      g3: 'Step 3 of the bell tuning procedure: warm the medium.'
+      g4: 'Step 4 of the bell tuning procedure: mark the reference line.'
+      g5: 'Step 5 of the bell tuning procedure: clean the joints.'
+      g6: 'Step 6 of the bell tuning procedure: confirm the fit.'
+      g7: 'Step 7 of the bell tuning procedure: secure the clamps.'
+      x1: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+      x2: The museum's new exhibit features maritime paintings from the previous century.
+      x3: Ticket prices for the festival increase after the early-bird window closes.
+      x4: Her thesis defense was rescheduled because two committee members were traveling.
+      x5: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+    gold_ids:
+    - g1
+    - g2
+    - g3
+    - g4
+    - g5
+    - g6
+    - g7
+    query: list the steps of the bell tuning procedure in order
+  expected:
+    max_gold_in_topk: 5
+    composition_bound_flag: true
+  rationale: "m=7 > k=5 \u2014 the accounting must label this composition-bound."
+- id: r117
+  class: composition_m_gt_k
+  verified: false
+  retriever: bm25
+  assumptions:
+  - composition_bound computed from gold multiplicity vs k
+  input:
+    k: 5
+    docs:
+      g1: 'Step 1 of the saddle fitting procedure: prepare the surface.'
+      g2: 'Step 2 of the saddle fitting procedure: check the tension.'
+      g3: 'Step 3 of the saddle fitting procedure: warm the medium.'
+      g4: 'Step 4 of the saddle fitting procedure: mark the reference line.'
+      g5: 'Step 5 of the saddle fitting procedure: clean the joints.'
+      g6: 'Step 6 of the saddle fitting procedure: confirm the fit.'
+      g7: 'Step 7 of the saddle fitting procedure: secure the clamps.'
+      g8: 'Step 8 of the saddle fitting procedure: record the measurement.'
+      x1: Her thesis defense was rescheduled because two committee members were traveling.
+      x2: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+      x3: The garden needs mulching before the first frost arrives in late October.
+      x4: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+      x5: Lunch options near the office now include a Vietnamese place on Elm Street.
+    gold_ids:
+    - g1
+    - g2
+    - g3
+    - g4
+    - g5
+    - g6
+    - g7
+    - g8
+    query: list the steps of the saddle fitting procedure in order
+  expected:
+    max_gold_in_topk: 5
+    composition_bound_flag: true
+  rationale: "m=8 > k=5 \u2014 the accounting must label this composition-bound."
+- id: r118
+  class: composition_m_gt_k
+  verified: false
+  retriever: bm25
+  assumptions:
+  - composition_bound computed from gold multiplicity vs k
+  input:
+    k: 5
+    docs:
+      g1: 'Step 1 of the press proofing procedure: prepare the surface.'
+      g2: 'Step 2 of the press proofing procedure: check the tension.'
+      g3: 'Step 3 of the press proofing procedure: warm the medium.'
+      g4: 'Step 4 of the press proofing procedure: mark the reference line.'
+      g5: 'Step 5 of the press proofing procedure: clean the joints.'
+      g6: 'Step 6 of the press proofing procedure: confirm the fit.'
+      x1: The quarterly budget review covered travel costs and staffing plans for the region.
+      x2: The garden needs mulching before the first frost arrives in late October.
+      x3: Annual review templates were updated to include the new competency framework.
+      x4: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+      x5: Lunch options near the office now include a Vietnamese place on Elm Street.
+    gold_ids:
+    - g1
+    - g2
+    - g3
+    - g4
+    - g5
+    - g6
+    query: list the steps of the press proofing procedure in order
+  expected:
+    max_gold_in_topk: 5
+    composition_bound_flag: true
+  rationale: "m=6 > k=5 \u2014 the accounting must label this composition-bound."
+- id: r119
+  class: composition_m_gt_k
+  verified: false
+  retriever: bm25
+  assumptions:
+  - composition_bound computed from gold multiplicity vs k
+  input:
+    k: 5
+    docs:
+      g1: 'Step 1 of the dye mordanting procedure: prepare the surface.'
+      g2: 'Step 2 of the dye mordanting procedure: check the tension.'
+      g3: 'Step 3 of the dye mordanting procedure: warm the medium.'
+      g4: 'Step 4 of the dye mordanting procedure: mark the reference line.'
+      g5: 'Step 5 of the dye mordanting procedure: clean the joints.'
+      g6: 'Step 6 of the dye mordanting procedure: confirm the fit.'
+      g7: 'Step 7 of the dye mordanting procedure: secure the clamps.'
+      x1: Lunch options near the office now include a Vietnamese place on Elm Street.
+      x2: Her thesis defense was rescheduled because two committee members were traveling.
+      x3: Basketball practice moved to the east gym while the main court is resurfaced.
+      x4: The museum's new exhibit features maritime paintings from the previous century.
+      x5: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+    gold_ids:
+    - g1
+    - g2
+    - g3
+    - g4
+    - g5
+    - g6
+    - g7
+    query: list the steps of the dye mordanting procedure in order
+  expected:
+    max_gold_in_topk: 5
+    composition_bound_flag: true
+  rationale: "m=7 > k=5 \u2014 the accounting must label this composition-bound."
+- id: r120
+  class: composition_m_gt_k
+  verified: false
+  retriever: bm25
+  assumptions:
+  - composition_bound computed from gold multiplicity vs k
+  input:
+    k: 5
+    docs:
+      g1: 'Step 1 of the wheel truing procedure: prepare the surface.'
+      g2: 'Step 2 of the wheel truing procedure: check the tension.'
+      g3: 'Step 3 of the wheel truing procedure: warm the medium.'
+      g4: 'Step 4 of the wheel truing procedure: mark the reference line.'
+      g5: 'Step 5 of the wheel truing procedure: clean the joints.'
+      g6: 'Step 6 of the wheel truing procedure: confirm the fit.'
+      g7: 'Step 7 of the wheel truing procedure: secure the clamps.'
+      g8: 'Step 8 of the wheel truing procedure: record the measurement.'
+      x1: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+      x2: Her thesis defense was rescheduled because two committee members were traveling.
+      x3: The garden needs mulching before the first frost arrives in late October.
+      x4: Basketball practice moved to the east gym while the main court is resurfaced.
+      x5: Annual review templates were updated to include the new competency framework.
+    gold_ids:
+    - g1
+    - g2
+    - g3
+    - g4
+    - g5
+    - g6
+    - g7
+    - g8
+    query: list the steps of the wheel truing procedure in order
+  expected:
+    max_gold_in_topk: 5
+    composition_bound_flag: true
+  rationale: "m=8 > k=5 \u2014 the accounting must label this composition-bound."
+- id: r121
+  class: composition_m_gt_k
+  verified: false
+  retriever: bm25
+  assumptions:
+  - composition_bound computed from gold multiplicity vs k
+  input:
+    k: 5
+    docs:
+      g1: 'Step 1 of the forge tempering procedure: prepare the surface.'
+      g2: 'Step 2 of the forge tempering procedure: check the tension.'
+      g3: 'Step 3 of the forge tempering procedure: warm the medium.'
+      g4: 'Step 4 of the forge tempering procedure: mark the reference line.'
+      g5: 'Step 5 of the forge tempering procedure: clean the joints.'
+      g6: 'Step 6 of the forge tempering procedure: confirm the fit.'
+      x1: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+      x2: Basketball practice moved to the east gym while the main court is resurfaced.
+      x3: Lunch options near the office now include a Vietnamese place on Elm Street.
+      x4: The quarterly budget review covered travel costs and staffing plans for the region.
+      x5: The garden needs mulching before the first frost arrives in late October.
+    gold_ids:
+    - g1
+    - g2
+    - g3
+    - g4
+    - g5
+    - g6
+    query: list the steps of the forge tempering procedure in order
+  expected:
+    max_gold_in_topk: 5
+    composition_bound_flag: true
+  rationale: "m=6 > k=5 \u2014 the accounting must label this composition-bound."
+- id: r122
+  class: composition_m_gt_k
+  verified: false
+  retriever: bm25
+  assumptions:
+  - composition_bound computed from gold multiplicity vs k
+  input:
+    k: 5
+    docs:
+      g1: 'Step 1 of the map engraving procedure: prepare the surface.'
+      g2: 'Step 2 of the map engraving procedure: check the tension.'
+      g3: 'Step 3 of the map engraving procedure: warm the medium.'
+      g4: 'Step 4 of the map engraving procedure: mark the reference line.'
+      g5: 'Step 5 of the map engraving procedure: clean the joints.'
+      g6: 'Step 6 of the map engraving procedure: confirm the fit.'
+      g7: 'Step 7 of the map engraving procedure: secure the clamps.'
+      x1: The quarterly budget review covered travel costs and staffing plans for the region.
+      x2: Her thesis defense was rescheduled because two committee members were traveling.
+      x3: Basketball practice moved to the east gym while the main court is resurfaced.
+      x4: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+      x5: Ticket prices for the festival increase after the early-bird window closes.
+    gold_ids:
+    - g1
+    - g2
+    - g3
+    - g4
+    - g5
+    - g6
+    - g7
+    query: list the steps of the map engraving procedure in order
+  expected:
+    max_gold_in_topk: 5
+    composition_bound_flag: true
+  rationale: "m=7 > k=5 \u2014 the accounting must label this composition-bound."
+- id: r123
+  class: composition_m_gt_k
+  verified: false
+  retriever: bm25
+  assumptions:
+  - composition_bound computed from gold multiplicity vs k
+  input:
+    k: 5
+    docs:
+      g1: 'Step 1 of the rope splicing procedure: prepare the surface.'
+      g2: 'Step 2 of the rope splicing procedure: check the tension.'
+      g3: 'Step 3 of the rope splicing procedure: warm the medium.'
+      g4: 'Step 4 of the rope splicing procedure: mark the reference line.'
+      g5: 'Step 5 of the rope splicing procedure: clean the joints.'
+      g6: 'Step 6 of the rope splicing procedure: confirm the fit.'
+      g7: 'Step 7 of the rope splicing procedure: secure the clamps.'
+      g8: 'Step 8 of the rope splicing procedure: record the measurement.'
+      x1: The garden needs mulching before the first frost arrives in late October.
+      x2: Annual review templates were updated to include the new competency framework.
+      x3: The museum's new exhibit features maritime paintings from the previous century.
+      x4: Basketball practice moved to the east gym while the main court is resurfaced.
+      x5: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+    gold_ids:
+    - g1
+    - g2
+    - g3
+    - g4
+    - g5
+    - g6
+    - g7
+    - g8
+    query: list the steps of the rope splicing procedure in order
+  expected:
+    max_gold_in_topk: 5
+    composition_bound_flag: true
+  rationale: "m=8 > k=5 \u2014 the accounting must label this composition-bound."
+- id: r124
+  class: composition_m_gt_k
+  verified: false
+  retriever: bm25
+  assumptions:
+  - composition_bound computed from gold multiplicity vs k
+  input:
+    k: 5
+    docs:
+      g1: 'Step 1 of the clock escapement adjustment procedure: prepare the surface.'
+      g2: 'Step 2 of the clock escapement adjustment procedure: check the tension.'
+      g3: 'Step 3 of the clock escapement adjustment procedure: warm the medium.'
+      g4: 'Step 4 of the clock escapement adjustment procedure: mark the reference line.'
+      g5: 'Step 5 of the clock escapement adjustment procedure: clean the joints.'
+      g6: 'Step 6 of the clock escapement adjustment procedure: confirm the fit.'
+      x1: The quarterly budget review covered travel costs and staffing plans for the region.
+      x2: Basketball practice moved to the east gym while the main court is resurfaced.
+      x3: The garden needs mulching before the first frost arrives in late October.
+      x4: Her thesis defense was rescheduled because two committee members were traveling.
+      x5: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+    gold_ids:
+    - g1
+    - g2
+    - g3
+    - g4
+    - g5
+    - g6
+    query: list the steps of the clock escapement adjustment procedure in order
+  expected:
+    max_gold_in_topk: 5
+    composition_bound_flag: true
+  rationale: "m=6 > k=5 \u2014 the accounting must label this composition-bound."
+- id: r125
+  class: composition_m_gt_k
+  verified: false
+  retriever: bm25
+  assumptions:
+  - composition_bound computed from gold multiplicity vs k
+  input:
+    k: 5
+    docs:
+      g1: 'Step 1 of the stained glass leading procedure: prepare the surface.'
+      g2: 'Step 2 of the stained glass leading procedure: check the tension.'
+      g3: 'Step 3 of the stained glass leading procedure: warm the medium.'
+      g4: 'Step 4 of the stained glass leading procedure: mark the reference line.'
+      g5: 'Step 5 of the stained glass leading procedure: clean the joints.'
+      g6: 'Step 6 of the stained glass leading procedure: confirm the fit.'
+      g7: 'Step 7 of the stained glass leading procedure: secure the clamps.'
+      x1: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+      x2: Her thesis defense was rescheduled because two committee members were traveling.
+      x3: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+      x4: The quarterly budget review covered travel costs and staffing plans for the region.
+      x5: The garden needs mulching before the first frost arrives in late October.
+    gold_ids:
+    - g1
+    - g2
+    - g3
+    - g4
+    - g5
+    - g6
+    - g7
+    query: list the steps of the stained glass leading procedure in order
+  expected:
+    max_gold_in_topk: 5
+    composition_bound_flag: true
+  rationale: "m=7 > k=5 \u2014 the accounting must label this composition-bound."
+- id: r126
+  class: composition_m_gt_k
+  verified: false
+  retriever: bm25
+  assumptions:
+  - composition_bound computed from gold multiplicity vs k
+  input:
+    k: 5
+    docs:
+      g1: 'Step 1 of the bonsai wiring procedure: prepare the surface.'
+      g2: 'Step 2 of the bonsai wiring procedure: check the tension.'
+      g3: 'Step 3 of the bonsai wiring procedure: warm the medium.'
+      g4: 'Step 4 of the bonsai wiring procedure: mark the reference line.'
+      g5: 'Step 5 of the bonsai wiring procedure: clean the joints.'
+      g6: 'Step 6 of the bonsai wiring procedure: confirm the fit.'
+      g7: 'Step 7 of the bonsai wiring procedure: secure the clamps.'
+      g8: 'Step 8 of the bonsai wiring procedure: record the measurement.'
+      x1: Basketball practice moved to the east gym while the main court is resurfaced.
+      x2: Lunch options near the office now include a Vietnamese place on Elm Street.
+      x3: The museum's new exhibit features maritime paintings from the previous century.
+      x4: Annual review templates were updated to include the new competency framework.
+      x5: Her thesis defense was rescheduled because two committee members were traveling.
+    gold_ids:
+    - g1
+    - g2
+    - g3
+    - g4
+    - g5
+    - g6
+    - g7
+    - g8
+    query: list the steps of the bonsai wiring procedure in order
+  expected:
+    max_gold_in_topk: 5
+    composition_bound_flag: true
+  rationale: "m=8 > k=5 \u2014 the accounting must label this composition-bound."
+- id: r127
+  class: composition_m_gt_k
+  verified: false
+  retriever: bm25
+  assumptions:
+  - composition_bound computed from gold multiplicity vs k
+  input:
+    k: 5
+    docs:
+      g1: 'Step 1 of the falconry imping procedure: prepare the surface.'
+      g2: 'Step 2 of the falconry imping procedure: check the tension.'
+      g3: 'Step 3 of the falconry imping procedure: warm the medium.'
+      g4: 'Step 4 of the falconry imping procedure: mark the reference line.'
+      g5: 'Step 5 of the falconry imping procedure: clean the joints.'
+      g6: 'Step 6 of the falconry imping procedure: confirm the fit.'
+      x1: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+      x2: Lunch options near the office now include a Vietnamese place on Elm Street.
+      x3: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+      x4: Basketball practice moved to the east gym while the main court is resurfaced.
+      x5: Ticket prices for the festival increase after the early-bird window closes.
+    gold_ids:
+    - g1
+    - g2
+    - g3
+    - g4
+    - g5
+    - g6
+    query: list the steps of the falconry imping procedure in order
+  expected:
+    max_gold_in_topk: 5
+    composition_bound_flag: true
+  rationale: "m=6 > k=5 \u2014 the accounting must label this composition-bound."
+- id: r128
+  class: composition_m_gt_k
+  verified: false
+  retriever: bm25
+  assumptions:
+  - composition_bound computed from gold multiplicity vs k
+  input:
+    k: 5
+    docs:
+      g1: 'Step 1 of the tapestry warping procedure: prepare the surface.'
+      g2: 'Step 2 of the tapestry warping procedure: check the tension.'
+      g3: 'Step 3 of the tapestry warping procedure: warm the medium.'
+      g4: 'Step 4 of the tapestry warping procedure: mark the reference line.'
+      g5: 'Step 5 of the tapestry warping procedure: clean the joints.'
+      g6: 'Step 6 of the tapestry warping procedure: confirm the fit.'
+      g7: 'Step 7 of the tapestry warping procedure: secure the clamps.'
+      x1: Basketball practice moved to the east gym while the main court is resurfaced.
+      x2: Annual review templates were updated to include the new competency framework.
+      x3: Her thesis defense was rescheduled because two committee members were traveling.
+      x4: The quarterly budget review covered travel costs and staffing plans for the region.
+      x5: Lunch options near the office now include a Vietnamese place on Elm Street.
+    gold_ids:
+    - g1
+    - g2
+    - g3
+    - g4
+    - g5
+    - g6
+    - g7
+    query: list the steps of the tapestry warping procedure in order
+  expected:
+    max_gold_in_topk: 5
+    composition_bound_flag: true
+  rationale: "m=7 > k=5 \u2014 the accounting must label this composition-bound."
+- id: r129
+  class: composition_m_gt_k
+  verified: false
+  retriever: bm25
+  assumptions:
+  - composition_bound computed from gold multiplicity vs k
+  input:
+    k: 5
+    docs:
+      g1: 'Step 1 of the canoe gunwale replacement procedure: prepare the surface.'
+      g2: 'Step 2 of the canoe gunwale replacement procedure: check the tension.'
+      g3: 'Step 3 of the canoe gunwale replacement procedure: warm the medium.'
+      g4: 'Step 4 of the canoe gunwale replacement procedure: mark the reference line.'
+      g5: 'Step 5 of the canoe gunwale replacement procedure: clean the joints.'
+      g6: 'Step 6 of the canoe gunwale replacement procedure: confirm the fit.'
+      g7: 'Step 7 of the canoe gunwale replacement procedure: secure the clamps.'
+      g8: 'Step 8 of the canoe gunwale replacement procedure: record the measurement.'
+      x1: Lunch options near the office now include a Vietnamese place on Elm Street.
+      x2: The garden needs mulching before the first frost arrives in late October.
+      x3: Ticket prices for the festival increase after the early-bird window closes.
+      x4: The quarterly budget review covered travel costs and staffing plans for the region.
+      x5: The museum's new exhibit features maritime paintings from the previous century.
+    gold_ids:
+    - g1
+    - g2
+    - g3
+    - g4
+    - g5
+    - g6
+    - g7
+    - g8
+    query: list the steps of the canoe gunwale replacement procedure in order
+  expected:
+    max_gold_in_topk: 5
+    composition_bound_flag: true
+  rationale: "m=8 > k=5 \u2014 the accounting must label this composition-bound."
+- id: r130
+  class: composition_m_gt_k
+  verified: false
+  retriever: bm25
+  assumptions:
+  - composition_bound computed from gold multiplicity vs k
+  input:
+    k: 5
+    docs:
+      g1: 'Step 1 of the mill dressing procedure: prepare the surface.'
+      g2: 'Step 2 of the mill dressing procedure: check the tension.'
+      g3: 'Step 3 of the mill dressing procedure: warm the medium.'
+      g4: 'Step 4 of the mill dressing procedure: mark the reference line.'
+      g5: 'Step 5 of the mill dressing procedure: clean the joints.'
+      g6: 'Step 6 of the mill dressing procedure: confirm the fit.'
+      x1: The quarterly budget review covered travel costs and staffing plans for the region.
+      x2: The garden needs mulching before the first frost arrives in late October.
+      x3: Basketball practice moved to the east gym while the main court is resurfaced.
+      x4: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+      x5: Ticket prices for the festival increase after the early-bird window closes.
+    gold_ids:
+    - g1
+    - g2
+    - g3
+    - g4
+    - g5
+    - g6
+    query: list the steps of the mill dressing procedure in order
+  expected:
+    max_gold_in_topk: 5
+    composition_bound_flag: true
+  rationale: "m=6 > k=5 \u2014 the accounting must label this composition-bound."
+- id: r131
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The thrumzweth threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+    - op: insert
+      item: n3
+      text: The museum's new exhibit features maritime paintings from the previous century.
+    - op: evict_scripted
+      item: n1
+    query: thrumzweth threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r132
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The vrelclune threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+    - op: insert
+      item: n3
+      text: Ticket prices for the festival increase after the early-bird window closes.
+    - op: evict_scripted
+      item: n1
+    query: vrelclune threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r133
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The groqskule threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: Annual review templates were updated to include the new competency framework.
+    - op: insert
+      item: n3
+      text: The garden needs mulching before the first frost arrives in late October.
+    - op: evict_scripted
+      item: n1
+    query: groqskule threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r134
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The plurplule threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+    - op: insert
+      item: n3
+      text: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+    - op: evict_scripted
+      item: n1
+    query: plurplule threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r135
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The trelkrax threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: Basketball practice moved to the east gym while the main court is resurfaced.
+    - op: insert
+      item: n3
+      text: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+    - op: evict_scripted
+      item: n1
+    query: trelkrax threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r136
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The zwurskyx threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: Basketball practice moved to the east gym while the main court is resurfaced.
+    - op: insert
+      item: n3
+      text: Basketball practice moved to the east gym while the main court is resurfaced.
+    - op: evict_scripted
+      item: n1
+    query: zwurskyx threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r137
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The skanflax threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: Ticket prices for the festival increase after the early-bird window closes.
+    - op: insert
+      item: n3
+      text: The quarterly budget review covered travel costs and staffing plans for the region.
+    - op: evict_scripted
+      item: n1
+    query: skanflax threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r138
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The skanflule threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: The quarterly budget review covered travel costs and staffing plans for the region.
+    - op: insert
+      item: n3
+      text: Basketball practice moved to the east gym while the main court is resurfaced.
+    - op: evict_scripted
+      item: n1
+    query: skanflule threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r139
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The quexvroid threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: The quarterly budget review covered travel costs and staffing plans for the region.
+    - op: insert
+      item: n3
+      text: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+    - op: evict_scripted
+      item: n1
+    query: quexvroid threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r140
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The krurclule threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: Annual review templates were updated to include the new competency framework.
+    - op: insert
+      item: n3
+      text: Her thesis defense was rescheduled because two committee members were traveling.
+    - op: evict_scripted
+      item: n1
+    query: krurclule threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r141
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The quexcleth threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: Ticket prices for the festival increase after the early-bird window closes.
+    - op: insert
+      item: n3
+      text: The museum's new exhibit features maritime paintings from the previous century.
+    - op: evict_scripted
+      item: n1
+    query: quexcleth threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r142
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The plursnarn threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: The museum's new exhibit features maritime paintings from the previous century.
+    - op: insert
+      item: n3
+      text: Annual review templates were updated to include the new competency framework.
+    - op: evict_scripted
+      item: n1
+    query: plursnarn threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r143
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The kroqquule threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: Ticket prices for the festival increase after the early-bird window closes.
+    - op: insert
+      item: n3
+      text: Her thesis defense was rescheduled because two committee members were traveling.
+    - op: evict_scripted
+      item: n1
+    query: kroqquule threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r144
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The clandrax threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+    - op: insert
+      item: n3
+      text: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+    - op: evict_scripted
+      item: n1
+    query: clandrax threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r145
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The krelbrine threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: Basketball practice moved to the east gym while the main court is resurfaced.
+    - op: insert
+      item: n3
+      text: Annual review templates were updated to include the new competency framework.
+    - op: evict_scripted
+      item: n1
+    query: krelbrine threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r146
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The brumsnule threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+    - op: insert
+      item: n3
+      text: Basketball practice moved to the east gym while the main court is resurfaced.
+    - op: evict_scripted
+      item: n1
+    query: brumsnule threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r147
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The zwilfloid threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: The quarterly budget review covered travel costs and staffing plans for the region.
+    - op: insert
+      item: n3
+      text: The garden needs mulching before the first frost arrives in late October.
+    - op: evict_scripted
+      item: n1
+    query: zwilfloid threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r148
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The quoqgroid threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: The museum's new exhibit features maritime paintings from the previous century.
+    - op: insert
+      item: n3
+      text: Annual review templates were updated to include the new competency framework.
+    - op: evict_scripted
+      item: n1
+    query: quoqgroid threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r149
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The quilclamp threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: The garden needs mulching before the first frost arrives in late October.
+    - op: insert
+      item: n3
+      text: Annual review templates were updated to include the new competency framework.
+    - op: evict_scripted
+      item: n1
+    query: quilclamp threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r150
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The bribkrule threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+    - op: insert
+      item: n3
+      text: Lunch options near the office now include a Vietnamese place on Elm Street.
+    - op: evict_scripted
+      item: n1
+    query: bribkrule threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r151
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The ploqgrule threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+    - op: insert
+      item: n3
+      text: Her thesis defense was rescheduled because two committee members were traveling.
+    - op: evict_scripted
+      item: n1
+    query: ploqgrule threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r152
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The flibquax threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: Annual review templates were updated to include the new competency framework.
+    - op: insert
+      item: n3
+      text: The museum's new exhibit features maritime paintings from the previous century.
+    - op: evict_scripted
+      item: n1
+    query: flibquax threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r153
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The tropclamp threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: Her thesis defense was rescheduled because two committee members were traveling.
+    - op: insert
+      item: n3
+      text: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+    - op: evict_scripted
+      item: n1
+    query: tropclamp threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r154
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The vrelvroid threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: Basketball practice moved to the east gym while the main court is resurfaced.
+    - op: insert
+      item: n3
+      text: Ticket prices for the festival increase after the early-bird window closes.
+    - op: evict_scripted
+      item: n1
+    query: vrelvroid threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r155
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The grurskyx threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: The quarterly budget review covered travel costs and staffing plans for the region.
+    - op: insert
+      item: n3
+      text: Weather delayed the shipment; the port authority rescheduled unloading to Friday.
+    - op: evict_scripted
+      item: n1
+    query: grurskyx threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r156
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The bravbroid threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: Lunch options near the office now include a Vietnamese place on Elm Street.
+    - op: insert
+      item: n3
+      text: Annual review templates were updated to include the new competency framework.
+    - op: evict_scripted
+      item: n1
+    query: bravbroid threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r157
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The drexbrax threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: Annual review templates were updated to include the new competency framework.
+    - op: insert
+      item: n3
+      text: Annual review templates were updated to include the new competency framework.
+    - op: evict_scripted
+      item: n1
+    query: drexbrax threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r158
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The plibkrarn threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: Basketball practice moved to the east gym while the main court is resurfaced.
+    - op: insert
+      item: n3
+      text: 'Team offsite notes: venue booked, catering confirmed, agenda drafted for Thursday.'
+    - op: evict_scripted
+      item: n1
+    query: plibkrarn threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r159
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The snavbroid threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: Lunch options near the office now include a Vietnamese place on Elm Street.
+    - op: insert
+      item: n3
+      text: Her thesis defense was rescheduled because two committee members were traveling.
+    - op: evict_scripted
+      item: n1
+    query: snavbroid threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'
+- id: r160
+  class: post_eviction_ghost
+  verified: false
+  retriever: bm25
+  assumptions:
+  - scripted_eviction available
+  - index updated on evict
+  input:
+    k: 5
+    setup:
+    - op: insert
+      item: n1
+      text: The skibtrune threshold constant is four point six for bay nine.
+    - op: insert
+      item: n2
+      text: Lunch options near the office now include a Vietnamese place on Elm Street.
+    - op: insert
+      item: n3
+      text: Ticket prices for the festival increase after the early-bird window closes.
+    - op: evict_scripted
+      item: n1
+    query: skibtrune threshold constant
+  expected:
+    results_containing:
+      n1: never
+  rationale: 'Index-consistency invariant: evicted items are unreachable.'

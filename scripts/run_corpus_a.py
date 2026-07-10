@@ -39,6 +39,7 @@ REPO = Path(__file__).resolve().parents[1]
 FIXTURE_FILES = [
     REPO / "golden_corpora" / "corpus_a_reader" / "reader_fixtures.yaml",
     REPO / "golden_corpora" / "corpus_a_reader" / "reader_fixtures_bulk.yaml",
+    REPO / "golden_corpora" / "corpus_a_reader" / "reader_fixtures_bulk2.yaml",
 ]
 OUT_DIR = REPO / "report" / "corpus_a_runs"
 

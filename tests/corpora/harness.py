@@ -36,13 +36,17 @@ CORPORA_ROOT = Path(__file__).resolve().parents[2] / "golden_corpora"
 # fixtures live in *_bulk.yaml so the verified files are never rewritten).
 _CORPUS_FILES = {
     "corpus_e": [CORPORA_ROOT / "corpus_e" / "e_fixtures.yaml",
-                 CORPORA_ROOT / "corpus_e" / "e_fixtures_bulk.yaml"],
+                 CORPORA_ROOT / "corpus_e" / "e_fixtures_bulk.yaml",
+                 CORPORA_ROOT / "corpus_e" / "e_fixtures_bulk2.yaml"],
     "corpus_r": [CORPORA_ROOT / "corpus_r" / "r_fixtures.yaml",
-                 CORPORA_ROOT / "corpus_r" / "r_fixtures_bulk.yaml"],
+                 CORPORA_ROOT / "corpus_r" / "r_fixtures_bulk.yaml",
+                 CORPORA_ROOT / "corpus_r" / "r_fixtures_bulk2.yaml"],
     "corpus_a_reader": [CORPORA_ROOT / "corpus_a_reader" / "reader_fixtures.yaml",
-                        CORPORA_ROOT / "corpus_a_reader" / "reader_fixtures_bulk.yaml"],
+                        CORPORA_ROOT / "corpus_a_reader" / "reader_fixtures_bulk.yaml",
+                        CORPORA_ROOT / "corpus_a_reader" / "reader_fixtures_bulk2.yaml"],
     "verdict_triplets": [CORPORA_ROOT / "corpus_a_judge" / "verdict_triplets.yaml",
-                         CORPORA_ROOT / "corpus_a_judge" / "verdict_triplets_bulk.yaml"],
+                         CORPORA_ROOT / "corpus_a_judge" / "verdict_triplets_bulk.yaml",
+                         CORPORA_ROOT / "corpus_a_judge" / "verdict_triplets_bulk2.yaml"],
 }
 
 

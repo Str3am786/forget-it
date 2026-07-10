@@ -1,0 +1,181 @@
+# corpus_a_reader sprint-2: related_but_insufficient_abstain hard negatives.
+- id: a101
+  class: related_but_insufficient_abstain
+  verified: false
+  input:
+    evidence:
+    - 'User: Conference badge pickup is in Hall B; the welcome reception starts at 6pm on the terrace.'
+    - 'User: Parking at the conference center costs 12 euros a day, validated at the front desk.'
+    question: What is the wifi password at the conference center?
+  expected:
+    must_abstain: true
+  rationale: "Hard negative: the evidence is RICH in adjacent specifics on the same topic but the asked\
+    \ fact is absent \u2014 the D6-purge bluffing mode. Any answer here is fabrication."
+- id: a102
+  class: related_but_insufficient_abstain
+  verified: false
+  input:
+    evidence:
+    - 'User: The landlord repainted the kitchen and replaced the dishwasher in March.'
+    - 'User: Rent is due on the 1st and the building has bike storage in the basement.'
+    question: What is the apartment's square meterage?
+  expected:
+    must_abstain: true
+  rationale: "Hard negative: the evidence is RICH in adjacent specifics on the same topic but the asked\
+    \ fact is absent \u2014 the D6-purge bluffing mode. Any answer here is fabrication."
+- id: a103
+  class: related_but_insufficient_abstain
+  verified: false
+  input:
+    evidence:
+    - 'User: My flight lands in Lisbon at 11:40 and the taxi rank is right outside arrivals.'
+    - 'User: I packed the blue suitcase and left a spare key with Rui.'
+    question: Which hotel am I staying at in Lisbon?
+  expected:
+    must_abstain: true
+  rationale: "Hard negative: the evidence is RICH in adjacent specifics on the same topic but the asked\
+    \ fact is absent \u2014 the D6-purge bluffing mode. Any answer here is fabrication."
+- id: a104
+  class: related_but_insufficient_abstain
+  verified: false
+  input:
+    evidence:
+    - 'User: The marathon route passes the old mill at kilometer 12 and the aid station is at 15.'
+    - 'User: I''ve been averaging 5:40 per kilometer in training this month.'
+    question: What is my bib number for the marathon?
+  expected:
+    must_abstain: true
+  rationale: "Hard negative: the evidence is RICH in adjacent specifics on the same topic but the asked\
+    \ fact is absent \u2014 the D6-purge bluffing mode. Any answer here is fabrication."
+- id: a105
+  class: related_but_insufficient_abstain
+  verified: false
+  input:
+    evidence:
+    - 'User: The book club meets Thursdays at Nora''s place; we''re on chapter nine.'
+    - 'User: Nora always makes the lemon cake everyone fights over.'
+    question: Which book is the book club reading?
+  expected:
+    must_abstain: true
+  rationale: "Hard negative: the evidence is RICH in adjacent specifics on the same topic but the asked\
+    \ fact is absent \u2014 the D6-purge bluffing mode. Any answer here is fabrication."
+- id: a106
+  class: related_but_insufficient_abstain
+  verified: false
+  input:
+    evidence:
+    - 'User: The garage replaced the timing belt and rotated the tires on Tuesday.'
+    - 'User: The courtesy car they lent me smells of pine air freshener.'
+    question: How much did the garage charge for the service?
+  expected:
+    must_abstain: true
+  rationale: "Hard negative: the evidence is RICH in adjacent specifics on the same topic but the asked\
+    \ fact is absent \u2014 the D6-purge bluffing mode. Any answer here is fabrication."
+- id: a107
+  class: related_but_insufficient_abstain
+  verified: false
+  input:
+    evidence:
+    - 'User: My physiotherapy sessions are twice a week at the clinic on Harbor Street.'
+    - 'User: The exercises focus on my left shoulder after the climbing injury.'
+    question: What is my physiotherapist's name?
+  expected:
+    must_abstain: true
+  rationale: "Hard negative: the evidence is RICH in adjacent specifics on the same topic but the asked\
+    \ fact is absent \u2014 the D6-purge bluffing mode. Any answer here is fabrication."
+- id: a108
+  class: related_but_insufficient_abstain
+  verified: false
+  input:
+    evidence:
+    - 'User: The wedding is outdoors at the botanical garden with a jazz trio for the ceremony.'
+    - 'User: Dress code is garden formal and the forecast looks dry.'
+    question: What time does the wedding ceremony start?
+  expected:
+    must_abstain: true
+  rationale: "Hard negative: the evidence is RICH in adjacent specifics on the same topic but the asked\
+    \ fact is absent \u2014 the D6-purge bluffing mode. Any answer here is fabrication."
+- id: a109
+  class: related_but_insufficient_abstain
+  verified: false
+  input:
+    evidence:
+    - 'User: We planted two apple trees and a plum tree along the south fence last autumn.'
+    - 'User: The plum flowered first this spring, weirdly.'
+    question: Which apple varieties did we plant?
+  expected:
+    must_abstain: true
+  rationale: "Hard negative: the evidence is RICH in adjacent specifics on the same topic but the asked\
+    \ fact is absent \u2014 the D6-purge bluffing mode. Any answer here is fabrication."
+- id: a110
+  class: related_but_insufficient_abstain
+  verified: false
+  input:
+    evidence:
+    - 'User: The server migration is scheduled for the weekend; downtime window is announced.'
+    - 'User: Rollback plan is documented and the on-call rota is updated.'
+    question: How long is the downtime window for the migration?
+  expected:
+    must_abstain: true
+  rationale: "Hard negative: the evidence is RICH in adjacent specifics on the same topic but the asked\
+    \ fact is absent \u2014 the D6-purge bluffing mode. Any answer here is fabrication."
+- id: a111
+  class: related_but_insufficient_abstain
+  verified: false
+  input:
+    evidence:
+    - 'User: Grandpa''s watch was serviced and the strap replaced with brown leather.'
+    - 'User: The watchmaker said the movement is from the 1960s and worth insuring.'
+    question: How much is grandpa's watch insured for?
+  expected:
+    must_abstain: true
+  rationale: "Hard negative: the evidence is RICH in adjacent specifics on the same topic but the asked\
+    \ fact is absent \u2014 the D6-purge bluffing mode. Any answer here is fabrication."
+- id: a112
+  class: related_but_insufficient_abstain
+  verified: false
+  input:
+    evidence:
+    - 'User: The choir''s winter concert is at the stone church with the good acoustics.'
+    - 'User: We''re singing two Bruckner motets and a Poulenc piece.'
+    question: On what date is the winter concert?
+  expected:
+    must_abstain: true
+  rationale: "Hard negative: the evidence is RICH in adjacent specifics on the same topic but the asked\
+    \ fact is absent \u2014 the D6-purge bluffing mode. Any answer here is fabrication."
+- id: a113
+  class: related_but_insufficient_abstain
+  verified: false
+  input:
+    evidence:
+    - 'User: The daycare sends photos every afternoon and does forest walks on Fridays.'
+    - 'User: Pickup is any time before six; late fees are steep.'
+    question: What is the monthly daycare fee?
+  expected:
+    must_abstain: true
+  rationale: "Hard negative: the evidence is RICH in adjacent specifics on the same topic but the asked\
+    \ fact is absent \u2014 the D6-purge bluffing mode. Any answer here is fabrication."
+- id: a114
+  class: related_but_insufficient_abstain
+  verified: false
+  input:
+    evidence:
+    - 'User: The startup''s runway update was shared in the all-hands; morale is decent.'
+    - 'User: We''re hiring two backend engineers this quarter.'
+    question: How many months of runway does the startup have?
+  expected:
+    must_abstain: true
+  rationale: "Hard negative: the evidence is RICH in adjacent specifics on the same topic but the asked\
+    \ fact is absent \u2014 the D6-purge bluffing mode. Any answer here is fabrication."
+- id: a115
+  class: related_but_insufficient_abstain
+  verified: false
+  input:
+    evidence:
+    - 'User: The ferry to the island runs hourly in summer and the crossing is 25 minutes.'
+    - 'User: Dogs are allowed on the upper deck if leashed.'
+    question: How much does the ferry ticket cost?
+  expected:
+    must_abstain: true
+  rationale: "Hard negative: the evidence is RICH in adjacent specifics on the same topic but the asked\
+    \ fact is absent \u2014 the D6-purge bluffing mode. Any answer here is fabrication."

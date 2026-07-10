@@ -1,0 +1,3594 @@
+# corpus_e sprint-2 growth — scripts/bulk_corpora_sprint2.py (seed 20260710); verified: false until author check.
+- id: e051
+  class: lru_touch
+  verified: false
+  assumptions:
+  - touch updates recency
+  - eviction loop runs inside insert only
+  input:
+    policy: lru
+    budget: 140
+    events:
+    - op: insert
+      item: A
+      size: 40
+    - op: insert
+      item: B
+      size: 40
+    - op: insert
+      item: C
+      size: 40
+    - op: touch
+      item: A
+    - op: touch
+      item: B
+    - op: insert
+      item: D
+      size: 40
+  expected:
+    evictions:
+    - C
+    compressions: []
+    resident:
+    - A
+    - B
+    - D
+    resident_bytes:
+      A: 40
+      B: 40
+      D: 40
+  rationale: "Touches on ['A', 'B'] flip the victim(s) from ['A'] to ['C'] \u2014 live recency bookkeeping."
+- id: e052
+  class: lru_touch
+  verified: false
+  assumptions:
+  - touch updates recency
+  - eviction loop runs inside insert only
+  input:
+    policy: lru
+    budget: 100
+    events:
+    - op: insert
+      item: A
+      size: 40
+    - op: insert
+      item: B
+      size: 40
+    - op: touch
+      item: A
+    - op: insert
+      item: C
+      size: 40
+  expected:
+    evictions:
+    - B
+    compressions: []
+    resident:
+    - A
+    - C
+    resident_bytes:
+      A: 40
+      C: 40
+  rationale: "Touches on ['A'] flip the victim(s) from ['A'] to ['B'] \u2014 live recency bookkeeping."
+- id: e053
+  class: lru_touch
+  verified: false
+  assumptions:
+  - touch updates recency
+  - eviction loop runs inside insert only
+  input:
+    policy: lru
+    budget: 175
+    events:
+    - op: insert
+      item: A
+      size: 50
+    - op: insert
+      item: B
+      size: 50
+    - op: insert
+      item: C
+      size: 50
+    - op: touch
+      item: A
+    - op: touch
+      item: B
+    - op: insert
+      item: D
+      size: 50
+  expected:
+    evictions:
+    - C
+    compressions: []
+    resident:
+    - A
+    - B
+    - D
+    resident_bytes:
+      A: 50
+      B: 50
+      D: 50
+  rationale: "Touches on ['A', 'B'] flip the victim(s) from ['A'] to ['C'] \u2014 live recency bookkeeping."
+- id: e054
+  class: lru_touch
+  verified: false
+  assumptions:
+  - touch updates recency
+  - eviction loop runs inside insert only
+  input:
+    policy: lru
+    budget: 125
+    events:
+    - op: insert
+      item: A
+      size: 50
+    - op: insert
+      item: B
+      size: 50
+    - op: touch
+      item: A
+    - op: insert
+      item: C
+      size: 50
+  expected:
+    evictions:
+    - B
+    compressions: []
+    resident:
+    - A
+    - C
+    resident_bytes:
+      A: 50
+      C: 50
+  rationale: "Touches on ['A'] flip the victim(s) from ['A'] to ['B'] \u2014 live recency bookkeeping."
+- id: e055
+  class: lru_touch
+  verified: false
+  assumptions:
+  - touch updates recency
+  - eviction loop runs inside insert only
+  input:
+    policy: lru
+    budget: 75
+    events:
+    - op: insert
+      item: A
+      size: 30
+    - op: insert
+      item: B
+      size: 30
+    - op: touch
+      item: A
+    - op: insert
+      item: C
+      size: 30
+  expected:
+    evictions:
+    - B
+    compressions: []
+    resident:
+    - A
+    - C
+    resident_bytes:
+      A: 30
+      C: 30
+  rationale: "Touches on ['A'] flip the victim(s) from ['A'] to ['B'] \u2014 live recency bookkeeping."
+- id: e056
+  class: lru_touch
+  verified: false
+  assumptions:
+  - touch updates recency
+  - eviction loop runs inside insert only
+  input:
+    policy: lru
+    budget: 100
+    events:
+    - op: insert
+      item: A
+      size: 40
+    - op: insert
+      item: B
+      size: 40
+    - op: touch
+      item: A
+    - op: insert
+      item: C
+      size: 40
+  expected:
+    evictions:
+    - B
+    compressions: []
+    resident:
+    - A
+    - C
+    resident_bytes:
+      A: 40
+      C: 40
+  rationale: "Touches on ['A'] flip the victim(s) from ['A'] to ['B'] \u2014 live recency bookkeeping."
+- id: e057
+  class: lru_touch
+  verified: false
+  assumptions:
+  - touch updates recency
+  - eviction loop runs inside insert only
+  input:
+    policy: lru
+    budget: 75
+    events:
+    - op: insert
+      item: A
+      size: 30
+    - op: insert
+      item: B
+      size: 30
+    - op: touch
+      item: A
+    - op: insert
+      item: C
+      size: 30
+  expected:
+    evictions:
+    - B
+    compressions: []
+    resident:
+    - A
+    - C
+    resident_bytes:
+      A: 30
+      C: 30
+  rationale: "Touches on ['A'] flip the victim(s) from ['A'] to ['B'] \u2014 live recency bookkeeping."
+- id: e058
+  class: lru_touch
+  verified: false
+  assumptions:
+  - touch updates recency
+  - eviction loop runs inside insert only
+  input:
+    policy: lru
+    budget: 75
+    events:
+    - op: insert
+      item: A
+      size: 30
+    - op: insert
+      item: B
+      size: 30
+    - op: touch
+      item: A
+    - op: insert
+      item: C
+      size: 30
+  expected:
+    evictions:
+    - B
+    compressions: []
+    resident:
+    - A
+    - C
+    resident_bytes:
+      A: 30
+      C: 30
+  rationale: "Touches on ['A'] flip the victim(s) from ['A'] to ['B'] \u2014 live recency bookkeeping."
+- id: e059
+  class: lru_touch
+  verified: false
+  assumptions:
+  - touch updates recency
+  - eviction loop runs inside insert only
+  input:
+    policy: lru
+    budget: 225
+    events:
+    - op: insert
+      item: A
+      size: 50
+    - op: insert
+      item: B
+      size: 50
+    - op: insert
+      item: C
+      size: 50
+    - op: insert
+      item: D
+      size: 50
+    - op: touch
+      item: A
+    - op: touch
+      item: C
+    - op: insert
+      item: E
+      size: 50
+  expected:
+    evictions:
+    - B
+    compressions: []
+    resident:
+    - A
+    - C
+    - D
+    - E
+    resident_bytes:
+      A: 50
+      C: 50
+      D: 50
+      E: 50
+  rationale: "Touches on ['A', 'C'] flip the victim(s) from ['A'] to ['B'] \u2014 live recency bookkeeping."
+- id: e060
+  class: lru_touch
+  verified: false
+  assumptions:
+  - touch updates recency
+  - eviction loop runs inside insert only
+  input:
+    policy: lru
+    budget: 140
+    events:
+    - op: insert
+      item: A
+      size: 40
+    - op: insert
+      item: B
+      size: 40
+    - op: insert
+      item: C
+      size: 40
+    - op: touch
+      item: A
+    - op: insert
+      item: D
+      size: 40
+  expected:
+    evictions:
+    - B
+    compressions: []
+    resident:
+    - A
+    - C
+    - D
+    resident_bytes:
+      A: 40
+      C: 40
+      D: 40
+  rationale: "Touches on ['A'] flip the victim(s) from ['A'] to ['B'] \u2014 live recency bookkeeping."
+- id: e061
+  class: lru_touch
+  verified: false
+  assumptions:
+  - touch updates recency
+  - eviction loop runs inside insert only
+  input:
+    policy: lru
+    budget: 140
+    events:
+    - op: insert
+      item: A
+      size: 40
+    - op: insert
+      item: B
+      size: 40
+    - op: insert
+      item: C
+      size: 40
+    - op: touch
+      item: A
+    - op: insert
+      item: D
+      size: 40
+  expected:
+    evictions:
+    - B
+    compressions: []
+    resident:
+    - A
+    - C
+    - D
+    resident_bytes:
+      A: 40
+      C: 40
+      D: 40
+  rationale: "Touches on ['A'] flip the victim(s) from ['A'] to ['B'] \u2014 live recency bookkeeping."
+- id: e062
+  class: lru_touch
+  verified: false
+  assumptions:
+  - touch updates recency
+  - eviction loop runs inside insert only
+  input:
+    policy: lru
+    budget: 135
+    events:
+    - op: insert
+      item: A
+      size: 30
+    - op: insert
+      item: B
+      size: 30
+    - op: insert
+      item: C
+      size: 30
+    - op: insert
+      item: D
+      size: 30
+    - op: touch
+      item: A
+    - op: touch
+      item: B
+    - op: insert
+      item: E
+      size: 30
+  expected:
+    evictions:
+    - C
+    compressions: []
+    resident:
+    - A
+    - B
+    - D
+    - E
+    resident_bytes:
+      A: 30
+      B: 30
+      D: 30
+      E: 30
+  rationale: "Touches on ['A', 'B'] flip the victim(s) from ['A'] to ['C'] \u2014 live recency bookkeeping."
+- id: e063
+  class: lru_touch
+  verified: false
+  assumptions:
+  - touch updates recency
+  - eviction loop runs inside insert only
+  input:
+    policy: lru
+    budget: 140
+    events:
+    - op: insert
+      item: A
+      size: 40
+    - op: insert
+      item: B
+      size: 40
+    - op: insert
+      item: C
+      size: 40
+    - op: touch
+      item: A
+    - op: insert
+      item: D
+      size: 40
+  expected:
+    evictions:
+    - B
+    compressions: []
+    resident:
+    - A
+    - C
+    - D
+    resident_bytes:
+      A: 40
+      C: 40
+      D: 40
+  rationale: "Touches on ['A'] flip the victim(s) from ['A'] to ['B'] \u2014 live recency bookkeeping."
+- id: e064
+  class: lru_touch
+  verified: false
+  assumptions:
+  - touch updates recency
+  - eviction loop runs inside insert only
+  input:
+    policy: lru
+    budget: 180
+    events:
+    - op: insert
+      item: A
+      size: 40
+    - op: insert
+      item: B
+      size: 40
+    - op: insert
+      item: C
+      size: 40
+    - op: insert
+      item: D
+      size: 40
+    - op: touch
+      item: A
+    - op: touch
+      item: C
+    - op: insert
+      item: E
+      size: 40
+  expected:
+    evictions:
+    - B
+    compressions: []
+    resident:
+    - A
+    - C
+    - D
+    - E
+    resident_bytes:
+      A: 40
+      C: 40
+      D: 40
+      E: 40
+  rationale: "Touches on ['A', 'C'] flip the victim(s) from ['A'] to ['B'] \u2014 live recency bookkeeping."
+- id: e065
+  class: lru_touch
+  verified: false
+  assumptions:
+  - touch updates recency
+  - eviction loop runs inside insert only
+  input:
+    policy: lru
+    budget: 87
+    events:
+    - op: insert
+      item: A
+      size: 25
+    - op: insert
+      item: B
+      size: 25
+    - op: insert
+      item: C
+      size: 25
+    - op: touch
+      item: A
+    - op: touch
+      item: B
+    - op: insert
+      item: D
+      size: 25
+  expected:
+    evictions:
+    - C
+    compressions: []
+    resident:
+    - A
+    - B
+    - D
+    resident_bytes:
+      A: 25
+      B: 25
+      D: 25
+  rationale: "Touches on ['A', 'B'] flip the victim(s) from ['A'] to ['C'] \u2014 live recency bookkeeping."
+- id: e066
+  class: lru_touch
+  verified: false
+  assumptions:
+  - touch updates recency
+  - eviction loop runs inside insert only
+  input:
+    policy: lru
+    budget: 125
+    events:
+    - op: insert
+      item: A
+      size: 50
+    - op: insert
+      item: B
+      size: 50
+    - op: touch
+      item: A
+    - op: insert
+      item: C
+      size: 50
+  expected:
+    evictions:
+    - B
+    compressions: []
+    resident:
+    - A
+    - C
+    resident_bytes:
+      A: 50
+      C: 50
+  rationale: "Touches on ['A'] flip the victim(s) from ['A'] to ['B'] \u2014 live recency bookkeeping."
+- id: e067
+  class: lru_touch
+  verified: false
+  assumptions:
+  - touch updates recency
+  - eviction loop runs inside insert only
+  input:
+    policy: lru
+    budget: 220
+    events:
+    - op: insert
+      item: A
+      size: 40
+    - op: insert
+      item: B
+      size: 40
+    - op: insert
+      item: C
+      size: 40
+    - op: insert
+      item: D
+      size: 40
+    - op: insert
+      item: E
+      size: 40
+    - op: touch
+      item: A
+    - op: insert
+      item: F
+      size: 40
+  expected:
+    evictions:
+    - B
+    compressions: []
+    resident:
+    - A
+    - C
+    - D
+    - E
+    - F
+    resident_bytes:
+      A: 40
+      C: 40
+      D: 40
+      E: 40
+      F: 40
+  rationale: "Touches on ['A'] flip the victim(s) from ['A'] to ['B'] \u2014 live recency bookkeeping."
+- id: e068
+  class: lru_touch
+  verified: false
+  assumptions:
+  - touch updates recency
+  - eviction loop runs inside insert only
+  input:
+    policy: lru
+    budget: 165
+    events:
+    - op: insert
+      item: A
+      size: 30
+    - op: insert
+      item: B
+      size: 30
+    - op: insert
+      item: C
+      size: 30
+    - op: insert
+      item: D
+      size: 30
+    - op: insert
+      item: E
+      size: 30
+    - op: touch
+      item: A
+    - op: insert
+      item: F
+      size: 30
+  expected:
+    evictions:
+    - B
+    compressions: []
+    resident:
+    - A
+    - C
+    - D
+    - E
+    - F
+    resident_bytes:
+      A: 30
+      C: 30
+      D: 30
+      E: 30
+      F: 30
+  rationale: "Touches on ['A'] flip the victim(s) from ['A'] to ['B'] \u2014 live recency bookkeeping."
+- id: e069
+  class: lru_touch
+  verified: false
+  assumptions:
+  - touch updates recency
+  - eviction loop runs inside insert only
+  input:
+    policy: lru
+    budget: 100
+    events:
+    - op: insert
+      item: A
+      size: 40
+    - op: insert
+      item: B
+      size: 40
+    - op: touch
+      item: A
+    - op: insert
+      item: C
+      size: 40
+  expected:
+    evictions:
+    - B
+    compressions: []
+    resident:
+    - A
+    - C
+    resident_bytes:
+      A: 40
+      C: 40
+  rationale: "Touches on ['A'] flip the victim(s) from ['A'] to ['B'] \u2014 live recency bookkeeping."
+- id: e070
+  class: lru_touch
+  verified: false
+  assumptions:
+  - touch updates recency
+  - eviction loop runs inside insert only
+  input:
+    policy: lru
+    budget: 87
+    events:
+    - op: insert
+      item: A
+      size: 25
+    - op: insert
+      item: B
+      size: 25
+    - op: insert
+      item: C
+      size: 25
+    - op: touch
+      item: A
+    - op: insert
+      item: D
+      size: 25
+  expected:
+    evictions:
+    - B
+    compressions: []
+    resident:
+    - A
+    - C
+    - D
+    resident_bytes:
+      A: 25
+      C: 25
+      D: 25
+  rationale: "Touches on ['A'] flip the victim(s) from ['A'] to ['B'] \u2014 live recency bookkeeping."
+- id: e071
+  class: lru_multi_evict_loop
+  verified: false
+  assumptions:
+  - loop evicts repeatedly until total <= budget
+  input:
+    policy: lru
+    budget: 95
+    events:
+    - op: insert
+      item: A
+      size: 20
+    - op: insert
+      item: B
+      size: 70
+    - op: insert
+      item: C
+      size: 70
+    - op: insert
+      item: D
+      size: 70
+  expected:
+    evictions:
+    - A
+    - B
+    - C
+    compressions: []
+    resident:
+    - D
+    resident_bytes:
+      D: 70
+  rationale: 'Sizes [20, 70, 70, 70] under budget 95: the loop fires repeatedly ([''A'', ''B'', ''C'']),
+    re-reading recency between evictions.'
+- id: e072
+  class: lru_multi_evict_loop
+  verified: false
+  assumptions:
+  - loop evicts repeatedly until total <= budget
+  input:
+    policy: lru
+    budget: 95
+    events:
+    - op: insert
+      item: A
+      size: 70
+    - op: insert
+      item: B
+      size: 70
+    - op: insert
+      item: C
+      size: 70
+    - op: insert
+      item: D
+      size: 15
+  expected:
+    evictions:
+    - A
+    - B
+    compressions: []
+    resident:
+    - C
+    - D
+    resident_bytes:
+      C: 70
+      D: 15
+  rationale: 'Sizes [70, 70, 70, 15] under budget 95: the loop fires repeatedly ([''A'', ''B'']), re-reading
+    recency between evictions.'
+- id: e073
+  class: lru_multi_evict_loop
+  verified: false
+  assumptions:
+  - loop evicts repeatedly until total <= budget
+  input:
+    policy: lru
+    budget: 105
+    events:
+    - op: insert
+      item: A
+      size: 90
+    - op: insert
+      item: B
+      size: 90
+    - op: insert
+      item: C
+      size: 15
+    - op: insert
+      item: D
+      size: 90
+  expected:
+    evictions:
+    - A
+    - B
+    compressions: []
+    resident:
+    - C
+    - D
+    resident_bytes:
+      C: 15
+      D: 90
+  rationale: 'Sizes [90, 90, 15, 90] under budget 105: the loop fires repeatedly ([''A'', ''B'']), re-reading
+    recency between evictions.'
+- id: e074
+  class: lru_multi_evict_loop
+  verified: false
+  assumptions:
+  - loop evicts repeatedly until total <= budget
+  input:
+    policy: lru
+    budget: 105
+    events:
+    - op: insert
+      item: A
+      size: 80
+    - op: insert
+      item: B
+      size: 20
+    - op: insert
+      item: C
+      size: 80
+    - op: insert
+      item: D
+      size: 80
+  expected:
+    evictions:
+    - A
+    - B
+    - C
+    compressions: []
+    resident:
+    - D
+    resident_bytes:
+      D: 80
+  rationale: 'Sizes [80, 20, 80, 80] under budget 105: the loop fires repeatedly ([''A'', ''B'', ''C'']),
+    re-reading recency between evictions.'
+- id: e075
+  class: lru_multi_evict_loop
+  verified: false
+  assumptions:
+  - loop evicts repeatedly until total <= budget
+  input:
+    policy: lru
+    budget: 115
+    events:
+    - op: insert
+      item: A
+      size: 90
+    - op: insert
+      item: B
+      size: 90
+    - op: insert
+      item: C
+      size: 20
+    - op: insert
+      item: D
+      size: 90
+  expected:
+    evictions:
+    - A
+    - B
+    compressions: []
+    resident:
+    - C
+    - D
+    resident_bytes:
+      C: 20
+      D: 90
+  rationale: 'Sizes [90, 90, 20, 90] under budget 115: the loop fires repeatedly ([''A'', ''B'']), re-reading
+    recency between evictions.'
+- id: e076
+  class: lru_multi_evict_loop
+  verified: false
+  assumptions:
+  - loop evicts repeatedly until total <= budget
+  input:
+    policy: lru
+    budget: 80
+    events:
+    - op: insert
+      item: A
+      size: 60
+    - op: insert
+      item: B
+      size: 15
+    - op: insert
+      item: C
+      size: 60
+    - op: insert
+      item: D
+      size: 60
+  expected:
+    evictions:
+    - A
+    - B
+    - C
+    compressions: []
+    resident:
+    - D
+    resident_bytes:
+      D: 60
+  rationale: 'Sizes [60, 15, 60, 60] under budget 80: the loop fires repeatedly ([''A'', ''B'', ''C'']),
+    re-reading recency between evictions.'
+- id: e077
+  class: lru_multi_evict_loop
+  verified: false
+  assumptions:
+  - loop evicts repeatedly until total <= budget
+  input:
+    policy: lru
+    budget: 95
+    events:
+    - op: insert
+      item: A
+      size: 15
+    - op: insert
+      item: B
+      size: 70
+    - op: insert
+      item: C
+      size: 70
+    - op: insert
+      item: D
+      size: 70
+  expected:
+    evictions:
+    - A
+    - B
+    - C
+    compressions: []
+    resident:
+    - D
+    resident_bytes:
+      D: 70
+  rationale: 'Sizes [15, 70, 70, 70] under budget 95: the loop fires repeatedly ([''A'', ''B'', ''C'']),
+    re-reading recency between evictions.'
+- id: e078
+  class: lru_multi_evict_loop
+  verified: false
+  assumptions:
+  - loop evicts repeatedly until total <= budget
+  input:
+    policy: lru
+    budget: 85
+    events:
+    - op: insert
+      item: A
+      size: 70
+    - op: insert
+      item: B
+      size: 70
+    - op: insert
+      item: C
+      size: 70
+    - op: insert
+      item: D
+      size: 15
+  expected:
+    evictions:
+    - A
+    - B
+    compressions: []
+    resident:
+    - C
+    - D
+    resident_bytes:
+      C: 70
+      D: 15
+  rationale: 'Sizes [70, 70, 70, 15] under budget 85: the loop fires repeatedly ([''A'', ''B'']), re-reading
+    recency between evictions.'
+- id: e079
+  class: lru_multi_evict_loop
+  verified: false
+  assumptions:
+  - loop evicts repeatedly until total <= budget
+  input:
+    policy: lru
+    budget: 125
+    events:
+    - op: insert
+      item: A
+      size: 30
+    - op: insert
+      item: B
+      size: 90
+    - op: insert
+      item: C
+      size: 90
+    - op: insert
+      item: D
+      size: 90
+  expected:
+    evictions:
+    - A
+    - B
+    - C
+    compressions: []
+    resident:
+    - D
+    resident_bytes:
+      D: 90
+  rationale: 'Sizes [30, 90, 90, 90] under budget 125: the loop fires repeatedly ([''A'', ''B'', ''C'']),
+    re-reading recency between evictions.'
+- id: e080
+  class: lru_multi_evict_loop
+  verified: false
+  assumptions:
+  - loop evicts repeatedly until total <= budget
+  input:
+    policy: lru
+    budget: 100
+    events:
+    - op: insert
+      item: A
+      size: 70
+    - op: insert
+      item: B
+      size: 30
+    - op: insert
+      item: C
+      size: 70
+    - op: insert
+      item: D
+      size: 70
+  expected:
+    evictions:
+    - A
+    - B
+    - C
+    compressions: []
+    resident:
+    - D
+    resident_bytes:
+      D: 70
+  rationale: 'Sizes [70, 30, 70, 70] under budget 100: the loop fires repeatedly ([''A'', ''B'', ''C'']),
+    re-reading recency between evictions.'
+- id: e081
+  class: lru_multi_evict_loop
+  verified: false
+  assumptions:
+  - loop evicts repeatedly until total <= budget
+  input:
+    policy: lru
+    budget: 115
+    events:
+    - op: insert
+      item: A
+      size: 90
+    - op: insert
+      item: B
+      size: 90
+    - op: insert
+      item: C
+      size: 90
+    - op: insert
+      item: D
+      size: 15
+  expected:
+    evictions:
+    - A
+    - B
+    compressions: []
+    resident:
+    - C
+    - D
+    resident_bytes:
+      C: 90
+      D: 15
+  rationale: 'Sizes [90, 90, 90, 15] under budget 115: the loop fires repeatedly ([''A'', ''B'']), re-reading
+    recency between evictions.'
+- id: e082
+  class: lru_multi_evict_loop
+  verified: false
+  assumptions:
+  - loop evicts repeatedly until total <= budget
+  input:
+    policy: lru
+    budget: 100
+    events:
+    - op: insert
+      item: A
+      size: 70
+    - op: insert
+      item: B
+      size: 70
+    - op: insert
+      item: C
+      size: 20
+    - op: insert
+      item: D
+      size: 70
+  expected:
+    evictions:
+    - A
+    - B
+    compressions: []
+    resident:
+    - C
+    - D
+    resident_bytes:
+      C: 20
+      D: 70
+  rationale: 'Sizes [70, 70, 20, 70] under budget 100: the loop fires repeatedly ([''A'', ''B'']), re-reading
+    recency between evictions.'
+- id: e083
+  class: lru_multi_evict_loop
+  verified: false
+  assumptions:
+  - loop evicts repeatedly until total <= budget
+  input:
+    policy: lru
+    budget: 100
+    events:
+    - op: insert
+      item: A
+      size: 60
+    - op: insert
+      item: B
+      size: 60
+    - op: insert
+      item: C
+      size: 60
+    - op: insert
+      item: D
+      size: 30
+  expected:
+    evictions:
+    - A
+    - B
+    compressions: []
+    resident:
+    - C
+    - D
+    resident_bytes:
+      C: 60
+      D: 30
+  rationale: 'Sizes [60, 60, 60, 30] under budget 100: the loop fires repeatedly ([''A'', ''B'']), re-reading
+    recency between evictions.'
+- id: e084
+  class: lru_multi_evict_loop
+  verified: false
+  assumptions:
+  - loop evicts repeatedly until total <= budget
+  input:
+    policy: lru
+    budget: 90
+    events:
+    - op: insert
+      item: A
+      size: 60
+    - op: insert
+      item: B
+      size: 30
+    - op: insert
+      item: C
+      size: 60
+    - op: insert
+      item: D
+      size: 60
+  expected:
+    evictions:
+    - A
+    - B
+    - C
+    compressions: []
+    resident:
+    - D
+    resident_bytes:
+      D: 60
+  rationale: 'Sizes [60, 30, 60, 60] under budget 90: the loop fires repeatedly ([''A'', ''B'', ''C'']),
+    re-reading recency between evictions.'
+- id: e085
+  class: lru_multi_evict_loop
+  verified: false
+  assumptions:
+  - loop evicts repeatedly until total <= budget
+  input:
+    policy: lru
+    budget: 85
+    events:
+    - op: insert
+      item: A
+      size: 60
+    - op: insert
+      item: B
+      size: 60
+    - op: insert
+      item: C
+      size: 60
+    - op: insert
+      item: D
+      size: 20
+  expected:
+    evictions:
+    - A
+    - B
+    compressions: []
+    resident:
+    - C
+    - D
+    resident_bytes:
+      C: 60
+      D: 20
+  rationale: 'Sizes [60, 60, 60, 20] under budget 85: the loop fires repeatedly ([''A'', ''B'']), re-reading
+    recency between evictions.'
+- id: e086
+  class: lfu_tiebreak
+  verified: false
+  assumptions:
+  - freq counts touches only
+  - tie-break = insertion order
+  input:
+    policy: lfu
+    budget: 100
+    events:
+    - op: insert
+      item: A
+      size: 40
+    - op: insert
+      item: B
+      size: 40
+    - op: insert
+      item: C
+      size: 40
+  expected:
+    evictions:
+    - A
+    compressions: []
+    resident:
+    - B
+    - C
+    resident_bytes:
+      B: 40
+      C: 40
+  rationale: "All freqs 0 \u2192 tie-break = insertion order \u2192 ['A']."
+- id: e087
+  class: lfu_tiebreak
+  verified: false
+  assumptions:
+  - freq counts touches only
+  - tie-break = insertion order
+  input:
+    policy: lfu
+    budget: 135
+    events:
+    - op: insert
+      item: A
+      size: 30
+    - op: insert
+      item: B
+      size: 30
+    - op: insert
+      item: C
+      size: 30
+    - op: insert
+      item: D
+      size: 30
+    - op: insert
+      item: E
+      size: 30
+  expected:
+    evictions:
+    - A
+    compressions: []
+    resident:
+    - B
+    - C
+    - D
+    - E
+    resident_bytes:
+      B: 30
+      C: 30
+      D: 30
+      E: 30
+  rationale: "All freqs 0 \u2192 tie-break = insertion order \u2192 ['A']."
+- id: e088
+  class: lfu_tiebreak
+  verified: false
+  assumptions:
+  - freq counts touches only
+  - tie-break = insertion order
+  input:
+    policy: lfu
+    budget: 122
+    events:
+    - op: insert
+      item: A
+      size: 35
+    - op: insert
+      item: B
+      size: 35
+    - op: insert
+      item: C
+      size: 35
+    - op: insert
+      item: D
+      size: 35
+  expected:
+    evictions:
+    - A
+    compressions: []
+    resident:
+    - B
+    - C
+    - D
+    resident_bytes:
+      B: 35
+      C: 35
+      D: 35
+  rationale: "All freqs 0 \u2192 tie-break = insertion order \u2192 ['A']."
+- id: e089
+  class: lfu_tiebreak
+  verified: false
+  assumptions:
+  - freq counts touches only
+  - tie-break = insertion order
+  input:
+    policy: lfu
+    budget: 105
+    events:
+    - op: insert
+      item: A
+      size: 30
+    - op: insert
+      item: B
+      size: 30
+    - op: insert
+      item: C
+      size: 30
+    - op: insert
+      item: D
+      size: 30
+  expected:
+    evictions:
+    - A
+    compressions: []
+    resident:
+    - B
+    - C
+    - D
+    resident_bytes:
+      B: 30
+      C: 30
+      D: 30
+  rationale: "All freqs 0 \u2192 tie-break = insertion order \u2192 ['A']."
+- id: e090
+  class: lfu_tiebreak
+  verified: false
+  assumptions:
+  - freq counts touches only
+  - tie-break = insertion order
+  input:
+    policy: lfu
+    budget: 122
+    events:
+    - op: insert
+      item: A
+      size: 35
+    - op: insert
+      item: B
+      size: 35
+    - op: insert
+      item: C
+      size: 35
+    - op: insert
+      item: D
+      size: 35
+  expected:
+    evictions:
+    - A
+    compressions: []
+    resident:
+    - B
+    - C
+    - D
+    resident_bytes:
+      B: 35
+      C: 35
+      D: 35
+  rationale: "All freqs 0 \u2192 tie-break = insertion order \u2192 ['A']."
+- id: e091
+  class: lfu_tiebreak
+  verified: false
+  assumptions:
+  - freq counts touches only
+  - tie-break = insertion order
+  input:
+    policy: lfu
+    budget: 87
+    events:
+    - op: insert
+      item: A
+      size: 35
+    - op: insert
+      item: B
+      size: 35
+    - op: insert
+      item: C
+      size: 35
+  expected:
+    evictions:
+    - A
+    compressions: []
+    resident:
+    - B
+    - C
+    resident_bytes:
+      B: 35
+      C: 35
+  rationale: "All freqs 0 \u2192 tie-break = insertion order \u2192 ['A']."
+- id: e092
+  class: lfu_tiebreak
+  verified: false
+  assumptions:
+  - freq counts touches only
+  - tie-break = insertion order
+  input:
+    policy: lfu
+    budget: 135
+    events:
+    - op: insert
+      item: A
+      size: 30
+    - op: insert
+      item: B
+      size: 30
+    - op: insert
+      item: C
+      size: 30
+    - op: insert
+      item: D
+      size: 30
+    - op: insert
+      item: E
+      size: 30
+  expected:
+    evictions:
+    - A
+    compressions: []
+    resident:
+    - B
+    - C
+    - D
+    - E
+    resident_bytes:
+      B: 30
+      C: 30
+      D: 30
+      E: 30
+  rationale: "All freqs 0 \u2192 tie-break = insertion order \u2192 ['A']."
+- id: e093
+  class: lfu_tiebreak
+  verified: false
+  assumptions:
+  - freq counts touches only
+  - tie-break = insertion order
+  input:
+    policy: lfu
+    budget: 140
+    events:
+    - op: insert
+      item: A
+      size: 40
+    - op: insert
+      item: B
+      size: 40
+    - op: insert
+      item: C
+      size: 40
+    - op: insert
+      item: D
+      size: 40
+  expected:
+    evictions:
+    - A
+    compressions: []
+    resident:
+    - B
+    - C
+    - D
+    resident_bytes:
+      B: 40
+      C: 40
+      D: 40
+  rationale: "All freqs 0 \u2192 tie-break = insertion order \u2192 ['A']."
+- id: e094
+  class: lfu_tiebreak
+  verified: false
+  assumptions:
+  - freq counts touches only
+  - tie-break = insertion order
+  input:
+    policy: lfu
+    budget: 122
+    events:
+    - op: insert
+      item: A
+      size: 35
+    - op: insert
+      item: B
+      size: 35
+    - op: insert
+      item: C
+      size: 35
+    - op: insert
+      item: D
+      size: 35
+  expected:
+    evictions:
+    - A
+    compressions: []
+    resident:
+    - B
+    - C
+    - D
+    resident_bytes:
+      B: 35
+      C: 35
+      D: 35
+  rationale: "All freqs 0 \u2192 tie-break = insertion order \u2192 ['A']."
+- id: e095
+  class: lfu_tiebreak
+  verified: false
+  assumptions:
+  - freq counts touches only
+  - tie-break = insertion order
+  input:
+    policy: lfu
+    budget: 122
+    events:
+    - op: insert
+      item: A
+      size: 35
+    - op: insert
+      item: B
+      size: 35
+    - op: insert
+      item: C
+      size: 35
+    - op: insert
+      item: D
+      size: 35
+  expected:
+    evictions:
+    - A
+    compressions: []
+    resident:
+    - B
+    - C
+    - D
+    resident_bytes:
+      B: 35
+      C: 35
+      D: 35
+  rationale: "All freqs 0 \u2192 tie-break = insertion order \u2192 ['A']."
+- id: e096
+  class: lfu_freq
+  verified: false
+  assumptions:
+  - freq counts touches only
+  - incoming item EXEMPT from eviction (Q1)
+  input:
+    policy: lfu
+    budget: 100
+    events:
+    - op: insert
+      item: A
+      size: 40
+    - op: insert
+      item: B
+      size: 40
+    - &id001
+      op: touch
+      item: A
+    - *id001
+    - op: touch
+      item: B
+    - op: insert
+      item: C
+      size: 40
+  expected:
+    evictions:
+    - B
+    compressions: []
+    resident:
+    - A
+    - C
+    resident_bytes:
+      A: 40
+      C: 40
+  rationale: "LFU evicts ['B'] where LRU would evict ['A'] \u2014 frequency beats recency. Incoming item\
+    \ EXEMPT (Q1 ruling)."
+- id: e097
+  class: lfu_freq
+  verified: false
+  assumptions:
+  - freq counts touches only
+  - incoming item EXEMPT from eviction (Q1)
+  input:
+    policy: lfu
+    budget: 125
+    events:
+    - op: insert
+      item: A
+      size: 50
+    - op: insert
+      item: B
+      size: 50
+    - &id002
+      op: touch
+      item: B
+    - *id002
+    - op: touch
+      item: A
+    - op: insert
+      item: C
+      size: 50
+  expected:
+    evictions:
+    - A
+    compressions: []
+    resident:
+    - B
+    - C
+    resident_bytes:
+      B: 50
+      C: 50
+  rationale: "LFU evicts ['A'] where LRU would evict ['B'] \u2014 frequency beats recency. Incoming item\
+    \ EXEMPT (Q1 ruling)."
+- id: e098
+  class: lfu_freq
+  verified: false
+  assumptions:
+  - freq counts touches only
+  - incoming item EXEMPT from eviction (Q1)
+  input:
+    policy: lfu
+    budget: 125
+    events:
+    - op: insert
+      item: A
+      size: 50
+    - op: insert
+      item: B
+      size: 50
+    - &id003
+      op: touch
+      item: A
+    - *id003
+    - *id003
+    - op: touch
+      item: B
+    - op: insert
+      item: C
+      size: 50
+  expected:
+    evictions:
+    - B
+    compressions: []
+    resident:
+    - A
+    - C
+    resident_bytes:
+      A: 50
+      C: 50
+  rationale: "LFU evicts ['B'] where LRU would evict ['A'] \u2014 frequency beats recency. Incoming item\
+    \ EXEMPT (Q1 ruling)."
+- id: e099
+  class: lfu_freq
+  verified: false
+  assumptions:
+  - freq counts touches only
+  - incoming item EXEMPT from eviction (Q1)
+  input:
+    policy: lfu
+    budget: 100
+    events:
+    - op: insert
+      item: A
+      size: 40
+    - op: insert
+      item: B
+      size: 40
+    - &id004
+      op: touch
+      item: B
+    - *id004
+    - *id004
+    - op: touch
+      item: A
+    - op: insert
+      item: C
+      size: 40
+  expected:
+    evictions:
+    - A
+    compressions: []
+    resident:
+    - B
+    - C
+    resident_bytes:
+      B: 40
+      C: 40
+  rationale: "LFU evicts ['A'] where LRU would evict ['B'] \u2014 frequency beats recency. Incoming item\
+    \ EXEMPT (Q1 ruling)."
+- id: e100
+  class: lfu_freq
+  verified: false
+  assumptions:
+  - freq counts touches only
+  - incoming item EXEMPT from eviction (Q1)
+  input:
+    policy: lfu
+    budget: 125
+    events:
+    - op: insert
+      item: A
+      size: 50
+    - op: insert
+      item: B
+      size: 50
+    - &id005
+      op: touch
+      item: B
+    - *id005
+    - *id005
+    - op: touch
+      item: A
+    - op: insert
+      item: C
+      size: 50
+  expected:
+    evictions:
+    - A
+    compressions: []
+    resident:
+    - B
+    - C
+    resident_bytes:
+      B: 50
+      C: 50
+  rationale: "LFU evicts ['A'] where LRU would evict ['B'] \u2014 frequency beats recency. Incoming item\
+    \ EXEMPT (Q1 ruling)."
+- id: e101
+  class: lfu_freq
+  verified: false
+  assumptions:
+  - freq counts touches only
+  - incoming item EXEMPT from eviction (Q1)
+  input:
+    policy: lfu
+    budget: 125
+    events:
+    - op: insert
+      item: A
+      size: 50
+    - op: insert
+      item: B
+      size: 50
+    - &id006
+      op: touch
+      item: B
+    - *id006
+    - *id006
+    - op: touch
+      item: A
+    - op: insert
+      item: C
+      size: 50
+  expected:
+    evictions:
+    - A
+    compressions: []
+    resident:
+    - B
+    - C
+    resident_bytes:
+      B: 50
+      C: 50
+  rationale: "LFU evicts ['A'] where LRU would evict ['B'] \u2014 frequency beats recency. Incoming item\
+    \ EXEMPT (Q1 ruling)."
+- id: e102
+  class: lfu_freq
+  verified: false
+  assumptions:
+  - freq counts touches only
+  - incoming item EXEMPT from eviction (Q1)
+  input:
+    policy: lfu
+    budget: 75
+    events:
+    - op: insert
+      item: A
+      size: 30
+    - op: insert
+      item: B
+      size: 30
+    - &id007
+      op: touch
+      item: B
+    - *id007
+    - *id007
+    - op: touch
+      item: A
+    - op: insert
+      item: C
+      size: 30
+  expected:
+    evictions:
+    - A
+    compressions: []
+    resident:
+    - B
+    - C
+    resident_bytes:
+      B: 30
+      C: 30
+  rationale: "LFU evicts ['A'] where LRU would evict ['B'] \u2014 frequency beats recency. Incoming item\
+    \ EXEMPT (Q1 ruling)."
+- id: e103
+  class: lfu_freq
+  verified: false
+  assumptions:
+  - freq counts touches only
+  - incoming item EXEMPT from eviction (Q1)
+  input:
+    policy: lfu
+    budget: 125
+    events:
+    - op: insert
+      item: A
+      size: 50
+    - op: insert
+      item: B
+      size: 50
+    - &id008
+      op: touch
+      item: A
+    - *id008
+    - *id008
+    - op: touch
+      item: B
+    - op: insert
+      item: C
+      size: 50
+  expected:
+    evictions:
+    - B
+    compressions: []
+    resident:
+    - A
+    - C
+    resident_bytes:
+      A: 50
+      C: 50
+  rationale: "LFU evicts ['B'] where LRU would evict ['A'] \u2014 frequency beats recency. Incoming item\
+    \ EXEMPT (Q1 ruling)."
+- id: e104
+  class: lfu_freq
+  verified: false
+  assumptions:
+  - freq counts touches only
+  - incoming item EXEMPT from eviction (Q1)
+  input:
+    policy: lfu
+    budget: 75
+    events:
+    - op: insert
+      item: A
+      size: 30
+    - op: insert
+      item: B
+      size: 30
+    - &id009
+      op: touch
+      item: A
+    - *id009
+    - *id009
+    - op: touch
+      item: B
+    - op: insert
+      item: C
+      size: 30
+  expected:
+    evictions:
+    - B
+    compressions: []
+    resident:
+    - A
+    - C
+    resident_bytes:
+      A: 30
+      C: 30
+  rationale: "LFU evicts ['B'] where LRU would evict ['A'] \u2014 frequency beats recency. Incoming item\
+    \ EXEMPT (Q1 ruling)."
+- id: e105
+  class: lfu_freq
+  verified: false
+  assumptions:
+  - freq counts touches only
+  - incoming item EXEMPT from eviction (Q1)
+  input:
+    policy: lfu
+    budget: 100
+    events:
+    - op: insert
+      item: A
+      size: 40
+    - op: insert
+      item: B
+      size: 40
+    - &id010
+      op: touch
+      item: A
+    - *id010
+    - *id010
+    - op: touch
+      item: B
+    - op: insert
+      item: C
+      size: 40
+  expected:
+    evictions:
+    - B
+    compressions: []
+    resident:
+    - A
+    - C
+    resident_bytes:
+      A: 40
+      C: 40
+  rationale: "LFU evicts ['B'] where LRU would evict ['A'] \u2014 frequency beats recency. Incoming item\
+    \ EXEMPT (Q1 ruling)."
+- id: e106
+  class: fifo
+  verified: false
+  assumptions:
+  - eviction order == insertion order, touches ignored
+  input:
+    policy: fifo
+    budget: 75
+    events:
+    - op: insert
+      item: A
+      size: 30
+    - op: insert
+      item: B
+      size: 30
+    - op: touch
+      item: A
+    - op: insert
+      item: C
+      size: 30
+    - op: insert
+      item: D
+      size: 30
+  expected:
+    evictions:
+    - A
+    - B
+    compressions: []
+    resident:
+    - C
+    - D
+    resident_bytes:
+      C: 30
+      D: 30
+  rationale: FIFO evicts insertion-order ['A', 'B'] despite the touch (LRU would evict ['B', 'A']).
+- id: e107
+  class: fifo
+  verified: false
+  assumptions:
+  - eviction order == insertion order, touches ignored
+  input:
+    policy: fifo
+    budget: 87
+    events:
+    - op: insert
+      item: A
+      size: 25
+    - op: insert
+      item: B
+      size: 25
+    - op: insert
+      item: C
+      size: 25
+    - op: touch
+      item: A
+    - op: insert
+      item: D
+      size: 25
+    - op: insert
+      item: E
+      size: 25
+  expected:
+    evictions:
+    - A
+    - B
+    compressions: []
+    resident:
+    - C
+    - D
+    - E
+    resident_bytes:
+      C: 25
+      D: 25
+      E: 25
+  rationale: FIFO evicts insertion-order ['A', 'B'] despite the touch (LRU would evict ['B', 'C']).
+- id: e108
+  class: fifo
+  verified: false
+  assumptions:
+  - eviction order == insertion order, touches ignored
+  input:
+    policy: fifo
+    budget: 112
+    events:
+    - op: insert
+      item: A
+      size: 25
+    - op: insert
+      item: B
+      size: 25
+    - op: insert
+      item: C
+      size: 25
+    - op: insert
+      item: D
+      size: 25
+    - op: touch
+      item: B
+    - op: insert
+      item: E
+      size: 25
+    - op: insert
+      item: F
+      size: 25
+  expected:
+    evictions:
+    - A
+    - B
+    compressions: []
+    resident:
+    - C
+    - D
+    - E
+    - F
+    resident_bytes:
+      C: 25
+      D: 25
+      E: 25
+      F: 25
+  rationale: FIFO evicts insertion-order ['A', 'B'] despite the touch (LRU would evict ['A', 'C']).
+- id: e109
+  class: fifo
+  verified: false
+  assumptions:
+  - eviction order == insertion order, touches ignored
+  input:
+    policy: fifo
+    budget: 87
+    events:
+    - op: insert
+      item: A
+      size: 25
+    - op: insert
+      item: B
+      size: 25
+    - op: insert
+      item: C
+      size: 25
+    - op: touch
+      item: B
+    - op: insert
+      item: D
+      size: 25
+    - op: insert
+      item: E
+      size: 25
+  expected:
+    evictions:
+    - A
+    - B
+    compressions: []
+    resident:
+    - C
+    - D
+    - E
+    resident_bytes:
+      C: 25
+      D: 25
+      E: 25
+  rationale: FIFO evicts insertion-order ['A', 'B'] despite the touch (LRU would evict ['A', 'C']).
+- id: e110
+  class: fifo
+  verified: false
+  assumptions:
+  - eviction order == insertion order, touches ignored
+  input:
+    policy: fifo
+    budget: 75
+    events:
+    - op: insert
+      item: A
+      size: 30
+    - op: insert
+      item: B
+      size: 30
+    - op: touch
+      item: A
+    - op: insert
+      item: C
+      size: 30
+    - op: insert
+      item: D
+      size: 30
+  expected:
+    evictions:
+    - A
+    - B
+    compressions: []
+    resident:
+    - C
+    - D
+    resident_bytes:
+      C: 30
+      D: 30
+  rationale: FIFO evicts insertion-order ['A', 'B'] despite the touch (LRU would evict ['B', 'A']).
+- id: e111
+  class: fifo
+  verified: false
+  assumptions:
+  - eviction order == insertion order, touches ignored
+  input:
+    policy: fifo
+    budget: 87
+    events:
+    - op: insert
+      item: A
+      size: 25
+    - op: insert
+      item: B
+      size: 25
+    - op: insert
+      item: C
+      size: 25
+    - op: touch
+      item: A
+    - op: insert
+      item: D
+      size: 25
+    - op: insert
+      item: E
+      size: 25
+  expected:
+    evictions:
+    - A
+    - B
+    compressions: []
+    resident:
+    - C
+    - D
+    - E
+    resident_bytes:
+      C: 25
+      D: 25
+      E: 25
+  rationale: FIFO evicts insertion-order ['A', 'B'] despite the touch (LRU would evict ['B', 'C']).
+- id: e112
+  class: fifo
+  verified: false
+  assumptions:
+  - eviction order == insertion order, touches ignored
+  input:
+    policy: fifo
+    budget: 112
+    events:
+    - op: insert
+      item: A
+      size: 25
+    - op: insert
+      item: B
+      size: 25
+    - op: insert
+      item: C
+      size: 25
+    - op: insert
+      item: D
+      size: 25
+    - op: touch
+      item: B
+    - op: insert
+      item: E
+      size: 25
+    - op: insert
+      item: F
+      size: 25
+  expected:
+    evictions:
+    - A
+    - B
+    compressions: []
+    resident:
+    - C
+    - D
+    - E
+    - F
+    resident_bytes:
+      C: 25
+      D: 25
+      E: 25
+      F: 25
+  rationale: FIFO evicts insertion-order ['A', 'B'] despite the touch (LRU would evict ['A', 'C']).
+- id: e113
+  class: fifo
+  verified: false
+  assumptions:
+  - eviction order == insertion order, touches ignored
+  input:
+    policy: fifo
+    budget: 140
+    events:
+    - op: insert
+      item: A
+      size: 40
+    - op: insert
+      item: B
+      size: 40
+    - op: insert
+      item: C
+      size: 40
+    - op: touch
+      item: B
+    - op: insert
+      item: D
+      size: 40
+    - op: insert
+      item: E
+      size: 40
+  expected:
+    evictions:
+    - A
+    - B
+    compressions: []
+    resident:
+    - C
+    - D
+    - E
+    resident_bytes:
+      C: 40
+      D: 40
+      E: 40
+  rationale: FIFO evicts insertion-order ['A', 'B'] despite the touch (LRU would evict ['A', 'C']).
+- id: e114
+  class: fifo
+  verified: false
+  assumptions:
+  - eviction order == insertion order, touches ignored
+  input:
+    policy: fifo
+    budget: 62
+    events:
+    - op: insert
+      item: A
+      size: 25
+    - op: insert
+      item: B
+      size: 25
+    - op: touch
+      item: A
+    - op: insert
+      item: C
+      size: 25
+    - op: insert
+      item: D
+      size: 25
+  expected:
+    evictions:
+    - A
+    - B
+    compressions: []
+    resident:
+    - C
+    - D
+    resident_bytes:
+      C: 25
+      D: 25
+  rationale: FIFO evicts insertion-order ['A', 'B'] despite the touch (LRU would evict ['B', 'A']).
+- id: e115
+  class: fifo
+  verified: false
+  assumptions:
+  - eviction order == insertion order, touches ignored
+  input:
+    policy: fifo
+    budget: 75
+    events:
+    - op: insert
+      item: A
+      size: 30
+    - op: insert
+      item: B
+      size: 30
+    - op: touch
+      item: A
+    - op: insert
+      item: C
+      size: 30
+    - op: insert
+      item: D
+      size: 30
+  expected:
+    evictions:
+    - A
+    - B
+    compressions: []
+    resident:
+    - C
+    - D
+    resident_bytes:
+      C: 30
+      D: 30
+  rationale: FIFO evicts insertion-order ['A', 'B'] despite the touch (LRU would evict ['B', 'A']).
+- id: e116
+  class: fifo
+  verified: false
+  assumptions:
+  - eviction order == insertion order, touches ignored
+  input:
+    policy: fifo
+    budget: 180
+    events:
+    - op: insert
+      item: A
+      size: 40
+    - op: insert
+      item: B
+      size: 40
+    - op: insert
+      item: C
+      size: 40
+    - op: insert
+      item: D
+      size: 40
+    - op: touch
+      item: B
+    - op: insert
+      item: E
+      size: 40
+    - op: insert
+      item: F
+      size: 40
+  expected:
+    evictions:
+    - A
+    - B
+    compressions: []
+    resident:
+    - C
+    - D
+    - E
+    - F
+    resident_bytes:
+      C: 40
+      D: 40
+      E: 40
+      F: 40
+  rationale: FIFO evicts insertion-order ['A', 'B'] despite the touch (LRU would evict ['A', 'C']).
+- id: e117
+  class: fifo
+  verified: false
+  assumptions:
+  - eviction order == insertion order, touches ignored
+  input:
+    policy: fifo
+    budget: 180
+    events:
+    - op: insert
+      item: A
+      size: 40
+    - op: insert
+      item: B
+      size: 40
+    - op: insert
+      item: C
+      size: 40
+    - op: insert
+      item: D
+      size: 40
+    - op: touch
+      item: B
+    - op: insert
+      item: E
+      size: 40
+    - op: insert
+      item: F
+      size: 40
+  expected:
+    evictions:
+    - A
+    - B
+    compressions: []
+    resident:
+    - C
+    - D
+    - E
+    - F
+    resident_bytes:
+      C: 40
+      D: 40
+      E: 40
+      F: 40
+  rationale: FIFO evicts insertion-order ['A', 'B'] despite the touch (LRU would evict ['A', 'C']).
+- id: e118
+  class: fifo
+  verified: false
+  assumptions:
+  - eviction order == insertion order, touches ignored
+  input:
+    policy: fifo
+    budget: 100
+    events:
+    - op: insert
+      item: A
+      size: 40
+    - op: insert
+      item: B
+      size: 40
+    - op: touch
+      item: A
+    - op: insert
+      item: C
+      size: 40
+    - op: insert
+      item: D
+      size: 40
+  expected:
+    evictions:
+    - A
+    - B
+    compressions: []
+    resident:
+    - C
+    - D
+    resident_bytes:
+      C: 40
+      D: 40
+  rationale: FIFO evicts insertion-order ['A', 'B'] despite the touch (LRU would evict ['B', 'A']).
+- id: e119
+  class: fifo
+  verified: false
+  assumptions:
+  - eviction order == insertion order, touches ignored
+  input:
+    policy: fifo
+    budget: 75
+    events:
+    - op: insert
+      item: A
+      size: 30
+    - op: insert
+      item: B
+      size: 30
+    - op: touch
+      item: A
+    - op: insert
+      item: C
+      size: 30
+    - op: insert
+      item: D
+      size: 30
+  expected:
+    evictions:
+    - A
+    - B
+    compressions: []
+    resident:
+    - C
+    - D
+    resident_bytes:
+      C: 30
+      D: 30
+  rationale: FIFO evicts insertion-order ['A', 'B'] despite the touch (LRU would evict ['B', 'A']).
+- id: e120
+  class: fifo
+  verified: false
+  assumptions:
+  - eviction order == insertion order, touches ignored
+  input:
+    policy: fifo
+    budget: 135
+    events:
+    - op: insert
+      item: A
+      size: 30
+    - op: insert
+      item: B
+      size: 30
+    - op: insert
+      item: C
+      size: 30
+    - op: insert
+      item: D
+      size: 30
+    - op: touch
+      item: B
+    - op: insert
+      item: E
+      size: 30
+    - op: insert
+      item: F
+      size: 30
+  expected:
+    evictions:
+    - A
+    - B
+    compressions: []
+    resident:
+    - C
+    - D
+    - E
+    - F
+    resident_bytes:
+      C: 30
+      D: 30
+      E: 30
+      F: 30
+  rationale: FIFO evicts insertion-order ['A', 'B'] despite the touch (LRU would evict ['A', 'C']).
+- id: e121
+  class: size_policy_arith
+  verified: false
+  assumptions:
+  - keep_smallest victim rule
+  - incoming-eligibility-robust by construction
+  input:
+    policy: keep_smallest
+    budget: 70
+    events:
+    - op: insert
+      item: A
+      size: 45
+    - op: insert
+      item: B
+      size: 10
+    - op: insert
+      item: C
+      size: 20
+  expected:
+    evictions:
+    - A
+    compressions: []
+    resident:
+    - B
+    - C
+    resident_bytes:
+      B: 10
+      C: 20
+  rationale: "keep_smallest: victim is the largest resident of [45, 10] \u2192 ['A']; incoming mid-sized\
+    \ (eligibility-robust)."
+- id: e122
+  class: size_policy_arith
+  verified: false
+  assumptions:
+  - keep_smallest victim rule
+  - incoming-eligibility-robust by construction
+  input:
+    policy: keep_smallest
+    budget: 115
+    events:
+    - op: insert
+      item: A
+      size: 65
+    - op: insert
+      item: B
+      size: 20
+    - op: insert
+      item: C
+      size: 35
+  expected:
+    evictions:
+    - A
+    compressions: []
+    resident:
+    - B
+    - C
+    resident_bytes:
+      B: 20
+      C: 35
+  rationale: "keep_smallest: victim is the largest resident of [65, 20] \u2192 ['A']; incoming mid-sized\
+    \ (eligibility-robust)."
+- id: e123
+  class: size_policy_arith
+  verified: false
+  assumptions:
+  - keep_smallest victim rule
+  - incoming-eligibility-robust by construction
+  input:
+    policy: keep_smallest
+    budget: 80
+    events:
+    - op: insert
+      item: A
+      size: 10
+    - op: insert
+      item: B
+      size: 55
+    - op: insert
+      item: C
+      size: 20
+  expected:
+    evictions:
+    - B
+    compressions: []
+    resident:
+    - A
+    - C
+    resident_bytes:
+      A: 10
+      C: 20
+  rationale: "keep_smallest: victim is the largest resident of [10, 55] \u2192 ['B']; incoming mid-sized\
+    \ (eligibility-robust)."
+- id: e124
+  class: size_policy_arith
+  verified: false
+  assumptions:
+  - keep_smallest victim rule
+  - incoming-eligibility-robust by construction
+  input:
+    policy: keep_smallest
+    budget: 100
+    events:
+    - op: insert
+      item: A
+      size: 75
+    - op: insert
+      item: B
+      size: 10
+    - op: insert
+      item: C
+      size: 20
+  expected:
+    evictions:
+    - A
+    compressions: []
+    resident:
+    - B
+    - C
+    resident_bytes:
+      B: 10
+      C: 20
+  rationale: "keep_smallest: victim is the largest resident of [75, 10] \u2192 ['A']; incoming mid-sized\
+    \ (eligibility-robust)."
+- id: e125
+  class: size_policy_arith
+  verified: false
+  assumptions:
+  - keep_smallest victim rule
+  - incoming-eligibility-robust by construction
+  input:
+    policy: keep_smallest
+    budget: 170
+    events:
+    - op: insert
+      item: A
+      size: 35
+    - op: insert
+      item: B
+      size: 75
+    - op: insert
+      item: C
+      size: 65
+  expected:
+    evictions:
+    - B
+    compressions: []
+    resident:
+    - A
+    - C
+    resident_bytes:
+      A: 35
+      C: 65
+  rationale: "keep_smallest: victim is the largest resident of [35, 75] \u2192 ['B']; incoming mid-sized\
+    \ (eligibility-robust)."
+- id: e126
+  class: size_policy_arith
+  verified: false
+  assumptions:
+  - keep_smallest victim rule
+  - incoming-eligibility-robust by construction
+  input:
+    policy: keep_smallest
+    budget: 160
+    events:
+    - op: insert
+      item: A
+      size: 35
+    - op: insert
+      item: B
+      size: 75
+    - op: insert
+      item: C
+      size: 55
+  expected:
+    evictions:
+    - B
+    compressions: []
+    resident:
+    - A
+    - C
+    resident_bytes:
+      A: 35
+      C: 55
+  rationale: "keep_smallest: victim is the largest resident of [35, 75] \u2192 ['B']; incoming mid-sized\
+    \ (eligibility-robust)."
+- id: e127
+  class: size_policy_arith
+  verified: false
+  assumptions:
+  - keep_smallest victim rule
+  - incoming-eligibility-robust by construction
+  input:
+    policy: keep_smallest
+    budget: 125
+    events:
+    - op: insert
+      item: A
+      size: 75
+    - op: insert
+      item: B
+      size: 20
+    - op: insert
+      item: C
+      size: 35
+  expected:
+    evictions:
+    - A
+    compressions: []
+    resident:
+    - B
+    - C
+    resident_bytes:
+      B: 20
+      C: 35
+  rationale: "keep_smallest: victim is the largest resident of [75, 20] \u2192 ['A']; incoming mid-sized\
+    \ (eligibility-robust)."
+- id: e128
+  class: size_policy_arith
+  verified: false
+  assumptions:
+  - keep_smallest victim rule
+  - incoming-eligibility-robust by construction
+  input:
+    policy: keep_smallest
+    budget: 95
+    events:
+    - op: insert
+      item: A
+      size: 75
+    - op: insert
+      item: B
+      size: 10
+    - op: insert
+      item: C
+      size: 15
+  expected:
+    evictions:
+    - A
+    compressions: []
+    resident:
+    - B
+    - C
+    resident_bytes:
+      B: 10
+      C: 15
+  rationale: "keep_smallest: victim is the largest resident of [75, 10] \u2192 ['A']; incoming mid-sized\
+    \ (eligibility-robust)."
+- id: e129
+  class: size_policy_arith
+  verified: false
+  assumptions:
+  - keep_smallest victim rule
+  - incoming-eligibility-robust by construction
+  input:
+    policy: keep_smallest
+    budget: 140
+    events:
+    - op: insert
+      item: A
+      size: 35
+    - op: insert
+      item: B
+      size: 65
+    - op: insert
+      item: C
+      size: 45
+  expected:
+    evictions:
+    - B
+    compressions: []
+    resident:
+    - A
+    - C
+    resident_bytes:
+      A: 35
+      C: 45
+  rationale: "keep_smallest: victim is the largest resident of [35, 65] \u2192 ['B']; incoming mid-sized\
+    \ (eligibility-robust)."
+- id: e130
+  class: size_policy_arith
+  verified: false
+  assumptions:
+  - keep_smallest victim rule
+  - incoming-eligibility-robust by construction
+  input:
+    policy: keep_smallest
+    budget: 90
+    events:
+    - op: insert
+      item: A
+      size: 65
+    - op: insert
+      item: B
+      size: 10
+    - op: insert
+      item: C
+      size: 20
+  expected:
+    evictions:
+    - A
+    compressions: []
+    resident:
+    - B
+    - C
+    resident_bytes:
+      B: 10
+      C: 20
+  rationale: "keep_smallest: victim is the largest resident of [65, 10] \u2192 ['A']; incoming mid-sized\
+    \ (eligibility-robust)."
+- id: e131
+  class: size_policy_arith
+  verified: false
+  assumptions:
+  - evict_smallest victim rule
+  - incoming-eligibility-robust by construction
+  input:
+    policy: evict_smallest
+    budget: 125
+    events:
+    - op: insert
+      item: A
+      size: 10
+    - op: insert
+      item: B
+      size: 65
+    - op: insert
+      item: C
+      size: 55
+  expected:
+    evictions:
+    - A
+    compressions: []
+    resident:
+    - B
+    - C
+    resident_bytes:
+      B: 65
+      C: 55
+  rationale: "evict_smallest: victim is the smallest resident of [10, 65] \u2192 ['A']; incoming mid-sized\
+    \ (eligibility-robust)."
+- id: e132
+  class: size_policy_arith
+  verified: false
+  assumptions:
+  - evict_smallest victim rule
+  - incoming-eligibility-robust by construction
+  input:
+    policy: evict_smallest
+    budget: 160
+    events:
+    - op: insert
+      item: A
+      size: 75
+    - op: insert
+      item: B
+      size: 35
+    - op: insert
+      item: C
+      size: 55
+  expected:
+    evictions:
+    - B
+    compressions: []
+    resident:
+    - A
+    - C
+    resident_bytes:
+      A: 75
+      C: 55
+  rationale: "evict_smallest: victim is the smallest resident of [75, 35] \u2192 ['B']; incoming mid-sized\
+    \ (eligibility-robust)."
+- id: e133
+  class: size_policy_arith
+  verified: false
+  assumptions:
+  - evict_smallest victim rule
+  - incoming-eligibility-robust by construction
+  input:
+    policy: evict_smallest
+    budget: 115
+    events:
+    - op: insert
+      item: A
+      size: 10
+    - op: insert
+      item: B
+      size: 65
+    - op: insert
+      item: C
+      size: 45
+  expected:
+    evictions:
+    - A
+    compressions: []
+    resident:
+    - B
+    - C
+    resident_bytes:
+      B: 65
+      C: 45
+  rationale: "evict_smallest: victim is the smallest resident of [10, 65] \u2192 ['A']; incoming mid-sized\
+    \ (eligibility-robust)."
+- id: e134
+  class: size_policy_arith
+  verified: false
+  assumptions:
+  - evict_smallest victim rule
+  - incoming-eligibility-robust by construction
+  input:
+    policy: evict_smallest
+    budget: 160
+    events:
+    - op: insert
+      item: A
+      size: 45
+    - op: insert
+      item: B
+      size: 65
+    - op: insert
+      item: C
+      size: 55
+  expected:
+    evictions:
+    - A
+    compressions: []
+    resident:
+    - B
+    - C
+    resident_bytes:
+      B: 65
+      C: 55
+  rationale: "evict_smallest: victim is the smallest resident of [45, 65] \u2192 ['A']; incoming mid-sized\
+    \ (eligibility-robust)."
+- id: e135
+  class: size_policy_arith
+  verified: false
+  assumptions:
+  - evict_smallest victim rule
+  - incoming-eligibility-robust by construction
+  input:
+    policy: evict_smallest
+    budget: 125
+    events:
+    - op: insert
+      item: A
+      size: 75
+    - op: insert
+      item: B
+      size: 10
+    - op: insert
+      item: C
+      size: 45
+  expected:
+    evictions:
+    - B
+    compressions: []
+    resident:
+    - A
+    - C
+    resident_bytes:
+      A: 75
+      C: 45
+  rationale: "evict_smallest: victim is the smallest resident of [75, 10] \u2192 ['B']; incoming mid-sized\
+    \ (eligibility-robust)."
+- id: e136
+  class: scripted_eviction
+  verified: false
+  assumptions:
+  - scripted_eviction policy exists
+  - budget never triggers
+  input:
+    policy: scripted_eviction
+    script:
+      evict_at_step:
+        4:
+        - B
+        - A
+    budget: 1000000
+    events:
+    - op: insert
+      item: A
+      size: 40
+    - op: insert
+      item: B
+      size: 40
+    - op: insert
+      item: C
+      size: 40
+    - op: step
+  expected:
+    evictions:
+    - B
+    - A
+    compressions: []
+    resident:
+    - C
+    resident_bytes:
+      C: 40
+  rationale: Fiat eviction of ['B', 'A'] at step 4; budget never triggers.
+- id: e137
+  class: scripted_eviction
+  verified: false
+  assumptions:
+  - scripted_eviction policy exists
+  - budget never triggers
+  input:
+    policy: scripted_eviction
+    script:
+      evict_at_step:
+        4:
+        - C
+        - B
+    budget: 1000000
+    events:
+    - op: insert
+      item: A
+      size: 40
+    - op: insert
+      item: B
+      size: 40
+    - op: insert
+      item: C
+      size: 40
+    - op: step
+  expected:
+    evictions:
+    - C
+    - B
+    compressions: []
+    resident:
+    - A
+    resident_bytes:
+      A: 40
+  rationale: Fiat eviction of ['C', 'B'] at step 4; budget never triggers.
+- id: e138
+  class: scripted_eviction
+  verified: false
+  assumptions:
+  - scripted_eviction policy exists
+  - budget never triggers
+  input:
+    policy: scripted_eviction
+    script:
+      evict_at_step:
+        5:
+        - B
+    budget: 1000000
+    events:
+    - op: insert
+      item: A
+      size: 40
+    - op: insert
+      item: B
+      size: 40
+    - op: insert
+      item: C
+      size: 40
+    - op: insert
+      item: D
+      size: 40
+    - op: step
+  expected:
+    evictions:
+    - B
+    compressions: []
+    resident:
+    - A
+    - C
+    - D
+    resident_bytes:
+      A: 40
+      C: 40
+      D: 40
+  rationale: Fiat eviction of ['B'] at step 5; budget never triggers.
+- id: e139
+  class: scripted_eviction
+  verified: false
+  assumptions:
+  - scripted_eviction policy exists
+  - budget never triggers
+  input:
+    policy: scripted_eviction
+    script:
+      evict_at_step:
+        4:
+        - C
+    budget: 1000000
+    events:
+    - op: insert
+      item: A
+      size: 40
+    - op: insert
+      item: B
+      size: 40
+    - op: insert
+      item: C
+      size: 40
+    - op: step
+  expected:
+    evictions:
+    - C
+    compressions: []
+    resident:
+    - A
+    - B
+    resident_bytes:
+      A: 40
+      B: 40
+  rationale: Fiat eviction of ['C'] at step 4; budget never triggers.
+- id: e140
+  class: scripted_eviction
+  verified: false
+  assumptions:
+  - scripted_eviction policy exists
+  - budget never triggers
+  input:
+    policy: scripted_eviction
+    script:
+      evict_at_step:
+        4:
+        - C
+        - B
+    budget: 1000000
+    events:
+    - op: insert
+      item: A
+      size: 40
+    - op: insert
+      item: B
+      size: 40
+    - op: insert
+      item: C
+      size: 40
+    - op: step
+  expected:
+    evictions:
+    - C
+    - B
+    compressions: []
+    resident:
+    - A
+    resident_bytes:
+      A: 40
+  rationale: Fiat eviction of ['C', 'B'] at step 4; budget never triggers.
+- id: e141
+  class: scripted_eviction
+  verified: false
+  assumptions:
+  - scripted_eviction policy exists
+  - budget never triggers
+  input:
+    policy: scripted_eviction
+    script:
+      evict_at_step:
+        5:
+        - A
+    budget: 1000000
+    events:
+    - op: insert
+      item: A
+      size: 40
+    - op: insert
+      item: B
+      size: 40
+    - op: insert
+      item: C
+      size: 40
+    - op: insert
+      item: D
+      size: 40
+    - op: step
+  expected:
+    evictions:
+    - A
+    compressions: []
+    resident:
+    - B
+    - C
+    - D
+    resident_bytes:
+      B: 40
+      C: 40
+      D: 40
+  rationale: Fiat eviction of ['A'] at step 5; budget never triggers.
+- id: e142
+  class: scripted_eviction
+  verified: false
+  assumptions:
+  - scripted_eviction policy exists
+  - budget never triggers
+  input:
+    policy: scripted_eviction
+    script:
+      evict_at_step:
+        6:
+        - D
+    budget: 1000000
+    events:
+    - op: insert
+      item: A
+      size: 40
+    - op: insert
+      item: B
+      size: 40
+    - op: insert
+      item: C
+      size: 40
+    - op: insert
+      item: D
+      size: 40
+    - op: insert
+      item: E
+      size: 40
+    - op: step
+  expected:
+    evictions:
+    - D
+    compressions: []
+    resident:
+    - A
+    - B
+    - C
+    - E
+    resident_bytes:
+      A: 40
+      B: 40
+      C: 40
+      E: 40
+  rationale: Fiat eviction of ['D'] at step 6; budget never triggers.
+- id: e143
+  class: scripted_eviction
+  verified: false
+  assumptions:
+  - scripted_eviction policy exists
+  - budget never triggers
+  input:
+    policy: scripted_eviction
+    script:
+      evict_at_step:
+        5:
+        - A
+    budget: 1000000
+    events:
+    - op: insert
+      item: A
+      size: 40
+    - op: insert
+      item: B
+      size: 40
+    - op: insert
+      item: C
+      size: 40
+    - op: insert
+      item: D
+      size: 40
+    - op: step
+  expected:
+    evictions:
+    - A
+    compressions: []
+    resident:
+    - B
+    - C
+    - D
+    resident_bytes:
+      B: 40
+      C: 40
+      D: 40
+  rationale: Fiat eviction of ['A'] at step 5; budget never triggers.
+- id: e144
+  class: scripted_eviction
+  verified: false
+  assumptions:
+  - scripted_eviction policy exists
+  - budget never triggers
+  input:
+    policy: scripted_eviction
+    script:
+      evict_at_step:
+        4:
+        - C
+        - B
+    budget: 1000000
+    events:
+    - op: insert
+      item: A
+      size: 40
+    - op: insert
+      item: B
+      size: 40
+    - op: insert
+      item: C
+      size: 40
+    - op: step
+  expected:
+    evictions:
+    - C
+    - B
+    compressions: []
+    resident:
+    - A
+    resident_bytes:
+      A: 40
+  rationale: Fiat eviction of ['C', 'B'] at step 4; budget never triggers.
+- id: e145
+  class: scripted_eviction
+  verified: false
+  assumptions:
+  - scripted_eviction policy exists
+  - budget never triggers
+  input:
+    policy: scripted_eviction
+    script:
+      evict_at_step:
+        6:
+        - C
+    budget: 1000000
+    events:
+    - op: insert
+      item: A
+      size: 40
+    - op: insert
+      item: B
+      size: 40
+    - op: insert
+      item: C
+      size: 40
+    - op: insert
+      item: D
+      size: 40
+    - op: insert
+      item: E
+      size: 40
+    - op: step
+  expected:
+    evictions:
+    - C
+    compressions: []
+    resident:
+    - A
+    - B
+    - D
+    - E
+    resident_bytes:
+      A: 40
+      B: 40
+      D: 40
+      E: 40
+  rationale: Fiat eviction of ['C'] at step 6; budget never triggers.
+- id: e146
+  class: compression_trigger
+  verified: false
+  assumptions:
+  - min_compress_bytes=200
+  - min_saving_ratio=0.5
+  - stub summariser (plumbing corpus)
+  input:
+    policy: compression
+    stub_summary_chars: 40
+    budget: 620
+    events:
+    - op: insert
+      item: A
+      size: 280
+    - op: insert
+      item: B
+      size: 280
+    - op: insert
+      item: C
+      size: 280
+  expected:
+    evictions: []
+    compressions:
+    - A
+    resident:
+    - A
+    - B
+    - C
+    resident_bytes:
+      A: 40
+      B: 280
+      C: 280
+  rationale: 'compress-not-evict: floor 200B, ratio 0.5; expected compressions=[''A''] evictions=[].'
+- id: e147
+  class: compression_trigger
+  verified: false
+  assumptions:
+  - min_compress_bytes=200
+  - min_saving_ratio=0.5
+  - stub summariser (plumbing corpus)
+  input:
+    policy: compression
+    stub_summary_chars: 35
+    budget: 700
+    events:
+    - op: insert
+      item: A
+      size: 320
+    - op: insert
+      item: B
+      size: 320
+    - op: touch
+      item: B
+    - op: insert
+      item: C
+      size: 320
+  expected:
+    evictions: []
+    compressions:
+    - A
+    resident:
+    - A
+    - B
+    - C
+    resident_bytes:
+      A: 35
+      B: 320
+      C: 320
+  rationale: 'LFU selector skips the touched item: floor 200B, ratio 0.5; expected compressions=[''A'']
+    evictions=[].'
+- id: e148
+  class: compression_trigger
+  verified: false
+  assumptions:
+  - min_compress_bytes=200
+  - min_saving_ratio=0.5
+  - stub summariser (plumbing corpus)
+  input:
+    policy: compression
+    stub_summary_chars: 30
+    budget: 420
+    events:
+    - op: insert
+      item: A
+      size: 160
+    - op: insert
+      item: B
+      size: 320
+    - op: insert
+      item: C
+      size: 240
+  expected:
+    evictions:
+    - A
+    compressions:
+    - B
+    resident:
+    - B
+    - C
+    resident_bytes:
+      B: 30
+      C: 240
+  rationale: 'sub-floor evict then compress: floor 200B, ratio 0.5; expected compressions=[''B''] evictions=[''A''].'
+- id: e149
+  class: compression_trigger
+  verified: false
+  assumptions:
+  - min_compress_bytes=200
+  - min_saving_ratio=0.5
+  - stub summariser (plumbing corpus)
+  input:
+    policy: compression
+    stub_summary_chars: 190
+    budget: 640
+    events:
+    - op: insert
+      item: A
+      size: 300
+    - op: insert
+      item: B
+      size: 300
+    - op: insert
+      item: C
+      size: 300
+  expected:
+    evictions:
+    - A
+    compressions: []
+    resident:
+    - B
+    - C
+    resident_bytes:
+      B: 300
+      C: 300
+  rationale: "reject on saving < 0.5 \u2192 evict: floor 200B, ratio 0.5; expected compressions=[] evictions=['A']."
+- id: e150
+  class: compression_trigger
+  verified: false
+  assumptions:
+  - min_compress_bytes=200
+  - min_saving_ratio=0.5
+  - stub summariser (plumbing corpus)
+  input:
+    policy: compression
+    stub_summary_chars: 30
+    budget: 720
+    events:
+    - op: insert
+      item: A
+      size: 250
+    - op: insert
+      item: B
+      size: 250
+    - op: insert
+      item: C
+      size: 950
+  expected:
+    evictions:
+    - A
+    - B
+    compressions:
+    - A
+    - B
+    resident:
+    - C
+    resident_bytes:
+      C: 950
+  rationale: 'two compressions in one activation: floor 200B, ratio 0.5; expected compressions=[''A'',
+    ''B''] evictions=[''A'', ''B''].'

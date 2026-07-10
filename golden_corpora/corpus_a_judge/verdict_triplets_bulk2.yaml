@@ -1,0 +1,1231 @@
+# verdict_triplets sprint-2 growth (deterministic tiers).
+- id: j061
+  class: exact_match
+  verified: false
+  input:
+    reference: April 9th at 3pm
+    answer: APRIL 9TH AT 3PM
+    question: When is the dentist appointment?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j062
+  class: exact_match
+  verified: false
+  input:
+    reference: maple-syrup-42
+    answer: maple-syrup-42.
+    question: What is the cabin wifi password?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j063
+  class: exact_match
+  verified: false
+  input:
+    reference: 14 Alder Grove, Leeds
+    answer: the 14 Alder Grove, Leeds
+    question: What is the sister's address?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j064
+  class: exact_match
+  verified: false
+  input:
+    reference: 750 ml of vegetable stock
+    answer: 750 ML OF VEGETABLE STOCK
+    question: How much stock does the soup need?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j065
+  class: exact_match
+  verified: false
+  input:
+    reference: Casa Verde
+    answer: Casa Verde.
+    question: Where is the anniversary dinner booked?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j066
+  class: exact_match
+  verified: false
+  input:
+    reference: June 2nd
+    answer: the June 2nd
+    question: When is the library book due?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j067
+  class: exact_match
+  verified: false
+  input:
+    reference: 30-22-14
+    answer: the 30-22-14
+    question: What is the gym locker combination?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j068
+  class: exact_match
+  verified: false
+  input:
+    reference: 180 euros
+    answer: the 180 euros
+    question: How much did the plumber quote?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j069
+  class: exact_match
+  verified: false
+  input:
+    reference: level 5, spot B12
+    answer: level 5, spot b12
+    question: Where is the rental car parked?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j070
+  class: exact_match
+  verified: false
+  input:
+    reference: the coastal route
+    answer: the coastal route.
+    question: Which route are they taking?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j071
+  class: exact_match
+  verified: false
+  input:
+    reference: platform 3
+    answer: the platform 3
+    question: Which platform does the train leave from?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j072
+  class: exact_match
+  verified: false
+  input:
+    reference: Bluebird
+    answer: bluebird
+    question: What is the project codename?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j073
+  class: exact_match
+  verified: false
+  input:
+    reference: pier 7
+    answer: PIER 7
+    question: Which pier does the ferry leave from?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j074
+  class: exact_match
+  verified: false
+  input:
+    reference: Riverside Park
+    answer: RIVERSIDE PARK
+    question: Where does the under-12 team train?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j075
+  class: exact_match
+  verified: false
+  input:
+    reference: otter-lamp-9
+    answer: the otter-lamp-9
+    question: What is the shared drive password?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j076
+  class: exact_match
+  verified: false
+  input:
+    reference: '8265'
+    answer: the 8265
+    question: What is the storage unit gate code?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j077
+  class: exact_match
+  verified: false
+  input:
+    reference: '412'
+    answer: '412.'
+    question: What is Dr. Ferreira's room number?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j078
+  class: exact_match
+  verified: false
+  input:
+    reference: 45 seconds
+    answer: 45 seconds.
+    question: After how long does the generator start?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j079
+  class: exact_match
+  verified: false
+  input:
+    reference: 19 degrees
+    answer: the 19 degrees
+    question: What is the thermostat set to at night?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j080
+  class: exact_match
+  verified: false
+  input:
+    reference: '233'
+    answer: '233'
+    question: What is her locker number at the swim center?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j081
+  class: exact_match
+  verified: false
+  input:
+    reference: the Aurora room
+    answer: THE AURORA ROOM
+    question: Which room is the workshop in?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j082
+  class: exact_match
+  verified: false
+  input:
+    reference: seat 12A
+    answer: the seat 12A
+    question: Which seat is the user in?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j083
+  class: exact_match
+  verified: false
+  input:
+    reference: March 1st
+    answer: the March 1st
+    question: When is the deposit due?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j084
+  class: exact_match
+  verified: false
+  input:
+    reference: 10 mg
+    answer: 10 mg.
+    question: What is the prescribed dose?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j085
+  class: exact_match
+  verified: false
+  input:
+    reference: the Marlin Inn
+    answer: THE MARLIN INN
+    question: Where are they staying?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j086
+  class: exact_match
+  verified: false
+  input:
+    reference: 6pm
+    answer: 6pm.
+    question: When does the evening class start?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j087
+  class: exact_match
+  verified: false
+  input:
+    reference: Biscuit
+    answer: Biscuit.
+    question: What is the dog's name?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j088
+  class: exact_match
+  verified: false
+  input:
+    reference: Friday
+    answer: the Friday
+    question: When is the essay deadline?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j089
+  class: exact_match
+  verified: false
+  input:
+    reference: Hall B
+    answer: HALL B
+    question: Where is badge pickup?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j090
+  class: exact_match
+  verified: false
+  input:
+    reference: row 14
+    answer: the row 14
+    question: Which row are the concert seats in?
+  expected: CORRECT
+  tier: deterministic
+  rationale: Normalization-level equality.
+- id: j091
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: April 9th at 3pm
+    answer: IDK
+    question: When is the dentist appointment?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j092
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: maple-syrup-42
+    answer: I don't know
+    question: What is the cabin wifi password?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j093
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: 14 Alder Grove, Leeds
+    answer: I do not know
+    question: What is the sister's address?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j094
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: 750 ml of vegetable stock
+    answer: not enough information
+    question: How much stock does the soup need?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j095
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: Casa Verde
+    answer: insufficient information
+    question: Where is the anniversary dinner booked?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j096
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: June 2nd
+    answer: I cannot answer
+    question: When is the library book due?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j097
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: 30-22-14
+    answer: I can't answer
+    question: What is the gym locker combination?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j098
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: 180 euros
+    answer: no relevant information
+    question: How much did the plumber quote?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j099
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: level 5, spot B12
+    answer: IDK
+    question: Where is the rental car parked?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j100
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: the coastal route
+    answer: I don't know
+    question: Which route are they taking?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j101
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: platform 3
+    answer: I do not know
+    question: Which platform does the train leave from?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j102
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: Bluebird
+    answer: not enough information
+    question: What is the project codename?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j103
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: pier 7
+    answer: insufficient information
+    question: Which pier does the ferry leave from?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j104
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: Riverside Park
+    answer: I cannot answer
+    question: Where does the under-12 team train?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j105
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: otter-lamp-9
+    answer: I can't answer
+    question: What is the shared drive password?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j106
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: '8265'
+    answer: no relevant information
+    question: What is the storage unit gate code?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j107
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: '412'
+    answer: IDK
+    question: What is Dr. Ferreira's room number?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j108
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: 45 seconds
+    answer: I don't know
+    question: After how long does the generator start?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j109
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: 19 degrees
+    answer: I do not know
+    question: What is the thermostat set to at night?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j110
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: '233'
+    answer: not enough information
+    question: What is her locker number at the swim center?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j111
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: the Aurora room
+    answer: insufficient information
+    question: Which room is the workshop in?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j112
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: seat 12A
+    answer: I cannot answer
+    question: Which seat is the user in?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j113
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: March 1st
+    answer: I can't answer
+    question: When is the deposit due?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j114
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: 10 mg
+    answer: no relevant information
+    question: What is the prescribed dose?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j115
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: the Marlin Inn
+    answer: IDK
+    question: Where are they staying?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j116
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: 6pm
+    answer: I don't know
+    question: When does the evening class start?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j117
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: Biscuit
+    answer: I do not know
+    question: What is the dog's name?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j118
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: Friday
+    answer: not enough information
+    question: When is the essay deadline?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j119
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: Hall B
+    answer: insufficient information
+    question: Where is badge pickup?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j120
+  class: abstain_wrong
+  verified: false
+  input:
+    reference: row 14
+    answer: I cannot answer
+    question: Which row are the concert seats in?
+  expected: INCORRECT
+  tier: deterministic
+  rationale: Reference exists; abstention fails here.
+- id: j121
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: not enough information
+    question: Which hotel did the user book?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j122
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: insufficient information
+    question: What is the dentist's name?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j123
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: I cannot answer
+    question: What color is the rental car?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j124
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: I can't answer
+    question: Who owns the cabin?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j125
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: no relevant information
+    question: What time is the reservation?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j126
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: IDK
+    question: What is the book's title?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j127
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: I don't know
+    question: When will the plumber arrive?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j128
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: I do not know
+    question: Which airline are they flying?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j129
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: not enough information
+    question: What is the neighbor's surname?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j130
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: insufficient information
+    question: How long is the warranty?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j131
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: I cannot answer
+    question: What size is the jacket?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j132
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: I can't answer
+    question: Which floor is the office on?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j133
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: no relevant information
+    question: What is the cat's name?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j134
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: IDK
+    question: When was the boiler last serviced?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j135
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: I don't know
+    question: What brand is the lawnmower?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j136
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: I do not know
+    question: Who recommended the restaurant?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j137
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: not enough information
+    question: What is the meeting agenda?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j138
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: insufficient information
+    question: Which key opens the shed?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j139
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: I cannot answer
+    question: How much was the parking fine?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j140
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: I can't answer
+    question: What is the boat called?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j141
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: no relevant information
+    question: Which month is the audit?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j142
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: IDK
+    question: What flavor was the cake?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j143
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: I don't know
+    question: Who is picking up the kids?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j144
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: I do not know
+    question: What is the gate agent's name?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j145
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: not enough information
+    question: Which pharmacy is open late?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j146
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: insufficient information
+    question: What is the tracking number?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j147
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: I cannot answer
+    question: When does the lease start?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j148
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: I can't answer
+    question: What is the coach's phone number?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j149
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: no relevant information
+    question: Which trail did they hike?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j150
+  class: abstain_correct
+  verified: false
+  input:
+    reference: null
+    reference_type: unanswerable
+    answer: IDK
+    question: What is the invoice number?
+  expected: CORRECT
+  tier: deterministic
+  rationale: "Unanswerable \u2014 abstention is right."
+- id: j151
+  class: hallucination
+  verified: false
+  input:
+    reference: April 9th at 3pm
+    answer: It was on May 22nd in the early morning, as noted earlier.
+    question: When is the dentist appointment?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j152
+  class: hallucination
+  verified: false
+  input:
+    reference: maple-syrup-42
+    answer: It was sunflower-oat-77, as noted earlier.
+    question: What is the cabin wifi password?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j153
+  class: hallucination
+  verified: false
+  input:
+    reference: 14 Alder Grove, Leeds
+    answer: It was 9 Birch Way, York, as noted earlier.
+    question: What is the sister's address?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j154
+  class: hallucination
+  verified: false
+  input:
+    reference: 750 ml of vegetable stock
+    answer: It was two cups of chicken broth, as noted earlier.
+    question: How much stock does the soup need?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j155
+  class: hallucination
+  verified: false
+  input:
+    reference: Casa Verde
+    answer: It was the Golden Fork downtown, as noted earlier.
+    question: Where is the anniversary dinner booked?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j156
+  class: hallucination
+  verified: false
+  input:
+    reference: June 2nd
+    answer: It was August 15th, as noted earlier.
+    question: When is the library book due?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j157
+  class: hallucination
+  verified: false
+  input:
+    reference: 30-22-14
+    answer: It was 11-45-90, as noted earlier.
+    question: What is the gym locker combination?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j158
+  class: hallucination
+  verified: false
+  input:
+    reference: 180 euros
+    answer: It was 320 euros, as noted earlier.
+    question: How much did the plumber quote?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j159
+  class: hallucination
+  verified: false
+  input:
+    reference: level 5, spot B12
+    answer: It was level 2, spot A3, as noted earlier.
+    question: Where is the rental car parked?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j160
+  class: hallucination
+  verified: false
+  input:
+    reference: the coastal route
+    answer: It was the inland motorway, as noted earlier.
+    question: Which route are they taking?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j161
+  class: hallucination
+  verified: false
+  input:
+    reference: platform 3
+    answer: It was gate 11, as noted earlier.
+    question: Which platform does the train leave from?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j162
+  class: hallucination
+  verified: false
+  input:
+    reference: Bluebird
+    answer: It was Kestrel, as noted earlier.
+    question: What is the project codename?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j163
+  class: hallucination
+  verified: false
+  input:
+    reference: pier 7
+    answer: It was pier 12, as noted earlier.
+    question: Which pier does the ferry leave from?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j164
+  class: hallucination
+  verified: false
+  input:
+    reference: Riverside Park
+    answer: It was Elmwood Stadium, as noted earlier.
+    question: Where does the under-12 team train?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j165
+  class: hallucination
+  verified: false
+  input:
+    reference: otter-lamp-9
+    answer: It was badger-kite-4, as noted earlier.
+    question: What is the shared drive password?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j166
+  class: hallucination
+  verified: false
+  input:
+    reference: '8265'
+    answer: It was 4197, as noted earlier.
+    question: What is the storage unit gate code?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j167
+  class: hallucination
+  verified: false
+  input:
+    reference: '412'
+    answer: It was room 208, as noted earlier.
+    question: What is Dr. Ferreira's room number?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j168
+  class: hallucination
+  verified: false
+  input:
+    reference: 45 seconds
+    answer: It was ninety seconds, as noted earlier.
+    question: After how long does the generator start?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j169
+  class: hallucination
+  verified: false
+  input:
+    reference: 19 degrees
+    answer: It was 25 degrees, as noted earlier.
+    question: What is the thermostat set to at night?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j170
+  class: hallucination
+  verified: false
+  input:
+    reference: '233'
+    answer: It was locker 508, as noted earlier.
+    question: What is her locker number at the swim center?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j171
+  class: hallucination
+  verified: false
+  input:
+    reference: the Aurora room
+    answer: It was the Baltic room, as noted earlier.
+    question: Which room is the workshop in?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j172
+  class: hallucination
+  verified: false
+  input:
+    reference: seat 12A
+    answer: It was seat 30F, as noted earlier.
+    question: Which seat is the user in?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j173
+  class: hallucination
+  verified: false
+  input:
+    reference: March 1st
+    answer: It was September 30th, as noted earlier.
+    question: When is the deposit due?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j174
+  class: hallucination
+  verified: false
+  input:
+    reference: 10 mg
+    answer: It was 50 mg, as noted earlier.
+    question: What is the prescribed dose?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j175
+  class: hallucination
+  verified: false
+  input:
+    reference: the Marlin Inn
+    answer: It was the Harbor Lodge, as noted earlier.
+    question: Where are they staying?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j176
+  class: hallucination
+  verified: false
+  input:
+    reference: 6pm
+    answer: It was 9:30pm, as noted earlier.
+    question: When does the evening class start?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j177
+  class: hallucination
+  verified: false
+  input:
+    reference: Biscuit
+    answer: It was Pretzel, as noted earlier.
+    question: What is the dog's name?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j178
+  class: hallucination
+  verified: false
+  input:
+    reference: Friday
+    answer: It was next Wednesday, as noted earlier.
+    question: When is the essay deadline?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j179
+  class: hallucination
+  verified: false
+  input:
+    reference: Hall B
+    answer: It was Hall D, as noted earlier.
+    question: Where is badge pickup?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
+- id: j180
+  class: hallucination
+  verified: false
+  input:
+    reference: row 14
+    answer: It was row 2, as noted earlier.
+    question: Which row are the concert seats in?
+  expected: INCORRECT
+  tier: deterministic_and_judge
+  rationale: Fluent, confident, wrong entity.
