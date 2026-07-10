@@ -43,8 +43,16 @@ def load_all_csvs(results_dir: Path) -> pd.DataFrame:
 
 
 def aggregate(df: pd.DataFrame) -> pd.DataFrame:
+    # Coupled identity (D3): lru/lfu are touch-based, so their aggregation
+    # unit includes the retriever. Legacy CSVs in results/longmemeval predate
+    # the retriever column (single-retriever era) — for those the bare-name
+    # grouping is the per-retriever grouping; guard the day mixed-retriever
+    # CSVs land in the same directory.
+    keys = ["policy", "budget_bytes", "k"]
+    if "retriever" in df.columns:
+        keys.insert(1, "retriever")
     agg = (
-        df.groupby(["policy", "budget_bytes", "k"], as_index=False)
+        df.groupby(keys, as_index=False)
         .agg(
             n=("question_id", "count"),
             gold_retained_mean=("gold_retained", "mean"),

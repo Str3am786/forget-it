@@ -169,9 +169,19 @@ def fig_policy_comparison(df: pd.DataFrame, ax=None):
         "evictions_total_at_query_time", pd.Series(0, index=df.index)) > 0]
     if len(P) == 0:
         return None
+    # Aggregation unit = (policy, retriever) for history policies: LRU/LFU
+    # state is built from retrieval touches, so pooling them across retrievers
+    # under a bare name launders the interaction into a "policy" score
+    # (metrics.policy_unit — the D3 coupled-identity rule).
+    from forgetit.benchmark.metrics import policy_unit
+    P = P.copy()
+    retr = P["retriever"] if "retriever" in P.columns else pd.Series("", index=P.index)
+    P["policy_unit"] = [policy_unit(p, r) for p, r in zip(P["policy"], retr.fillna(""))]
     order = ["lru", "lfu", "random", "compression"]
-    g = (P.groupby("policy")[["gold_survived", "hit_at_k"]].mean()
-           .reindex([p for p in order if p in P["policy"].unique()]))
+    unit_order = [u for p in order for u in sorted(P["policy_unit"].unique())
+                  if u == p or u.startswith(p + "@")]
+    g = (P.groupby("policy_unit")[["gold_survived", "hit_at_k"]].mean()
+           .reindex(unit_order))
     if ax is None:
         _, ax = plt.subplots(figsize=(6.5, 3.6))
     x = np.arange(len(g)); w = 0.38
