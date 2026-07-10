@@ -78,6 +78,8 @@ def run_pipeline(
     example_footprints: list[int] | None = None,
     policy_label: str = "",
     retriever_label: str = "",
+    probe_touch_mode: str = "original",
+    reader_token_budget: int = 0,
     out_dir: str = "artifacts/benchmark",
     clear_after: bool = True,
     write_events: bool = False,
@@ -143,6 +145,8 @@ def run_pipeline(
                 reader_impl=reader_impl,
                 answer_max_tokens=answer_max_tokens,
                 reader_workers=reader_workers,
+                probe_touch_mode=probe_touch_mode,
+                reader_token_budget=reader_token_budget,
             )
     finally:
         # TODO need to think of a clear_between_examples=True flag
@@ -257,6 +261,8 @@ def run_pipeline_concurrent(
     example_footprints: list[int] | None = None,
     policy_label: str = "",
     retriever_label: str = "",
+    probe_touch_mode: str = "original",
+    reader_token_budget: int = 0,
     out_dir: str = "artifacts/benchmark",
     write_events: bool = False,
 ) -> tuple[list, dict[str, float]]:
@@ -312,6 +318,8 @@ def run_pipeline_concurrent(
                     collect_reader_context=collect_ctx, collect_events=write_events,
                     collect_gold_snapshot=write_events, example_id=example_id,
                     answer_max_tokens=answer_max_tokens,
+                    probe_touch_mode=probe_touch_mode,
+                    reader_token_budget=reader_token_budget,
                 )
         finally:
             # Dispose the per-example store (frees memory; isolation already

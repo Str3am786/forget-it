@@ -104,6 +104,16 @@ class EvalResult:
     # value). 0.0 means a fixed byte budget was used instead.
     budget_frac: float = 0.0
 
+    # E3 run condition: which retrievals touched the LRU/LFU signal
+    # ("original" / "probes_blind" / "probes_only"). Config label, not a metric —
+    # never pool rows across different values.
+    probe_touch_mode: str = "original"
+
+    # E6c run condition: total evidence token budget of the reader prompt.
+    # 0 = legacy context (5 items × 300-char per-item truncation). Config
+    # label, not a metric — never pool rows across different values.
+    reader_token_budget: int = 0
+
     # per-query activity (deltas since the previous scored query) — the readable
     # counterparts to the cumulative odometer above.  inserts_since_last_query is
     # "how many items were admitted for this query/example".

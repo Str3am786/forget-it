@@ -396,6 +396,8 @@ def run_one_example(
     collect_gold_snapshot: bool = False,
     example_id: str = "",
     answer_max_tokens: int = 128,
+    probe_touch_mode: str = "original",
+    reader_token_budget: int = 0,
 ) -> tuple[list[EvalResult], list[tuple], list[dict], list[dict]]:
     """Replay ONE example's events against ONE fresh store.
 
@@ -513,6 +515,8 @@ def run_one_example(
             policy=policy,
             budget_bytes=eval_budget,
             budget_frac=budget_frac,
+            probe_touch_mode=probe_touch_mode,
+            reader_token_budget=reader_token_budget,
             k=k,
             itemiser=itemiser,
             retriever=retriever_name,
@@ -592,6 +596,8 @@ def run(
     reader_impl: Reader | None = None,
     answer_max_tokens: int = 128,
     reader_workers: int = 1,
+    probe_touch_mode: str = "original",
+    reader_token_budget: int = 0,
 ) -> list[EvalResult]:
     """
     Replay a workload chronologically against the store.
@@ -761,6 +767,8 @@ def run(
                 policy=policy,
                 budget_bytes=eval_budget,
                 budget_frac=budget_frac,
+                probe_touch_mode=probe_touch_mode,
+                reader_token_budget=reader_token_budget,
                 k=k,
                 itemiser=itemiser,
                 retriever=retriever_name,

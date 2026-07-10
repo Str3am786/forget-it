@@ -14,7 +14,7 @@ from forgetit.benchmark.workloads.longmemeval import (
     SessionItemiser,
     TurnPairItemiser,
 )
-from forgetit.memory_system import RetentionManager
+from forgetit.memory_system import RetentionManager, EmptyStore
 from forgetit.memory_system.wrappers.memgpt_sys import LettaWrapper
 from forgetit.backend.in_memory import InMemoryBackend
 from forgetit.core.logging import BenchmarkLogger
@@ -65,6 +65,7 @@ def build_retention_store(
     retriever_name: str,
     embedder=None,
     attach_vectors: bool = False,
+    probe_touch_mode: str = "original",
 ) -> tuple[str, RetentionManager, dict]:
     backend = InMemoryBackend(retriever=retriever)
     logger = BenchmarkLogger()
@@ -85,13 +86,20 @@ def build_retention_store(
         policy=policy,
         logger=logger,
         embedder=store_embedder,
+        probe_touch_mode=probe_touch_mode,
     )
     pct = f"{int(round(budget_frac * 100)):03d}pct"
     label = f"retention/{policy_name}/{retriever_name}/budget_{pct}"
+    # Non-default touch modes get their own artifact directory; "original" keeps
+    # the legacy unlabelled path so existing runs reproduce byte-for-byte. The
+    # probe_touch_mode CSV column disambiguates in either case.
+    if probe_touch_mode != "original":
+        label += f"/touch_{probe_touch_mode}"
     return label, store, {
         "budget_frac": budget_frac,
         "policy_label": policy_name,
         "retriever_label": retriever_name,
+        "probe_touch_mode": probe_touch_mode,
     }
 
 
@@ -106,6 +114,19 @@ def build_letta_store(
     short_model = model.split("/")[-1].split(":")[0]
     label = f"letta/{short_model}"
     return label, store, {}       # no budget / policy / retriever labels
+
+
+def build_empty_store() -> tuple[str, EmptyStore, dict]:
+    """E2b parametric-knowledge floor: reader answers with ZERO evidence.
+
+    policy_label 'empty_store_floor' + the floor/ label make these rows
+    unmistakable — every end-to-end number is later reported as lift over them.
+    """
+    return "floor/empty_store", EmptyStore(), {
+        "budget_frac": 0.0,
+        "policy_label": "empty_store_floor",
+        "retriever_label": "none",
+    }
 
 
 # ── Plans ─────────────────────────────────────────────────────────
@@ -158,6 +179,7 @@ def make_stores(
     include_letta: bool = False,
     embedder=None,
     attach_vectors: bool = False,
+    probe_touch_mode: str = "original",
 ) -> Iterator[tuple[str, Callable[[], object], dict]]:
     """
     Yield ``(label, factory, {})`` triples — one per (policy × retriever × budget_frac).
@@ -167,14 +189,17 @@ def make_stores(
         for rname, retriever_fn in retriever_specs:
             for frac in budget_fracs:
                 def _factory(fr=frac, pf=policy_fn, rf=retriever_fn,
-                             pn=pname, rn=rname, emb=embedder, av=attach_vectors):
+                             pn=pname, rn=rname, emb=embedder, av=attach_vectors,
+                             ptm=probe_touch_mode):
                     return build_retention_store(
                         budget_frac=fr, policy=pf(), retriever=rf(),
                         policy_name=pn, retriever_name=rn, embedder=emb,
-                        attach_vectors=av,
+                        attach_vectors=av, probe_touch_mode=ptm,
                     )
                 pct = f"{int(round(frac * 100)):03d}pct"
                 label = f"retention/{pname}/{rname}/budget_{pct}"
+                if probe_touch_mode != "original":
+                    label += f"/touch_{probe_touch_mode}"
                 yield label, _factory, {}
 
     if include_letta:
@@ -224,6 +249,30 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--event-log", action="store_true",
                    help="Stream a per-eviction event trace (events.jsonl) next to each "
                         "config's CSVs — enables the survival/regret/value-decay analysis.")
+    p.add_argument("--probe-touch-mode", choices=["original", "probes_blind", "probes_only"],
+                   default="original",
+                   help="Which retrievals update the LRU/LFU recency/frequency signal "
+                        "(E3 probes-blind replay). original: every retrieval touches "
+                        "(legacy). probes_blind: access-only probes do NOT touch; scored "
+                        "queries do. probes_only: only probes touch. Retrieval results "
+                        "are identical in all modes. Non-default modes add a "
+                        "touch_<mode>/ segment to the output dir and are stamped into "
+                        "the probe_touch_mode column of results.csv.")
+    p.add_argument("--reader-token-budget", type=int, default=None, metavar="N",
+                   help="E6c fair reader: give the prompt ONE total evidence budget of "
+                        "~N tokens (len//4 approximation), filled whole-item in "
+                        "retrieval-rank order with an explicit marker on a final "
+                        "truncated item — instead of the legacy 5×300-char per-item "
+                        "truncation. Default: legacy (reproduces old runs exactly). "
+                        "Budgeted is the documented choice for new runs; ~375 matches "
+                        "the legacy prompt size. Recorded in the reader label "
+                        "(PlainTextReader_rtokN) and the reader_token_budget column.")
+    p.add_argument("--empty-store-control", action="store_true",
+                   help="E2b parametric-knowledge floor: replace the policy grid with a "
+                        "single empty-store config per itemiser — scored queries reach "
+                        "the reader with ZERO evidence and are graded normally. Rows are "
+                        "labeled policy=empty_store_floor under floor/empty_store/. "
+                        "Ignores --policies/--retrievers/--budgets; requires the reader.")
     p.add_argument("--workers", type=int, default=1,
                    help="Replay this many EXAMPLES concurrently within a config (thread "
                         "pool). Each example gets its own fresh, isolated store, so the "
@@ -257,6 +306,10 @@ def main() -> None:
     if not data_path.exists():
         raise FileNotFoundError(f"Dataset not found: {data_path}")
 
+    if args.empty_store_control and args.no_reader:
+        raise SystemExit("--empty-store-control measures the reader's parametric "
+                         "floor — it cannot run with --no-reader.")
+
     # The reader is the only thing that needs an LLM endpoint; skip it for
     # pure retrieval/eviction runs (e.g. while debugging policies on LUMI).
     if args.no_reader:
@@ -265,7 +318,7 @@ def main() -> None:
         reader_name = "none"
     else:
         llm = get_llm()
-        reader_impl = PlainTextReader(llm)
+        reader_impl = PlainTextReader(llm, token_budget=args.reader_token_budget)
         reader_name = getattr(reader_impl, "name", type(reader_impl).__name__)
 
     itemisers = [SessionItemiser(), TurnPairItemiser()]
@@ -278,53 +331,60 @@ def main() -> None:
     # experiment — policies, budgets, retrievers — stays identical.
     INCLUDE_LETTA = False
 
-    # Policies first, then filter — we need the *selected* policy set to decide
-    # whether an embedder is required (a content-aware policy needs item vectors
-    # even under BM25 retrieval, so the embedder is not a dense-only concern).
-    policy_specs = default_policy_specs(llm, seed=42)
-    if args.policies is not None:
-        want = set(args.policies)
-        policy_specs = [s for s in policy_specs if s[0] in want]
-        missing = want - {s[0] for s in policy_specs}
-        if missing:
-            raise SystemExit(f"--policies: unknown {sorted(missing)}; "
-                             f"have {[s[0] for s in default_policy_specs(llm)]}")
-
-    # The embedder serves three consumers, not just dense retrieval: (1) the dense
-    # retriever, (2) content-aware eviction policies (semantic*) reading item
-    # vectors, (3) re-embed-on-compress. Build one shared instance (shared cache +
-    # httpx pool) when any is in play. --embed forces item vectors onto every store
-    # WITHOUT adding the dense retriever to the sweep.
-    want_dense = args.dense or (args.retrievers is not None and "dense" in args.retrievers)
-    content_aware = any(getattr(pf(), "needs_embeddings", False) for _, pf in policy_specs)
-    embedder = None
-    if want_dense or args.embed or content_aware:
-        from forgetit.embeddings import get_embedder
-        embedder = get_embedder()
-        log.info("embedder enabled (model=%s) [dense=%s embed=%s content_aware=%s]",
-                 getattr(embedder, "model", "?"), want_dense, args.embed, content_aware)
-
-    retriever_specs = default_retriever_specs(embedder)
-    if args.retrievers is not None:
-        want = set(args.retrievers)
-        retriever_specs = [s for s in retriever_specs if s[0] in want]
-        missing = want - {s[0] for s in retriever_specs}
-        if missing:
-            raise SystemExit(f"--retrievers: unknown {sorted(missing)} "
-                             f"(note: 'dense' needs an embedder — pass --dense or --embed); "
-                             f"have {[s[0] for s in retriever_specs]}")
-
     # Flatten the full grid into one ordered list of (itemiser, label, factory)
     # configs, then take this shard's stride.  Output paths embed itemiser +
     # store_label, so each config lands in its own directory regardless of shard.
     all_configs: list[tuple[object, str, Callable]] = []
-    for itemiser in itemisers:
-        for label, factory, _ in make_stores(
-            policy_specs, retriever_specs, budget_fracs,
-            include_letta=INCLUDE_LETTA, embedder=embedder,
-            attach_vectors=args.embed,
-        ):
-            all_configs.append((itemiser, label, factory))
+    if args.empty_store_control:
+        # E2b floor: the policy/retriever/budget grid is moot (nothing is stored),
+        # so don't derive it — deriving it would also drag in the embedder for
+        # content-aware policies. One store-less config per itemiser.
+        for itemiser in itemisers:
+            all_configs.append((itemiser, "floor/empty_store", build_empty_store))
+    else:
+        # Policies first, then filter — we need the *selected* policy set to decide
+        # whether an embedder is required (a content-aware policy needs item vectors
+        # even under BM25 retrieval, so the embedder is not a dense-only concern).
+        policy_specs = default_policy_specs(llm, seed=42)
+        if args.policies is not None:
+            want = set(args.policies)
+            policy_specs = [s for s in policy_specs if s[0] in want]
+            missing = want - {s[0] for s in policy_specs}
+            if missing:
+                raise SystemExit(f"--policies: unknown {sorted(missing)}; "
+                                 f"have {[s[0] for s in default_policy_specs(llm)]}")
+
+        # The embedder serves three consumers, not just dense retrieval: (1) the dense
+        # retriever, (2) content-aware eviction policies (semantic*) reading item
+        # vectors, (3) re-embed-on-compress. Build one shared instance (shared cache +
+        # httpx pool) when any is in play. --embed forces item vectors onto every store
+        # WITHOUT adding the dense retriever to the sweep.
+        want_dense = args.dense or (args.retrievers is not None and "dense" in args.retrievers)
+        content_aware = any(getattr(pf(), "needs_embeddings", False) for _, pf in policy_specs)
+        embedder = None
+        if want_dense or args.embed or content_aware:
+            from forgetit.embeddings import get_embedder
+            embedder = get_embedder()
+            log.info("embedder enabled (model=%s) [dense=%s embed=%s content_aware=%s]",
+                     getattr(embedder, "model", "?"), want_dense, args.embed, content_aware)
+
+        retriever_specs = default_retriever_specs(embedder)
+        if args.retrievers is not None:
+            want = set(args.retrievers)
+            retriever_specs = [s for s in retriever_specs if s[0] in want]
+            missing = want - {s[0] for s in retriever_specs}
+            if missing:
+                raise SystemExit(f"--retrievers: unknown {sorted(missing)} "
+                                 f"(note: 'dense' needs an embedder — pass --dense or --embed); "
+                                 f"have {[s[0] for s in retriever_specs]}")
+
+        for itemiser in itemisers:
+            for label, factory, _ in make_stores(
+                policy_specs, retriever_specs, budget_fracs,
+                include_letta=INCLUDE_LETTA, embedder=embedder,
+                attach_vectors=args.embed, probe_touch_mode=args.probe_touch_mode,
+            ):
+                all_configs.append((itemiser, label, factory))
 
     my_configs = all_configs[args.shard::args.num_shards]
     log.info(
@@ -349,13 +409,15 @@ def main() -> None:
 
     # Per-example footprints (one workload replay per itemiser) — the denominator
     # for relative budgeting.  Computed only for itemisers this shard touches.
+    # Floor mode stores nothing, so there is no budget to size (skip the replay).
     footprints: dict[str, list[int]] = {}
-    for name in {it.name for it, _, _ in my_configs}:
-        fp = example_footprints(workloads[name])
-        footprints[name] = fp
-        mean = sum(fp) / len(fp) if fp else 0
-        log.info("footprints[%s]: %d examples, mean=%.0f B, max=%d B",
-                 name, len(fp), mean, max(fp) if fp else 0)
+    if not args.empty_store_control:
+        for name in {it.name for it, _, _ in my_configs}:
+            fp = example_footprints(workloads[name])
+            footprints[name] = fp
+            mean = sum(fp) / len(fp) if fp else 0
+            log.info("footprints[%s]: %d examples, mean=%.0f B, max=%d B",
+                     name, len(fp), mean, max(fp) if fp else 0)
 
     def _run_one(cfg) -> str:
         itemiser, _label, factory = cfg
@@ -379,6 +441,7 @@ def main() -> None:
             out_dir=args.out_dir,
             write_events=args.event_log,
             example_footprints=footprints.get(itemiser.name),
+            reader_token_budget=args.reader_token_budget or 0,
             **extras,
         )
         return (f"itemiser={itemiser.name:<12} store={label:<45} reader={reader_name:<12} "

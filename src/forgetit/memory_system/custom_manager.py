@@ -29,15 +29,29 @@ def estimate_bytes(item: MemRecord) -> int:
     return record_cost(item)
 
 
+# Which retrievals update the recency/frequency signal (access_count /
+# last_access) that LRU/LFU consume. Retrieval RESULTS are identical in all
+# modes — only the touch differs. E3 counterfactual: "probes_blind" removes
+# the workload's access-only probes from the signal; "probes_only" keeps
+# nothing but them.
+PROBE_TOUCH_MODES = ("original", "probes_blind", "probes_only")
+
+
 # TODO maybe look at calling it "ForgettingController"
 class RetentionManager(MemorySystem):
 
     def __init__(self, budget_bytes: int, backend: Backend, policy: EvictionPolicy, logger,
-                 embedder: "Embedder | None" = None):
+                 embedder: "Embedder | None" = None,
+                 probe_touch_mode: str = "original"):
+        if probe_touch_mode not in PROBE_TOUCH_MODES:
+            raise ValueError(
+                f"probe_touch_mode must be one of {PROBE_TOUCH_MODES}, "
+                f"got {probe_touch_mode!r}")
         self.budget_bytes = budget_bytes
         self.backend = backend
         self.policy = policy
         self.logger = logger
+        self.probe_touch_mode = probe_touch_mode
         # Optional: when records carry embeddings (dense/vector retrieval), the
         # store re-embeds a record's vector after compression so it describes the
         # new (compressed) text rather than the stale original. Required for
@@ -114,14 +128,30 @@ class RetentionManager(MemorySystem):
             raise ValueError("RetentionManager.retrieve requires k.")
         results = self.backend.search(query, k)
 
-        self._tick += 1
-        # TODO change to a multiple upsert
-        for it in results:
-            it.access_count += 1
-            it.last_access = float(self._tick)
-            self.backend.upsert(it)
+        # Probe detection: workloads stamp meta={"probe": True} on access-only
+        # probes (the authoritative flag); the ::probe:: id convention is the
+        # fallback for queries built elsewhere.
+        is_probe = query.meta.get("probe") is True or "::probe::" in query.id
+        if self.probe_touch_mode == "probes_blind":
+            touch = not is_probe
+        elif self.probe_touch_mode == "probes_only":
+            touch = is_probe
+        else:
+            touch = True
 
-        self.logger.event("retrieve", {"q": query.id, "hits": [r.id for r in results]})
+        # The tick advances on every retrieval regardless of mode: only the
+        # ORDER of last_access values matters to LRU, so skipped ticks are
+        # harmless, and "original" stays bit-identical to prior runs.
+        self._tick += 1
+        if touch:
+            # TODO change to a multiple upsert
+            for it in results:
+                it.access_count += 1
+                it.last_access = float(self._tick)
+                self.backend.upsert(it)
+
+        self.logger.event("retrieve", {"q": query.id, "hits": [r.id for r in results],
+                                       "probe": is_probe, "touched": touch})
         return results
 
     def get(self, item_id: str) -> Optional[MemRecord]:
