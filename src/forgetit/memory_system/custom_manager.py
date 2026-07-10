@@ -108,6 +108,12 @@ class RetentionManager(MemorySystem):
             self._tick += 1
             self._n_inserts += 1
             item.last_access = float(self._tick)
+            # Insertion ordinal for FIFO (and any future insertion-order
+            # consumer): unlike last_access this is never rewritten by touches,
+            # and unlike created_at it is the store's clock, not the data's.
+            # A re-insert refreshes it (re-enqueue at tail), matching how
+            # blind-LRU treats a re-seen item.
+            item.meta["t_insert"] = float(self._tick)
             # Leave access_count at 0 for fresh items so LFU only counts true
             # retrievals.  The carry-forward above already preserved any prior
             # retrieval signal for re-inserted items.
@@ -191,6 +197,16 @@ class RetentionManager(MemorySystem):
             raise NotImplementedError("Not Implemented yet and requires a graph backend")
         else:
             raise TypeError(f" Unknown action type: {type(action)}")
+
+    def force_evict(self, record_id: str) -> None:
+        """Fiat eviction OUTSIDE the budget loop — for scripted/counterfactual
+        harnesses (ScriptedEvictionPolicy fixtures, gold-purge runs). Emits the
+        same ``evict`` event as policy-driven eviction so offline survival
+        analysis sees a single vocabulary. Raises for non-resident ids: a
+        script naming a ghost is an experiment bug, surfaced loudly."""
+        if self.backend.get(record_id) is None:
+            raise KeyError(f"force_evict: {record_id!r} is not resident")
+        self._do_evict(record_id)
 
     def _do_evict(self, record_id: str) -> None:
         """Policy-driven eviction."""

@@ -10,23 +10,33 @@ if TYPE_CHECKING:
 
 
 class FIFOPolicy(SimpleEvictionPolicy):
-    name = "FIFO"
+    """Evict in INSERTION order; touches and data timestamps are ignored.
+
+    The clock is the store-stamped insertion ordinal (``MemFeatures.t_insert``),
+    NOT ``created_at``: created_at carries data timestamps (LongMemEval session
+    dates are non-monotonic across the insert stream), so ordering by it gives
+    "oldest-data-timestamp", a different policy. created_at remains as the
+    fallback tie-break for feature sources that don't stamp t_insert (then id,
+    for full determinism)."""
+    name = "fifo"
 
     def select_victim(self, store: RetentionManager, candidates: set[str] | None = None):
-        oldest_id: str | None = None
-        oldest_ts: float | None = None
+        victim_id: str | None = None
+        best = None
 
         for feat in store.iter_features():
             if candidates is not None and feat.id not in candidates:
                 continue
-            if oldest_ts is None or feat.created_at < oldest_ts:
-                oldest_ts = feat.created_at
-                oldest_id = feat.id
+            created = feat.created_at if feat.created_at is not None else 0.0
+            score = (getattr(feat, "t_insert", 0.0), created, feat.id)
+            if best is None or score < best:
+                best = score
+                victim_id = feat.id
 
-        if oldest_id is None:
-            raise RuntimeError("No records to evict")
+        if victim_id is None:
+            raise RuntimeError("FIFO: store empty but eviction requested.")
 
-        return oldest_id
+        return victim_id
 
 class RandomPolicy(SimpleEvictionPolicy):
     name = "Random"

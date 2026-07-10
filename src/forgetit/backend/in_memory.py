@@ -72,4 +72,5 @@ class InMemoryBackend(Backend):
                 access_count=it.access_count,
                 created_at=it.created_at,
                 compressed=bool(it.meta.get("compressed", False)),
+                t_insert=float(it.meta.get("t_insert", 0.0)),
             )

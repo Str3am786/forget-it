@@ -7,6 +7,7 @@ from .base import EvictionPolicy, SimpleEvictionPolicy
 from .llm_compression import LLMCompressionPolicy
 from .ebbinghaus import EbbinghausPolicy, MemoryBankCompressionPolicy
 from .semantic import SemanticRedundancyPolicy, SemanticCoveragePolicy
+from .scripted import ScriptedEvictionPolicy, PinnedPolicy
 
 __all__ = [
     "EvictionPolicy",
@@ -22,6 +23,8 @@ __all__ = [
     "LLMCompressionPolicy",
     "EbbinghausPolicy",
     "MemoryBankCompressionPolicy",
+    "ScriptedEvictionPolicy",
+    "PinnedPolicy",
     "Action",
     "Evict",
     "Compress",

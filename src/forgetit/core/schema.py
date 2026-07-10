@@ -28,6 +28,12 @@ class MemFeatures:
     access_count: int
     created_at: Optional[float] = None
     compressed: bool = False
+    # Store-stamped insertion ordinal (RetentionManager's tick at insert; a
+    # re-insert refreshes it). The FIFO clock: created_at is a DATA timestamp
+    # (non-monotonic across e.g. LongMemEval sessions), so insertion order must
+    # come from the store, not the data. 0.0 = unknown (record never passed
+    # through RetentionManager.insert) — consumers fall back to created_at.
+    t_insert: float = 0.0
 
 # TODO placeholder 
 @dataclass
