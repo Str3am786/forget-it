@@ -126,14 +126,14 @@ def default_policy_specs(llm, seed: int = 42) -> list[PolicySpec]:
         # Two side by side so cheap-proxy vs principled-coverage is itself a result:
         ("semantic",          lambda: SemanticRedundancyPolicy()),      # nearest-pair (cheap)
         ("semantic_coverage", lambda: SemanticCoveragePolicy()),        # marginal coverage (principled)
-        #("ebbinghaus",  lambda: EbbinghausPolicy()),
+        ("ebbinghaus",  lambda: EbbinghausPolicy()),
     ]
     # LLM-driven policies compress/evict via the model itself, so they need an
     # endpoint even when the reader is disabled.  Skip them when llm is None
     # (e.g. --no-reader) so retrieval-only runs need no inference server.
     if llm is not None:
         specs.append(("compression", lambda: LLMCompressionPolicy(llm=llm, selector=LFUPolicy())))
-        #specs.append(("memorybank",  lambda: MemoryBankCompressionPolicy(llm=llm, selector=EbbinghausPolicy())))
+        specs.append(("memorybank",  lambda: MemoryBankCompressionPolicy(llm=llm, selector=EbbinghausPolicy())))
     return specs
 
 

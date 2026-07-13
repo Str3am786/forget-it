@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 import textwrap
 from typing import TYPE_CHECKING
 
@@ -17,12 +16,24 @@ class EbbinghausPolicy(SimpleEvictionPolicy):
     MemoryBank-style forgetting-curve eviction.
 
     Each item gets a retention score
-        R(item) = exp( -(now - last_access) / S(item) )
+        R(item) = exp( -(now - created_at) / S(item) )
     where S grows with rehearsal count (each retrieval boosts strength):
         S(item) = base_strength + strength_growth * access_count
 
     The victim is the lowest-R item — the one our forgetting curve
     predicts is most likely to have been forgotten.
+
+    Ranking happens in LOG space: exp() is monotone, so ordering by R is
+    identical to ordering by log R = -dt/S — but exp(-dt/S) underflows to
+    exactly 0.0 once dt/S > ~745 (a never-accessed item ~2 years stale at
+    the default day unit), at which point every sufficiently-old item ties
+    at 0.0 and the strength signal silently vanishes from the ranking.
+    -dt/S never underflows, so rehearsal keeps separating old items no
+    matter how stale they are.
+
+    Note this also means ``time_unit_seconds`` cannot change WHO gets
+    evicted (it scales every item's dt/S equally); it only sets the scale
+    on which reported retention values are human-readable.
 
     "now" is the latest timestamp seen across the store, so the policy
     works under benchmark replay (where timestamps live in the past).
@@ -41,6 +52,12 @@ class EbbinghausPolicy(SimpleEvictionPolicy):
         strength_growth: float = 1.0,
         time_unit_seconds: float = 86_400.0,  # 1 day, matches paper
     ) -> None:
+        if base_strength <= 0:
+            raise ValueError(f"base_strength must be > 0, got {base_strength}")
+        if strength_growth < 0:
+            raise ValueError(f"strength_growth must be >= 0, got {strength_growth}")
+        if time_unit_seconds <= 0:
+            raise ValueError(f"time_unit_seconds must be > 0, got {time_unit_seconds}")
         self.base_strength = base_strength
         self.strength_growth = strength_growth
         self.time_unit_seconds = time_unit_seconds
@@ -48,11 +65,18 @@ class EbbinghausPolicy(SimpleEvictionPolicy):
     def _strength(self, access_count: int) -> float:
         return self.base_strength + self.strength_growth * access_count
 
+    def _log_retention(self, now: float, created_at: float, access_count: int) -> float:
+        """log R(item) = -dt/S. Order-equivalent to retention, underflow-free."""
+        dt = max(0.0, (now - created_at) / self.time_unit_seconds)
+        return -dt / self._strength(access_count)
+
     def select_victim(self, store: "RetentionManager", candidates: set[str] | None = None) -> str:
         # last_access is a logical tick counter (not wall-clock), so we use
         # created_at for the forgetting-curve time delta. created_at preserves
         # the historical session timestamps from the replay dataset, which is
         # the correct "elapsed time" signal for the Ebbinghaus decay formula.
+        # A missing created_at falls back to 0.0 (epoch = infinitely stale),
+        # matching how LRU/LFU treat it; every shipped workload sets it.
         # Pass 1: "now" = most recent session creation timestamp in the store.
         # "now" is taken over ALL items (real elapsed time), not just candidates.
         now = 0.0
@@ -61,18 +85,14 @@ class EbbinghausPolicy(SimpleEvictionPolicy):
             if ts > now:
                 now = ts
 
-        # Pass 2: rank by retention. Tiebreak deterministically.
+        # Pass 2: rank by log-retention. Tiebreak deterministically.
         victim_id: str | None = None
         best: tuple[float, float, str] | None = None
         for feat in store.iter_features():
             if candidates is not None and feat.id not in candidates:
                 continue
             ts = feat.created_at or 0.0
-            dt = max(0.0, (now - ts) / self.time_unit_seconds)
-            s = self._strength(feat.access_count)
-            retention = math.exp(-dt / s)
-
-            score = (retention, ts, feat.id)
+            score = (self._log_retention(now, ts, feat.access_count), ts, feat.id)
             if best is None or score < best:
                 best = score
                 victim_id = feat.id

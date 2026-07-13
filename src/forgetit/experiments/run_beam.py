@@ -114,13 +114,13 @@ def default_policy_specs(llm, seed: int = 42) -> list[PolicySpec]:
         # Cheap nearest-pair beside principled marginal coverage — the ablation:
         ("semantic",          lambda: SemanticRedundancyPolicy()),      # nearest-pair (cheap)
         ("semantic_coverage", lambda: SemanticCoveragePolicy()),        # marginal coverage (principled)
-        #("ebbinghaus",  lambda: EbbinghausPolicy()),
+        ("ebbinghaus",  lambda: EbbinghausPolicy()),
     ]
     # LLM-driven policies need an endpoint even when the reader is disabled, so
     # skip them when llm is None (--no-reader) → retrieval-only runs need no server.
     if llm is not None:
         specs.append(("compression", lambda: LLMCompressionPolicy(llm=llm, selector=LFUPolicy())))
-        #specs.append(("memorybank",  lambda: MemoryBankCompressionPolicy(llm=llm, selector=EbbinghausPolicy())))
+        specs.append(("memorybank",  lambda: MemoryBankCompressionPolicy(llm=llm, selector=EbbinghausPolicy())))
     return specs
 
 
