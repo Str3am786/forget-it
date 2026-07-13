@@ -23,18 +23,7 @@ class EbbinghausPolicy(SimpleEvictionPolicy):
     The victim is the lowest-R item — the one our forgetting curve
     predicts is most likely to have been forgotten.
 
-    Ranking happens in LOG space: exp() is monotone, so ordering by R is
-    identical to ordering by log R = -dt/S — but exp(-dt/S) underflows to
-    exactly 0.0 once dt/S > ~745 (a never-accessed item ~2 years stale at
-    the default day unit), at which point every sufficiently-old item ties
-    at 0.0 and the strength signal silently vanishes from the ranking.
-    -dt/S never underflows, so rehearsal keeps separating old items no
-    matter how stale they are.
-
-    Note this also means ``time_unit_seconds`` cannot change WHO gets
-    evicted (it scales every item's dt/S equally); it only sets the scale
-    on which reported retention values are human-readable.
-
+    Non-exponent to avoid underflow. 
     "now" is the latest timestamp seen across the store, so the policy
     works under benchmark replay (where timestamps live in the past).
 

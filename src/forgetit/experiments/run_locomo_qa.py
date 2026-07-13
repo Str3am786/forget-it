@@ -1,0 +1,409 @@
+"""
+LoCoMo experiment runner.
+
+LoCoMo-specific notes:
+  - Dataset: locomo10.json (Maharana et al. 2024) — 10 dyadic conversations,
+    ~588 turns / ~19K tokens each over up to 32 sessions (empirically measured;
+    the "35" seen in the raw file is the largest dangling session_N_date_time
+    index in conv-26, not a session count), with session timestamps and
+    image-sharing turns (represented as caption text by default;
+    --skip-image-turns for the exclusion variant).
+  - QA categories map to ``question_type`` so the per-category breakdown
+    (single_hop / multi_hop / temporal / commonsense / adversarial) falls out
+    of grouping combined results by question_type — no custom code, same as
+    BEAM's abilities. (Category 3 is open-domain / world-knowledge; the workload
+    emits it as ``commonsense``.) Category 5 (adversarial) is the UNANSWERABLE
+    class and is graded through the symmetric abstention path
+    (correct-when-abstained).
+  - Evidence ids are "D<session>:<turn>" strings; gold mapping to item ids per
+    itemiser lives in the workload (hand-verified fixture per LOCOMO_AGENT L2).
+  - Answer keys are not always strings (bare ints for years occur in the
+    data); normalization happens in the workload/grading layer, never here.
+  - GRADING IS OURS: LoCoMo's own LLM-judge prompts are deliberately not
+    ported (community audit disputes their reliability and ~6.4% of answer
+    keys — see the label-audit export before trusting absolute numbers).
+  - STATISTICAL POWER CAVEAT: ~10 conversations = ~10 clusters. Treat LoCoMo
+    as a generalization/validation set for taxonomy predictions, not a power
+    set — cluster-bootstrap CIs here will be wide by construction.
+"""
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+import logging
+from typing import Callable, Iterator
+
+from forgetit.benchmark.pipeline import run_pipeline_concurrent
+from forgetit.benchmark.budget import example_footprints, DEFAULT_BUDGET_FRACTIONS
+from forgetit.benchmark.workloads.locomo import (
+    LocomoWorkload,
+    LocomoTurnItemiser,
+    LocomoTurnPairItemiser,
+    LocomoSessionItemiser,
+)
+from forgetit.memory_system import RetentionManager
+from forgetit.memory_system.wrappers.memgpt_sys import LettaWrapper
+from forgetit.backend.in_memory import InMemoryBackend
+from forgetit.core.logging import BenchmarkLogger
+from forgetit.retrieval import LexicalOverlapRetriever, BM25Retriever, EmbeddingRetriever
+from forgetit.policies import (
+    LRUPolicy, LFUPolicy, FIFOPolicy, RandomPolicy,
+    LLMCompressionPolicy, EbbinghausPolicy, MemoryBankCompressionPolicy,
+    KeepSmallestPolicy, EvictSmallestPolicy,
+    SemanticRedundancyPolicy, SemanticCoveragePolicy,
+)
+from forgetit.llm import get_llm
+from forgetit.llm.readers import PlainTextReader
+from forgetit.settings import LETTA_BASE_URL, LETTA_API_KEY
+
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+DATA_DIR = REPO_ROOT / "data"
+LOCOMO_PATH = DATA_DIR / "locomo10.json"
+
+
+# ── Store builders ────────────────────────────────────────────────
+
+# Sentinel initial budget for relative-budget mode: the runner overrides it
+# per example before any insert, so it just needs to start effectively unbounded.
+_BUDGET_SENTINEL = 1 << 62
+
+
+def build_retention_store(
+    *, budget_frac: float, policy, retriever, policy_name: str, retriever_name: str,
+    embedder=None, attach_vectors: bool = False,
+) -> tuple[str, RetentionManager, dict]:
+    backend = InMemoryBackend(retriever=retriever)
+    logger = BenchmarkLogger()
+    # The store carries the embedder when something needs item vectors: the dense
+    # retriever ranks by them, a content-aware policy (semantic*) reads them, and
+    # re-embed-on-compress refreshes them. ``attach_vectors`` (--embed) forces them
+    # on regardless — e.g. a semantic policy under BM25 retrieval. Otherwise None.
+    needs_vectors = (
+        isinstance(retriever, EmbeddingRetriever)
+        or getattr(policy, "needs_embeddings", False)
+        or attach_vectors
+    )
+    store_embedder = embedder if (embedder is not None and needs_vectors) else None
+    store = RetentionManager(
+        budget_bytes=_BUDGET_SENTINEL,   # runner sets per-example budget = frac × footprint
+        backend=backend, policy=policy, logger=logger,
+        embedder=store_embedder,
+    )
+    pct = f"{int(round(budget_frac * 100)):03d}pct"
+    label = f"retention/{policy_name}/{retriever_name}/budget_{pct}"
+    return label, store, {
+        "budget_frac": budget_frac,
+        "policy_label": policy_name,
+        "retriever_label": retriever_name,
+    }
+
+
+def build_letta_store(
+    *,
+    model: str = "ollama/qwen2.5:7b-instruct-q5_K_M",
+    embedding: str = "ollama/nomic-embed-text:latest",
+    base_url: str = LETTA_BASE_URL,
+) -> tuple[str, LettaWrapper, dict]:
+    store = LettaWrapper(base_url=base_url, model=model, embedding=embedding, api_key=LETTA_API_KEY)
+    short_model = model.split("/")[-1].split(":")[0]
+    label = f"letta/{short_model}"
+    return label, store, {}
+
+
+# ── Policy / retriever specs ──────────────────────────────────────
+
+PolicySpec = tuple[str, Callable]
+RetrieverSpec = tuple[str, Callable]
+
+
+def default_policy_specs(llm, seed: int = 42) -> list[PolicySpec]:
+    """Zero-arg factories for every policy. Edit here to add/remove policies."""
+    specs: list[PolicySpec] = [
+        ("lru",            lambda: LRUPolicy()),
+        ("lfu",            lambda: LFUPolicy()),
+        ("fifo",           lambda: FIFOPolicy()),
+        ("random",         lambda: RandomPolicy(seed=seed)),
+        ("keep_smallest",  lambda: KeepSmallestPolicy()),    # evict largest
+        ("evict_smallest", lambda: EvictSmallestPolicy()),   # evict smallest
+        # Content-aware (need --dense; fall back to size on non-dense runs).
+        # Cheap nearest-pair beside principled marginal coverage — the ablation:
+        ("semantic",          lambda: SemanticRedundancyPolicy()),      # nearest-pair (cheap)
+        ("semantic_coverage", lambda: SemanticCoveragePolicy()),        # marginal coverage (principled)
+        ("ebbinghaus",  lambda: EbbinghausPolicy()),
+    ]
+    # LLM-driven policies need an endpoint even when the reader is disabled, so
+    # skip them when llm is None (--no-reader) → retrieval-only runs need no server.
+    if llm is not None:
+        specs.append(("compression", lambda: LLMCompressionPolicy(llm=llm, selector=LFUPolicy())))
+        specs.append(("memorybank",  lambda: MemoryBankCompressionPolicy(llm=llm, selector=EbbinghausPolicy())))
+    return specs
+
+
+def default_retriever_specs(embedder=None) -> list[RetrieverSpec]:
+    specs: list[RetrieverSpec] = [
+        ("lexical", LexicalOverlapRetriever),
+        ("bm25",    BM25Retriever),
+    ]
+    # Dense (vector) retriever — opt-in (--dense), needs an embedding endpoint.
+    # Runs alongside BM25 so the contrast is one sweep, everything else fixed.
+    if embedder is not None:
+        specs.append(("dense", lambda: EmbeddingRetriever(embedder=embedder)))
+    return specs
+
+
+def make_stores(
+    policy_specs: list[PolicySpec],
+    retriever_specs: list[RetrieverSpec],
+    budget_fracs: list[float],
+    include_letta: bool = False,
+    embedder=None,
+    attach_vectors: bool = False,
+) -> Iterator[tuple[str, Callable[[], tuple]]]:
+    """Yield ``(label, factory)`` pairs — one per (policy × retriever × budget_frac)."""
+    for pname, policy_fn in policy_specs:
+        for rname, retriever_fn in retriever_specs:
+            for frac in budget_fracs:
+                def _factory(fr=frac, pf=policy_fn, rf=retriever_fn, pn=pname, rn=rname,
+                             emb=embedder, av=attach_vectors):
+                    return build_retention_store(
+                        budget_frac=fr, policy=pf(), retriever=rf(),
+                        policy_name=pn, retriever_name=rn, embedder=emb,
+                        attach_vectors=av,
+                    )
+                pct = f"{int(round(frac * 100)):03d}pct"
+                yield f"retention/{pname}/{rname}/budget_{pct}", _factory
+
+    if include_letta:
+        yield "letta/default", build_letta_store
+
+
+# ── CLI ───────────────────────────────────────────────────────────
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="Run the LoCoMo sweep. Sharding lets many workers split the "
+                    "(itemiser × policy × retriever × budget) grid; each config "
+                    "writes its own CSV, so shards never collide.",
+    )
+    p.add_argument("--num-shards", type=int, default=1,
+                   help="Total number of parallel workers splitting the config grid.")
+    p.add_argument("--shard", type=int, default=0,
+                   help="This worker's index in [0, num-shards). On SLURM, pass $SLURM_ARRAY_TASK_ID.")
+    p.add_argument("--limit", type=int, default=None,
+                   help="Only replay the first N conversations (smoke test).")
+    p.add_argument("--no-reader", action="store_true",
+                   help="Skip the LLM reader — retrieval/eviction metrics only, no endpoint. "
+                        "LLM-driven policies are skipped automatically.")
+    p.add_argument("--dense", action="store_true",
+                   help="Also sweep a dense (embedding) retriever alongside lexical/BM25. "
+                        "Requires an embedding endpoint (EMBED_* settings). Set EMBED_MODEL "
+                        "to your shipping embedder (default nomic is the comparison model).")
+    p.add_argument("--embed", action="store_true",
+                   help="Attach item vectors to EVERY store (build the embedder) WITHOUT "
+                        "adding the dense retriever to the sweep. Use it to run a "
+                        "content-aware policy (semantic/semantic_coverage) under BM25/lexical "
+                        "retrieval, to exercise re-embed-on-compress, or to count vector bytes. "
+                        "Semantic policies attach vectors on their own; --embed forces them "
+                        "onto all configs. Needs an embedding endpoint (EMBED_* settings).")
+    p.add_argument("--skip-image-turns", action="store_true",
+                   help="Exclude image-sharing turns entirely instead of representing them "
+                        "as caption text (the default). Changes item counts and footprints — "
+                        "results are not comparable across this flag, so this run uses the "
+                        "dataset label 'locomo_noimg' (vs 'locomo'), which segregates its "
+                        "artifact directory AND its EvalResult.dataset column from the "
+                        "caption-inclusion runs — they never overwrite each other.")
+    p.add_argument("--policies", nargs="+", default=None, metavar="NAME",
+                   help="Restrict the sweep to these policy names (e.g. lru lfu). "
+                        "Default: every registered policy.")
+    p.add_argument("--retrievers", nargs="+", default=None, metavar="NAME",
+                   help="Restrict to these retriever names (lexical/bm25/dense). "
+                        "Default: every registered retriever (dense only with --dense).")
+    p.add_argument("--budgets", nargs="+", type=float, default=None, metavar="FRAC",
+                   help="Override the budget fractions of each example's footprint "
+                        "(e.g. 1.0 0.9). Default: 1.0 0.75 0.50 0.25 0.10.")
+    p.add_argument("--out-dir", type=str, default=str(REPO_ROOT / "artifacts" / "benchmark"),
+                   help="Root directory for per-config result CSVs.")
+    p.add_argument("--event-log", action="store_true",
+                   help="Stream a per-eviction event trace (events.jsonl) next to each config's "
+                        "CSVs — enables the survival/regret/value-decay analysis and the "
+                        "probes-blind replay machinery.")
+    p.add_argument("--include-letta", action="store_true",
+                   help="Also run the Letta store (requires a running Letta server).")
+    p.add_argument("--workers", type=int, default=1,
+                   help="Replay this many EXAMPLES (conversations) concurrently within a "
+                        "config (thread pool). Each example gets its own fresh, isolated "
+                        "store, so the compression LLM-call waits of different examples "
+                        "overlap and one config can saturate the vLLM replicas — while "
+                        "every eviction decision inside an example stays serial and "
+                        "identical to a single-store run. Configs run sequentially. "
+                        "NOTE: LoCoMo has ~10 conversations, so >10 buys nothing.")
+    p.add_argument("--reader-workers", type=int, default=1,
+                   help="Within each config, run the QA reader as a concurrent second pass "
+                        "(store-free, pure I/O).")
+    args = p.parse_args()
+    if args.num_shards < 1:
+        p.error("--num-shards must be >= 1")
+    if not (0 <= args.shard < args.num_shards):
+        p.error(f"--shard must be in [0, {args.num_shards})")
+    return args
+
+
+# ── Main ─────────────────────────────────────────────────────────
+
+def main() -> None:
+    args = parse_args()
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s  %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    log = logging.getLogger(__name__)
+
+    if not LOCOMO_PATH.exists():
+        raise FileNotFoundError(
+            f"Dataset not found: {LOCOMO_PATH} — download locomo10.json per "
+            f"LOCOMO_AGENT.md L0 (record URL + SHA256 in the report).")
+
+    seed = 42
+
+    if args.no_reader:
+        llm = None
+        reader_impl = None
+        reader_name = "none"
+    else:
+        llm = get_llm()
+        reader_impl = PlainTextReader(llm)
+        reader_name = getattr(reader_impl, "name", type(reader_impl).__name__)
+
+    # Policies first, then filter — we need the *selected* policy set to decide
+    # whether an embedder is required (a content-aware policy needs item vectors
+    # even under BM25 retrieval, so the embedder is not a dense-only concern).
+    policy_specs = default_policy_specs(llm, seed=seed)
+    if args.policies is not None:
+        want = set(args.policies)
+        policy_specs = [s for s in policy_specs if s[0] in want]
+        missing = want - {s[0] for s in policy_specs}
+        if missing:
+            raise SystemExit(f"--policies: unknown {sorted(missing)}; "
+                             f"have {[s[0] for s in default_policy_specs(llm)]}")
+
+    # The embedder serves three consumers, not just dense retrieval: (1) the dense
+    # retriever, (2) content-aware eviction policies (semantic*) reading item
+    # vectors, (3) re-embed-on-compress. Build one shared instance (shared cache +
+    # httpx pool) when any is in play. --embed forces item vectors onto every store
+    # WITHOUT adding the dense retriever to the sweep.
+    want_dense = args.dense or (args.retrievers is not None and "dense" in args.retrievers)
+    content_aware = any(getattr(pf(), "needs_embeddings", False) for _, pf in policy_specs)
+    embedder = None
+    if want_dense or args.embed or content_aware:
+        from forgetit.embeddings import get_embedder
+        embedder = get_embedder()
+        log.info("embedder enabled (model=%s) [dense=%s embed=%s content_aware=%s]",
+                 getattr(embedder, "model", "?"), want_dense, args.embed, content_aware)
+
+    retriever_specs = default_retriever_specs(embedder)
+    if args.retrievers is not None:
+        want = set(args.retrievers)
+        retriever_specs = [s for s in retriever_specs if s[0] in want]
+        missing = want - {s[0] for s in retriever_specs}
+        if missing:
+            raise SystemExit(f"--retrievers: unknown {sorted(missing)} "
+                             f"(note: 'dense' needs an embedder — pass --dense or --embed); "
+                             f"have {[s[0] for s in retriever_specs]}")
+
+    # Per-example relative budgets (fraction of each conversation's own footprint):
+    # 100% no-eviction control, then 75/50/25/10%. Keeps "50%" meaning the same
+    # across BEAM / LongMemEval / LoCoMo despite very different footprints.
+    budget_fracs = args.budgets if args.budgets is not None else DEFAULT_BUDGET_FRACTIONS
+
+    # Three granularities, mirroring the sister runners: LoCoMo turns are short
+    # dialogue lines, so `turn` is fine-grained, `turn_pair` is the dyadic
+    # exchange, `session` is the coarse unit (up to 32 per conversation).
+    itemisers = [LocomoTurnItemiser(), LocomoTurnPairItemiser(), LocomoSessionItemiser()]
+
+    # The image-turn variant is NOT comparable to the caption-inclusion default
+    # (different item counts, footprints, and gold resolution), so it gets its own
+    # dataset label. This segregates BOTH the artifact directory
+    # (<out_dir>/<dataset>/…) AND the EvalResult.dataset column, so the two
+    # variants can never overwrite each other on a shared --out-dir.
+    dataset_label = "locomo_noimg" if args.skip_image_turns else "locomo"
+
+    # Flatten the grid → take this shard's stride. Output paths embed itemiser +
+    # store_label, so each config lands in its own directory regardless of shard.
+    all_configs: list[tuple[object, str, Callable]] = []
+    for itemiser in itemisers:
+        for label, factory in make_stores(
+            policy_specs, retriever_specs, budget_fracs,
+            include_letta=args.include_letta, embedder=embedder,
+            attach_vectors=args.embed,
+        ):
+            all_configs.append((itemiser, label, factory))
+
+    my_configs = all_configs[args.shard::args.num_shards]
+    log.info(
+        "shard %d/%d: running %d of %d configs (limit=%s, reader=%s)",
+        args.shard, args.num_shards, len(my_configs), len(all_configs), args.limit, reader_name,
+    )
+
+    # One workload per itemiser (cheap — holds path + config), reused across configs.
+    # probe_every=1: access-only warmup probe after each SESSION insert (the
+    # LongMemEval convention; probe ids carry ::probe:: + meta flag so the
+    # probes-blind replay machinery applies unchanged). clear_between_examples:
+    # isolate conversations (intended eval semantics).
+    workloads: dict[str, LocomoWorkload] = {}
+    for itemiser in itemisers:
+        workloads[itemiser.name] = LocomoWorkload(
+            LOCOMO_PATH, itemiser=itemiser,
+            probe_every=1,
+            clear_between_examples=True,
+            limit=args.limit,
+            skip_image_turns=args.skip_image_turns,
+        )
+
+    # Per-example footprints (one workload replay per itemiser) — the denominator
+    # for relative budgeting.  Computed only for itemisers this shard touches.
+    footprints: dict[str, list[int]] = {}
+    for name in {it.name for it, _, _ in my_configs}:
+        fp = example_footprints(workloads[name])
+        footprints[name] = fp
+        mean = sum(fp) / len(fp) if fp else 0
+        log.info("footprints[%s]: %d conversations, mean=%.0f B, max=%d B",
+                 name, len(fp), mean, max(fp) if fp else 0)
+
+    def _run_one(cfg) -> str:
+        itemiser, _label, factory = cfg
+        # factory() returns (label, fresh_store, extras). The concurrent driver
+        # needs a store FACTORY (one fresh store per example), so we read the
+        # label/extras once and hand it a closure that rebuilds the store.
+        label, _store, extras = factory()
+        _, summary = run_pipeline_concurrent(
+            dataset=dataset_label,
+            workload=workloads[itemiser.name],
+            store_factory=lambda f=factory: f()[1],
+            store_label=label,
+            k=5,
+            seed=seed,
+            itemiser=itemiser.name,
+            reader=reader_name,
+            reader_impl=reader_impl,
+            answer_max_tokens=128,
+            example_workers=args.workers,
+            reader_workers=args.reader_workers,
+            out_dir=args.out_dir,
+            write_events=args.event_log,
+            example_footprints=footprints.get(itemiser.name),
+            **extras,
+        )
+        return (f"itemiser={itemiser.name:<16} store={label:<45} reader={reader_name:<12} "
+                f"gold_survival={summary['gold_survival_rate']:.3f} hit@k={summary['hit_at_k']:.3f}")
+
+    # Configs run sequentially; concurrency is across examples *within* each
+    # config (args.workers), so one config saturates the GPUs on its own.
+    for cfg in my_configs:
+        print(_run_one(cfg))
+
+
+if __name__ == "__main__":
+    main()

@@ -19,7 +19,7 @@ from forgetit.memory_system.wrappers.memgpt_sys import LettaWrapper
 from forgetit.backend.in_memory import InMemoryBackend
 from forgetit.core.logging import BenchmarkLogger
 from forgetit.retrieval import LexicalOverlapRetriever, BM25Retriever, EmbeddingRetriever
-from forgetit.policies import LRUPolicy, LFUPolicy, RandomPolicy, LLMCompressionPolicy, EbbinghausPolicy, \
+from forgetit.policies import LRUPolicy, LFUPolicy, FIFOPolicy, RandomPolicy, LLMCompressionPolicy, EbbinghausPolicy, \
     MemoryBankCompressionPolicy, KeepSmallestPolicy, EvictSmallestPolicy, \
     SemanticRedundancyPolicy, SemanticCoveragePolicy
 from forgetit.llm import get_llm
@@ -119,6 +119,7 @@ def default_policy_specs(llm, seed: int = 42) -> list[PolicySpec]:
     specs: list[PolicySpec] = [
         ("lru",            lambda: LRUPolicy()),
         ("lfu",            lambda: LFUPolicy()),
+        ("fifo",           lambda: FIFOPolicy()),
         ("random",         lambda: RandomPolicy(seed=seed)),
         ("keep_smallest",  lambda: KeepSmallestPolicy()),    # evict largest
         ("evict_smallest", lambda: EvictSmallestPolicy()),   # evict smallest

@@ -10,6 +10,11 @@ if TYPE_CHECKING:
 
 
 class FIFOPolicy(SimpleEvictionPolicy):
+    """Evict the item with the oldest created_at.
+
+    Ties keep the FIRST-encountered item (strict <), which for the in-memory
+    backend is insertion order — the true FIFO tiebreak when several items
+    share a timestamp (e.g. turn-pairs itemised from one session)."""
     name = "FIFO"
 
     def select_victim(self, store: RetentionManager, candidates: set[str] | None = None):
@@ -19,8 +24,9 @@ class FIFOPolicy(SimpleEvictionPolicy):
         for feat in store.iter_features():
             if candidates is not None and feat.id not in candidates:
                 continue
-            if oldest_ts is None or feat.created_at < oldest_ts:
-                oldest_ts = feat.created_at
+            created = feat.created_at if feat.created_at is not None else 0.0
+            if oldest_ts is None or created < oldest_ts:
+                oldest_ts = created
                 oldest_id = feat.id
 
         if oldest_id is None:

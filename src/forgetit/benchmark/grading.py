@@ -72,10 +72,12 @@ def token_f1(answer: str, ref: str) -> float:
 # ════════════════════════════════════════════════════════════════════
 
 # LongMemEval marks abstention questions with a ``_abs`` question_id suffix (the
-# base question_type is unchanged); BEAM marks them with ability=="abstention".
-# A question is "answerable" iff it is neither — answer-survival is only defined
-# where there is an answer in the haystack to preserve.
-_ABSTENTION_QUESTION_TYPES = frozenset({"abstention"})
+# base question_type is unchanged); BEAM marks them with ability=="abstention";
+# LoCoMo marks its unanswerable category with question_type=="adversarial".
+# A question is "answerable" iff it is none of these — answer-survival is only
+# defined where there is an answer in the haystack to preserve. This frozenset is
+# the single cross-workload registry of abstention/unanswerable type names.
+_ABSTENTION_QUESTION_TYPES = frozenset({"abstention", "adversarial"})
 
 
 def is_answerable(query_id: str, question_type: str) -> bool:
