@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import csv
+import hashlib
+import inspect
 import json
 import logging
+import subprocess
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -18,6 +21,77 @@ from forgetit.core.timing import (
 )
 
 log = logging.getLogger(__name__)
+
+
+# ── provenance (every row self-describing across configs AND runs) ──
+
+_git_commit_cache: str | None = None
+
+
+def _git_commit() -> str:
+    """Short sha of HEAD, '-dirty' suffixed when the tree has changes.
+    Cached per process; 'unknown' outside a git checkout."""
+    global _git_commit_cache
+    if _git_commit_cache is None:
+        try:
+            cwd = Path(__file__).resolve().parent
+            sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                                 capture_output=True, text=True, cwd=cwd,
+                                 timeout=10).stdout.strip()
+            dirty = subprocess.run(["git", "status", "--porcelain"],
+                                   capture_output=True, text=True, cwd=cwd,
+                                   timeout=10).stdout.strip()
+            _git_commit_cache = (sha + ("-dirty" if dirty else "")) if sha else "unknown"
+        except Exception:
+            _git_commit_cache = "unknown"
+    return _git_commit_cache
+
+
+def _config_hash(**fields) -> str:
+    """Stable hash of the config identity. Includes everything that changes
+    the science (dataset/itemiser/store_label/reader/k/seed/budgets/example
+    count), excludes throughput knobs (workers)."""
+    blob = json.dumps(fields, sort_keys=True, default=str)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+
+
+def _stamp_provenance(results, *, config_hash: str, reader_impl, store_probe) -> None:
+    """Fill the provenance columns on every row, in place.
+
+    ``store_probe`` is one representative store for this config — the source
+    of the compression prompt template and the encoder tag actually wired.
+    """
+    llm_model = ""
+    prompt_reader_sha = ""
+    if reader_impl is not None:
+        llm_model = str(getattr(getattr(reader_impl, "llm", None), "model", "") or "")
+        try:
+            from forgetit.llm.readers import text_reader
+            prompt_reader_sha = hashlib.sha256(
+                inspect.getsource(text_reader._build_prompt).encode("utf-8")
+            ).hexdigest()[:12]
+        except Exception:
+            pass
+
+    embed_model = str(getattr(getattr(store_probe, "embedder", None), "model", "") or "")
+
+    prompt_compress_sha = ""
+    policy = getattr(store_probe, "policy", None)
+    tpl = getattr(policy, "prompt_template", None)
+    if isinstance(tpl, str):
+        prompt_compress_sha = hashlib.sha256(tpl.encode("utf-8")).hexdigest()[:12]
+        # Compression uses the chat LLM even reader-off — record its tag too.
+        if not llm_model:
+            llm_model = str(getattr(getattr(policy, "llm", None), "model", "") or "")
+
+    commit = _git_commit()
+    for r in results:
+        r.git_commit = commit
+        r.config_hash = config_hash
+        r.llm_model = llm_model
+        r.embed_model = embed_model
+        r.prompt_compress_sha = prompt_compress_sha
+        r.prompt_reader_sha = prompt_reader_sha
 
 
 def save_results_csv(results, path: str | Path) -> None:
@@ -162,6 +236,18 @@ def run_pipeline(
         timing["reader"] = {"total_s": reader_work,
                             "n": sum(1 for r in results if getattr(r, "qa_latency_sec", 0.0) > 0)}
     wall_s = time.perf_counter() - wall_t0
+
+    # Provenance (serial path): the streaming workload has no example count,
+    # so the identity carries n_examples=None — the concurrent driver is the
+    # canonical launch path and includes the real count.
+    cfg_hash = _config_hash(
+        dataset=dataset, itemiser=itemiser, store_label=store_label,
+        reader=reader, k=k, seed=seed, budget_bytes=budget_bytes,
+        budget_frac=budget_frac, answer_max_tokens=answer_max_tokens,
+        n_examples=None, write_events=write_events,
+    )
+    _stamp_provenance(results, config_hash=cfg_hash,
+                      reader_impl=reader_impl, store_probe=store)
 
     summary = summarize(results)
     summary.update(_flatten_timing(timing, wall_s))
@@ -329,6 +415,16 @@ def run_pipeline_concurrent(
     # completion order of the futures.
     indexed = [(idx, eid, evs)
                for idx, (eid, evs) in enumerate(workload.iter_examples())]
+
+    # Config identity for provenance. The example count belongs in it: a
+    # --limit smoke and the full run are different experiments.
+    cfg_hash = _config_hash(
+        dataset=dataset, itemiser=itemiser, store_label=store_label,
+        reader=reader, k=k, seed=seed, budget_bytes=budget_bytes,
+        budget_frac=budget_frac, answer_max_tokens=answer_max_tokens,
+        n_examples=len(indexed), write_events=write_events,
+    )
+
     collected: list[tuple | None] = [None] * len(indexed)
 
     if example_workers > 1 and len(indexed) > 1:
@@ -399,6 +495,17 @@ def run_pipeline_concurrent(
         timing["reader"] = {"total_s": reader_work,
                             "n": sum(1 for r in all_results if getattr(r, "qa_latency_sec", 0.0) > 0)}
     wall_s = time.perf_counter() - wall_t0
+
+    # Stamp provenance on every row before writing. One throwaway store probes
+    # the config-side identities (compression prompt, encoder tag).
+    probe = store_factory()
+    try:
+        _stamp_provenance(all_results, config_hash=cfg_hash,
+                          reader_impl=reader_impl, store_probe=probe)
+    finally:
+        clear_fn = getattr(probe, "clear", None)
+        if callable(clear_fn):
+            clear_fn()
 
     summary = summarize(all_results)
     summary.update(_flatten_timing(timing, wall_s))

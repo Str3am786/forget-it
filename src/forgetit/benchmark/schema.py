@@ -135,6 +135,15 @@ class EvalResult:
     # ranker — the bridge from forgetting back to the content thesis.
     query_coverage: float = float("nan")
 
+    # ── provenance: two rows from different configs/runs must be
+    # distinguishable by columns alone. Filled by the pipeline at write time.
+    git_commit: str = ""          # short sha, "-dirty" suffixed when applicable
+    config_hash: str = ""         # sha over the config identity
+    llm_model: str = ""           # chat model tag (compression + reader), "" when none
+    embed_model: str = ""         # encoder tag when an embedder is in play, else ""
+    prompt_compress_sha: str = "" # sha of the compression prompt template in use
+    prompt_reader_sha: str = ""   # sha of the reader prompt-builder source
+
     # ── per-query ranking columns (the k-curve, one scalar per (metric, k)) ──
     # A row is one query, so the curve isn't a per-row object — these flat scalars
     # average across rows into Hit@k / nDCG@k / Recall@k / given-retained curves
