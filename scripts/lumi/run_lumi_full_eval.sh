@@ -13,8 +13,9 @@
 # WHAT IT RUNS (STATE-FORMING half only):
 #   • FROZEN GRID policies (explicit --policies below; never code defaults)
 #   • lexical + bm25 + dense retrievers (--dense)
-#   • budgets 1.0/0.75/0.50/0.25/0.10 (1.0 = unconstrained: grader calibration
-#     + ceiling)   • full-depth ranks (uncensored)   • --include-floor
+#   • budgets 1.0/0.75/0.50/0.25/0.10 (1.0 = unconstrained retention ceiling;
+#     grader calibration needs answers, so it belongs to the READER-ON job,
+#     not this one)   • full-depth ranks (uncensored)   • --include-floor
 #   • --event-log → offline eviction_regret pass
 #   • NO READER (--no-reader): the answer stage is gated behind the reader-swap
 #     acceptance. Chat servers stay up because COMPRESSION (not gated) uses
@@ -40,8 +41,8 @@ set -euo pipefail
 
 # ── paths ───────────────────────────────────────────────────────────────────
 PROJ=project_462001123
-REPO=$HOME/30-06-forgetit/forget-it
-CLIENT_SIF=$HOME/30-06-forgetit/forgetit.sif
+REPO=$HOME/15-07-forgetit/forget-it
+CLIENT_SIF=$HOME/15-07-forgetit/forgetit.sif
 VLLM_SIF=/appl/local/laifs/containers/lumi-multitorch-latest.sif
 
 CHAT_MODEL_PATH=/scratch/$PROJ/models/Qwen2.5-7B-Instruct
@@ -51,6 +52,10 @@ LME_DATASET=$REPO/data/longmemeval_s_cleaned.json
 BEAM_DATASET=$REPO/data/beam_500K.jsonl
 
 OUT_DIR=/scratch/$PROJ/artifacts/benchmark_full
+# Smoke output lives OUTSIDE OUT_DIR: step 4 runs concat_results.py over
+# OUT_DIR, and the limit-1 smoke rows must never reach the merged CSVs or
+# trip the INCOMPLETE-grid warning.
+A7_SMOKE_DIR=/scratch/$PROJ/artifacts/a7_smoke
 LOGS=/scratch/$PROJ/logs
 export HF_HOME=/scratch/$PROJ/hf_cache
 
@@ -65,6 +70,11 @@ if [ -z "${FORGETIT_ALLOW_DIRTY:-}" ]; then
         exit 1
     fi
 fi
+# This script rewrites $REPO/.env below. If .env is TRACKED, that write
+# dirties the tree and the NEXT submission fails the guard above confusingly.
+if git -C "$REPO" ls-files --error-unmatch .env >/dev/null 2>&1; then
+    echo "[lumi] WARNING: $REPO/.env is tracked by git — this job rewrites it; gitignore it or the next dirty-tree check will fail" >&2
+fi
 
 # ── FROZEN GRID — this block IS the run record ──────────────────────────────
 # Explicit on the command line so the sbatch script, not code defaults,
@@ -73,7 +83,7 @@ fi
 # author: evict_smallest / semantic_coverage / ebbinghaus / memorybank are
 # DISTINCT registered policies NOT in this grid — add them here if they
 # survived the §0 freeze. gdsf_frozen = GDSF with L≡0 (frequency-density).
-POLICIES="fifo lru lfu random keep_smallest salience_decay gdsf gdsf_frozen semantic semantic_keep compression oracle"
+POLICIES="fifo lru lfu random keep_smallest evict_smallest salience_decay ebbinghaus gdsf gdsf_frozen semantic semantic_keep semantic_coverage compression oracle"
 # VERIFIED (V2): runners expose --budgets and --seeds; both wired explicitly.
 # Module default budgets match this ladder; stating them here freezes them.
 BUDGETS="1.0 0.75 0.50 0.25 0.10"
@@ -92,13 +102,21 @@ LME_WORKERS=12             # per-config example concurrency (LongMemEval)
 BEAM_WORKERS=8             # leaner: BEAM conversations hold big per-example stores
 POOL=64                    # httpx pool >= per-shard concurrency
 
-DATASETS="${DATASETS:-longmemeval beam}"
+# One dataset per job (see header): refuse a bare sbatch rather than silently
+# packing both sweeps into one 24h allocation. DATASETS="longmemeval beam" is
+# still accepted explicitly if you really want a combined job.
+if [ -z "${DATASETS:-}" ]; then
+    echo "[lumi] REFUSING: DATASETS is unset — run one dataset per job:" >&2
+    echo "[lumi]   DATASETS=\"longmemeval\" sbatch $0" >&2
+    echo "[lumi]   DATASETS=\"beam\"        sbatch $0" >&2
+    exit 1
+fi
 
 EMBED_SERVE_FLAG="${EMBED_SERVE_FLAG:-}"
 [ -z "$EMBED_SERVE_FLAG" ] && EMBED_SERVE_FLAG="--runner pooling"
 
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
-mkdir -p "$LOGS" "$OUT_DIR"
+mkdir -p "$LOGS" "$OUT_DIR" "$A7_SMOKE_DIR"
 
 # ── embedding cache — ENABLED and PERSISTENT ────────────────────────────────
 # Per-shard sqlite files on /scratch — persistent across jobs, no cross-process
@@ -132,6 +150,12 @@ for ds in $DATASETS; do
         beam)        [ -e "$BEAM_DATASET" ] || { echo "[lumi] MISSING dataset: $BEAM_DATASET (or set DATASETS=\"longmemeval\")" >&2; exit 1; } ;;
     esac
 done
+# The A7 smoke (step 2b) runs run_longmemeval_qa regardless of DATASETS, so a
+# beam-only job still needs the LME file — check it BEFORE booting 8 servers.
+if [ -z "${SKIP_A7_SMOKE:-}" ] && [ ! -e "$LME_DATASET" ]; then
+    echo "[lumi] MISSING dataset: $LME_DATASET (needed by the A7 smoke even for DATASETS=\"beam\"; SKIP_A7_SMOKE=1 to bypass)" >&2
+    exit 1
+fi
 
 [ -f "$REPO/.env" ] && [ ! -f "$REPO/.env.prelumi" ] && cp "$REPO/.env" "$REPO/.env.prelumi"
 cat > "$REPO/.env" <<EOF
@@ -173,7 +197,12 @@ singularity exec -B "/scratch/$PROJ" "$VLLM_SIF" \
              $EMBED_SERVE_FLAG --max-model-len 32768" \
     > "$LOGS/vllm-embed-${SLURM_JOB_ID}-g${EMBED_GCD}.log" 2>&1 &
 server_pids+=($!)
-trap 'echo "[lumi] stopping servers"; for p in "${server_pids[@]}"; do kill "$p" 2>/dev/null || true; done' EXIT
+# shellcheck disable=SC2329  # invoked indirectly via `trap stop_servers EXIT`
+stop_servers() {
+    echo "[lumi] stopping servers"
+    for p in "${server_pids[@]}"; do kill "$p" 2>/dev/null || true; done
+}
+trap stop_servers EXIT
 
 # ── 2. wait for all 8 /health ───────────────────────────────────────────────
 echo "[lumi] waiting for $((NUM_CHAT_GCDS + 1)) servers ..."
@@ -214,7 +243,7 @@ echo "[lumi] encoder pin written to $OUT_DIR/ENCODER_PIN.txt"
 
 if [ -z "${SKIP_A7_SMOKE:-}" ]; then
     echo "[lumi] A7 encoder-identity smoke (semantic policies, 1 example, no reader) ..."
-    singularity exec -B "/scratch/$PROJ","$REPO" "$CLIENT_SIF" \
+    singularity exec -B "/scratch/$PROJ,$REPO" "$CLIENT_SIF" \
         bash -c "cd '$REPO' && PYTHONPATH='$REPO/src' \
                  LLM_BASE_URL='http://localhost:${CHAT_PORT_BASE}/v1' LLM_API_KEY=sk-lumi LLM_MODEL='$SERVED_CHAT' \
                  EMBED_BASE_URL='http://localhost:${EMBED_PORT}/v1' EMBED_API_KEY=sk-lumi EMBED_MODEL='$SERVED_EMBED' \
@@ -222,7 +251,7 @@ if [ -z "${SKIP_A7_SMOKE:-}" ]; then
                  EMBED_MAX_INPUT_CHARS=28000 EMBED_CACHE_PATH='$EMB_CACHE_DIR/a7_smoke.sqlite' \
                  python -m forgetit.experiments.run_longmemeval_qa \
                    --policies semantic semantic_keep --limit 1 --no-reader \
-                   --shard 0 --num-shards 1 --out-dir '$OUT_DIR/a7_smoke' --dense" \
+                   --shard 0 --num-shards 1 --out-dir '$A7_SMOKE_DIR' --dense" \
         > "$LOGS/a7-smoke-${SLURM_JOB_ID}.log" 2>&1 \
         || { echo "[lumi] REFUSING: A7 smoke failed — see $LOGS/a7-smoke-${SLURM_JOB_ID}.log" >&2; exit 1; }
     echo "[lumi] A7 smoke passed on the wired encoder."
@@ -235,7 +264,7 @@ run_dataset () {
     local pids=() i cport
     for i in $(seq 0 $((NUM_SHARDS - 1))); do
         cport=$((CHAT_PORT_BASE + i % NUM_CHAT_GCDS))   # round-robin over 7 chat servers
-        singularity exec -B "/scratch/$PROJ","$REPO" "$CLIENT_SIF" \
+        singularity exec -B "/scratch/$PROJ,$REPO" "$CLIENT_SIF" \
             bash -c "cd '$REPO' && PYTHONPATH='$REPO/src' \
                      LLM_BASE_URL='http://localhost:${cport}/v1' LLM_API_KEY=sk-lumi LLM_MODEL='$SERVED_CHAT' \
                      EMBED_BASE_URL='http://localhost:${EMBED_PORT}/v1' EMBED_API_KEY=sk-lumi EMBED_MODEL='$SERVED_EMBED' \
@@ -269,9 +298,9 @@ for ds in $DATASETS; do
     esac
 done
 
-# ── 4. merge CSVs (adds policy_identity; warns on INCOMPLETE grids) ─────────
+# ── 4. merge CSVs (adds policy_identity; warns on INCOMPLETE/RAGGED grids) ──
 echo "[lumi] merging CSVs ..."
-singularity exec -B "/scratch/$PROJ","$REPO" "$CLIENT_SIF" \
+singularity exec -B "/scratch/$PROJ,$REPO" "$CLIENT_SIF" \
     bash -c "cd '$REPO' && PYTHONPATH='$REPO/src' python scripts/concat_results.py '$OUT_DIR'" || rc=1
 
 # ── 5. eviction-regret (offline) ────────────────────────────────────────────
@@ -279,7 +308,7 @@ singularity exec -B "/scratch/$PROJ","$REPO" "$CLIENT_SIF" \
 # reads the gold SNAPSHOT (resident text), not reader answers; verified green
 # with exit 0 on a --no-reader artifact tree.
 echo "[lumi] eviction-regret offline pass ..."
-singularity exec -B "/scratch/$PROJ","$REPO" "$CLIENT_SIF" \
+singularity exec -B "/scratch/$PROJ,$REPO" "$CLIENT_SIF" \
     bash -c "cd '$REPO' && PYTHONPATH='$REPO/src' \
              python scripts/eviction_regret.py --events-dir '$OUT_DIR' --with-results \
              --out '$OUT_DIR/eviction_regret_report.json'" \
@@ -290,3 +319,4 @@ echo "[lumi]   CSVs:        $OUT_DIR/combined_results.csv + combined_summary.csv
 echo "[lumi]   regret:      $OUT_DIR/eviction_regret_report.json"
 echo "[lumi]   encoder pin: $OUT_DIR/ENCODER_PIN.txt"
 exit $rc
+
