@@ -8,6 +8,7 @@ from .llm_compression import LLMCompressionPolicy
 from .ebbinghaus import EbbinghausPolicy, MemoryBankCompressionPolicy
 from .semantic import SemanticRedundancyPolicy, SemanticCoveragePolicy
 from .density import SalienceDecayPolicy, GDSFPolicy
+from .oracle import OraclePolicy
 
 __all__ = [
     "EvictionPolicy",
@@ -22,6 +23,7 @@ __all__ = [
     "SemanticCoveragePolicy",
     "SalienceDecayPolicy",
     "GDSFPolicy",
+    "OraclePolicy",
     "LLMCompressionPolicy",
     "EbbinghausPolicy",
     "MemoryBankCompressionPolicy",

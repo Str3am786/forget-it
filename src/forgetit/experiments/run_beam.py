@@ -36,7 +36,7 @@ from forgetit.policies import (
     LLMCompressionPolicy, EbbinghausPolicy, MemoryBankCompressionPolicy,
     KeepSmallestPolicy, EvictSmallestPolicy,
     SemanticRedundancyPolicy, SemanticCoveragePolicy,
-    SalienceDecayPolicy, GDSFPolicy,
+    SalienceDecayPolicy, GDSFPolicy, OraclePolicy,
 )
 from forgetit.llm import get_llm
 from forgetit.llm.readers import PlainTextReader
@@ -121,6 +121,9 @@ def default_policy_specs(llm, seed: int = 42) -> list[PolicySpec]:
         ("semantic",          lambda: SemanticRedundancyPolicy()),      # nearest-pair (cheap)
         ("semantic_coverage", lambda: SemanticCoveragePolicy()),        # marginal coverage (principled)
         ("ebbinghaus",  lambda: EbbinghausPolicy()),
+        # Privileged upper-bound control (runner injects gold ids) — the
+        # normalized-regret ceiling, not an implementable policy:
+        ("oracle",      lambda: OraclePolicy()),
     ]
     # LLM-driven policies need an endpoint even when the reader is disabled, so
     # skip them when llm is None (--no-reader) → retrieval-only runs need no server.

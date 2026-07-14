@@ -471,6 +471,18 @@ def run_one_example(
     if budget_frac > 0 and footprint is not None and hasattr(store, "budget_bytes"):
         store.budget_bytes = max(1, round(budget_frac * footprint))
 
+    # Oracle control: a policy that declares wants_gold_ids gets this example's
+    # full gold set before replay (privileged by design — it is the upper-bound
+    # ceiling, not an implementable policy). Injected here because item metadata
+    # does not mark gold on every dataset (BEAM resolves gold per query).
+    policy_obj = getattr(store, "policy", None)
+    if getattr(policy_obj, "wants_gold_ids", False):
+        policy_obj.protected_ids = {
+            gid for e in events
+            if e.type == "query" and e.gold_item_ids
+            for gid in e.gold_item_ids
+        }
+
     results: list[EvalResult] = []
     context_rows: list[tuple] = []
     insert_count = 0
@@ -658,6 +670,16 @@ def run(
     # so a thread pool overlaps the LLM waits near-perfectly.
     defer_reader = reader_impl is not None and reader_workers > 1
     deferred: list[tuple] = []   # (result_index, query, retrieved, ref_answer, question_type)
+
+    # The serial path streams workload.events() and cannot pre-scan gold ids;
+    # the oracle control needs the per-example runner (run_pipeline_concurrent).
+    # Failing loudly beats silently running an UNPROTECTED oracle.
+    if getattr(getattr(store, "policy", None), "wants_gold_ids", False):
+        raise ValueError(
+            "Policy requests gold-id injection (wants_gold_ids=True), which the "
+            "streaming run() path cannot provide — use the per-example concurrent "
+            "runner (run_pipeline_concurrent / the QA runners)."
+        )
 
     budget_display = budget_bytes_report or view.budget_bytes()
     mode = "retrieval+QA" if reader_impl else "retrieval-only"

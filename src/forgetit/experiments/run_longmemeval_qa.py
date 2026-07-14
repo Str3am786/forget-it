@@ -22,7 +22,7 @@ from forgetit.retrieval import LexicalOverlapRetriever, BM25Retriever, Embedding
 from forgetit.policies import LRUPolicy, LFUPolicy, FIFOPolicy, RandomPolicy, LLMCompressionPolicy, EbbinghausPolicy, \
     MemoryBankCompressionPolicy, KeepSmallestPolicy, EvictSmallestPolicy, \
     SemanticRedundancyPolicy, SemanticCoveragePolicy, \
-    SalienceDecayPolicy, GDSFPolicy
+    SalienceDecayPolicy, GDSFPolicy, OraclePolicy
 from forgetit.llm import get_llm
 from forgetit.llm.readers import PlainTextReader
 from forgetit.settings import LETTA_BASE_URL, LETTA_API_KEY
@@ -133,6 +133,9 @@ def default_policy_specs(llm, seed: int = 42) -> list[PolicySpec]:
         ("semantic",          lambda: SemanticRedundancyPolicy()),      # nearest-pair (cheap)
         ("semantic_coverage", lambda: SemanticCoveragePolicy()),        # marginal coverage (principled)
         ("ebbinghaus",  lambda: EbbinghausPolicy()),
+        # Privileged upper-bound control (runner injects gold ids) — the
+        # normalized-regret ceiling, not an implementable policy:
+        ("oracle",      lambda: OraclePolicy()),
     ]
     # LLM-driven policies compress/evict via the model itself, so they need an
     # endpoint even when the reader is disabled.  Skip them when llm is None
