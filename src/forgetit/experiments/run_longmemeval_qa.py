@@ -21,7 +21,7 @@ from forgetit.core.logging import BenchmarkLogger
 from forgetit.retrieval import LexicalOverlapRetriever, BM25Retriever, EmbeddingRetriever
 from forgetit.policies import LRUPolicy, LFUPolicy, FIFOPolicy, RandomPolicy, LLMCompressionPolicy, EbbinghausPolicy, \
     MemoryBankCompressionPolicy, KeepSmallestPolicy, EvictSmallestPolicy, \
-    SemanticRedundancyPolicy, SemanticCoveragePolicy, \
+    SemanticRedundancyPolicy, SemanticCoveragePolicy, SemanticKeepSimilarPolicy, \
     SalienceDecayPolicy, GDSFPolicy, OraclePolicy
 from forgetit.llm import get_llm
 from forgetit.llm.readers import PlainTextReader
@@ -132,6 +132,7 @@ def default_policy_specs(llm, seed: int = 42) -> list[PolicySpec]:
         # Two side by side so cheap-proxy vs principled-coverage is itself a result:
         ("semantic",          lambda: SemanticRedundancyPolicy()),      # nearest-pair (cheap)
         ("semantic_coverage", lambda: SemanticCoveragePolicy()),        # marginal coverage (principled)
+        ("semantic_keep",     lambda: SemanticKeepSimilarPolicy()),     # centroid coherence (mirror)
         ("ebbinghaus",  lambda: EbbinghausPolicy()),
         # Privileged upper-bound control (runner injects gold ids) — the
         # normalized-regret ceiling, not an implementable policy:

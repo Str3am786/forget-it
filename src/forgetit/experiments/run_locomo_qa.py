@@ -50,7 +50,7 @@ from forgetit.policies import (
     LRUPolicy, LFUPolicy, FIFOPolicy, RandomPolicy,
     LLMCompressionPolicy, EbbinghausPolicy, MemoryBankCompressionPolicy,
     KeepSmallestPolicy, EvictSmallestPolicy,
-    SemanticRedundancyPolicy, SemanticCoveragePolicy,
+    SemanticRedundancyPolicy, SemanticCoveragePolicy, SemanticKeepSimilarPolicy,
     SalienceDecayPolicy, GDSFPolicy, OraclePolicy,
 )
 from forgetit.llm import get_llm
@@ -135,6 +135,7 @@ def default_policy_specs(llm, seed: int = 42) -> list[PolicySpec]:
         # Cheap nearest-pair beside principled marginal coverage — the ablation:
         ("semantic",          lambda: SemanticRedundancyPolicy()),      # nearest-pair (cheap)
         ("semantic_coverage", lambda: SemanticCoveragePolicy()),        # marginal coverage (principled)
+        ("semantic_keep",     lambda: SemanticKeepSimilarPolicy()),     # centroid coherence (mirror)
         ("ebbinghaus",  lambda: EbbinghausPolicy()),
         # Privileged upper-bound control (runner injects gold ids) — the
         # normalized-regret ceiling, not an implementable policy:

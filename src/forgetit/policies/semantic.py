@@ -183,3 +183,61 @@ class SemanticCoveragePolicy(SimpleEvictionPolicy):
         if victim_id is not None:
             self._note_decision(best[0], n)
         return victim_id if victim_id is not None else _evict_largest(store, candidates, policy=self)
+
+
+class SemanticKeepSimilarPolicy(SimpleEvictionPolicy):
+    """Centroid-coherence eviction: evict the item LEAST similar to the
+    leave-one-out store centroid.
+
+        victim = argmin_i cos(e_i, c_{-i}),   c_{-i} ∝ Σ_{j≠i} e_j
+
+    "Similar to WHAT" is resolved as the store's own centroid because no query
+    exists at eviction time in replay (questions arrive after ingestion). This
+    keeps a coherent semantic core and sheds topical outliers — the exact
+    MIRROR of the redundancy/coverage pair above, which preserve outliers and
+    shed duplicates. Kept side by side deliberately: the two directions make
+    opposite predictions (keep-similar should LOSE gold survival when answers
+    are one-off facts — outliers are often exactly the informative bits — and
+    win when queries hit the dominant topic), so the comparison is a free
+    coherence-vs-coverage ablation. Expect and report a conditional result.
+
+    O(n·d) per eviction (no pairwise matrix). Same fallback contract as the
+    other semantic policies: < 2 embedded residents → content-agnostic
+    evict-largest, so non-dense runs keep making progress.
+    """
+    name = "semantic_keep"
+    needs_embeddings = True   # reads item vectors → store must carry the embedder,
+                              # even when retrieval is lexical/BM25 (not just --dense)
+
+    def select_victim(self, store, candidates: set[str] | None = None):
+        ids, vecs, sizes = _embedded_residents(store)
+        if len(ids) < 2:
+            return _evict_largest(store, candidates, policy=self)
+
+        import numpy as np
+        mat = np.asarray(vecs, dtype=np.float32)
+        norms = np.linalg.norm(mat, axis=1, keepdims=True)
+        norms[norms == 0] = 1.0
+        unit = mat / norms                              # (n, d) unit rows
+        total = unit.sum(axis=0)
+        loo = total[None, :] - unit                     # rows: Σ_{j≠i} e_j
+        loo_norms = np.linalg.norm(loo, axis=1, keepdims=True)
+        loo = loo / np.maximum(loo_norms, 1e-12)
+        sims = (unit * loo).sum(axis=1)                 # cos(e_i, c_{-i})
+
+        victim_id = None
+        best = None
+        n = 0
+        for i, rid in enumerate(ids):
+            if candidates is not None and rid not in candidates:
+                continue
+            n += 1
+            # minimise: least centroid-similar, then larger (cheaper to keep
+            # small outliers), then id — mirrors the redundancy tiebreak.
+            key = (float(sims[i]), -sizes[i], rid)
+            if best is None or key < best:
+                best = key
+                victim_id = rid
+        if victim_id is not None:
+            self._note_decision(best[0], n)
+        return victim_id if victim_id is not None else _evict_largest(store, candidates, policy=self)
