@@ -15,9 +15,13 @@ from forgetit.llm import Reader
 
 log = logging.getLogger(__name__)
 
-# How deep to retrieve when scoring a query: enough to cover the whole hit/nDCG
-# curve (max cutoff). The reader still only sees the configured top-k; this just
-# lets us measure where gold lands beyond k (ranking vs recall diagnosis).
+# Eval depth: introspectable stores are ranked at FULL depth (every resident,
+# no truncation), so gold_ranks is uncensored — rank 11 and rank 300 are
+# distinguishable, and rank-percentile / k∝N / rank-depth distributions become
+# exact offline recomputes. Cost ≈ 0: BM25/lexical already score every resident
+# and truncate at the end; only gold positions are stored per row. The reader
+# still only sees the configured top-k. This constant remains as the FLOOR for
+# opaque stores (no resident count available) and as the k-curve max cutoff.
 RETRIEVAL_EVAL_DEPTH = max(EVAL_K_CURVE)
 
 
@@ -305,6 +309,7 @@ def _evaluate_scored_query(
 
     if introspectable:
         retained = view.retained_ids()
+        n_residents = len(retained)
         survived_gold = gold_ids & retained
         gold_survived = len(survived_gold) > 0
 
@@ -317,6 +322,7 @@ def _evaluate_scored_query(
         # Opaque store: we can't tell what survived.  Set sentinels.
         gold_survived = False   # "unknown unless measured"
         gold_bytes = 0
+        n_residents = 0         # sentinel: resident count unknown
 
     used_bytes = view.used_bytes()
     if introspectable and used_bytes > 0:
@@ -332,13 +338,15 @@ def _evaluate_scored_query(
     # Only defined when items are embedded (dense configs carry store.embedder).
     query_coverage = _query_coverage(view, query, introspectable)
 
-    # Retrieve deep enough to score the whole hit/nDCG curve (top-K_MAX), then
-    # hand only the configured top-k to the reader — so the QA context is
-    # unchanged by the metric depth. The eval retrieval is READ-ONLY
-    # (view.search): scored queries must not bump access_count/last_access —
-    # ingestion probes are the only sanctioned access signal, so the
-    # measurement never rewrites the policy state being measured.
-    eval_k = max(k, RETRIEVAL_EVAL_DEPTH)
+    # Rank at FULL depth when the resident count is known (uncensored
+    # gold_ranks — see RETRIEVAL_EVAL_DEPTH); opaque stores fall back to the
+    # fixed depth. Only the configured top-k reaches the reader, so the QA
+    # context is unchanged by the metric depth. The eval retrieval is
+    # READ-ONLY (view.search): scored queries must not bump access counts —
+    # a full-depth MUTATING retrieval would rehearse every resident on every
+    # question, which is why the read-only path landed first.
+    eval_k = n_residents if n_residents > 0 else max(k, RETRIEVAL_EVAL_DEPTH)
+    eval_k = max(eval_k, k)
     t0 = time.perf_counter()
     with phase("retrieve"):
         retrieved_full = view.search(query, eval_k)
@@ -366,6 +374,7 @@ def _evaluate_scored_query(
         mrr=mrr,
         n_gold=len(gold_ids),
         n_retrieved=len(retrieved_ids),
+        n_residents=n_residents,
         gold_ranks=gold_ranks,
         query_coverage=query_coverage,
         used_bytes_end=used_bytes,
@@ -547,6 +556,7 @@ def run_one_example(
             mrr=base.mrr,
             n_gold=base.n_gold,
             n_retrieved=base.n_retrieved,
+            n_residents=base.n_residents,
             gold_ranks=json.dumps(base.gold_ranks),
             query_coverage=base.query_coverage,
             used_bytes_end=base.used_bytes_end,
@@ -795,6 +805,7 @@ def run(
                 mrr=base.mrr,
                 n_gold=base.n_gold,
                 n_retrieved=base.n_retrieved,
+                n_residents=base.n_residents,
                 gold_ranks=json.dumps(base.gold_ranks),
                 query_coverage=base.query_coverage,
                 used_bytes_end=base.used_bytes_end,

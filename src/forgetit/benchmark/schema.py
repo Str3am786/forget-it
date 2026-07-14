@@ -33,12 +33,17 @@ class QueryEval:
     used_bytes_end: int
     latency_sec: float
     # Ranking sufficient statistic: 1-based ranks of the gold items within the
-    # retrieved list, evaluated to RETRIEVAL_EVAL_DEPTH (≥ k). hit@k / nDCG@k /
-    # recall@k / MRR at ANY cutoff are derivable from this offline, so the metric
-    # set can change without re-running. n_gold is the relevance-set size (so
-    # recall — only meaningful for multi-gold — can be scoped to n_gold > 1).
+    # retrieved list. Introspectable stores rank at FULL depth (every resident —
+    # uncensored; rank-percentile and k∝N are exact offline recomputes); opaque
+    # stores fall back to RETRIEVAL_EVAL_DEPTH. hit@k / nDCG@k / recall@k / MRR
+    # at ANY cutoff are derivable from this offline, so the metric set can
+    # change without re-running. n_gold is the relevance-set size (so recall —
+    # only meaningful for multi-gold — can be scoped to n_gold > 1).
+    # n_residents = store size at query time (percentile denominator; 0 when
+    # the store is opaque and the count is unknown).
     n_gold: int = 0
     n_retrieved: int = 0
+    n_residents: int = 0
     gold_ranks: list[int] = field(default_factory=list)
     # Pre-retrieval retrievability: cosine of the query to its NEAREST resident
     # item — "can the kept set answer at all", independent of the ranker. NaN
@@ -113,11 +118,17 @@ class EvalResult:
 
     # Ranking sufficient statistic for the retrieval curve (see QueryEval).
     # gold_ranks is a JSON list of the 1-based ranks of gold items in the ranked
-    # list (e.g. "[1, 4]"; "[]" if no gold retrieved), evaluated to the eval
-    # depth. Hit@k / nDCG@k / Recall@k / MRR at any k are computed from these in
-    # metrics.py — so results.csv stays compact and k is not baked in.
+    # list (e.g. "[1, 4]"; "[]" if no gold retrieved). Introspectable stores
+    # rank at FULL depth (uncensored — every resident); opaque stores at the
+    # fixed eval depth. Hit@k / nDCG@k / Recall@k / MRR at any k are computed
+    # from these in metrics.py — so results.csv stays compact and k is not
+    # baked in. n_residents (0 = unknown/opaque) is the store size at query
+    # time: the rank-percentile denominator and the k∝N scale factor.
+    # NOTE: rows written before 2026-07-14 are depth-censored at 10 — compare
+    # via censored-bounds analysis, not as exact ranks.
     n_gold: int = 0
     n_retrieved: int = 0
+    n_residents: int = 0
     gold_ranks: str = "[]"
     # Pre-retrieval retrievability (max cosine query→nearest resident item); NaN
     # unless the config embeds items (dense). A property of the kept set, not the
