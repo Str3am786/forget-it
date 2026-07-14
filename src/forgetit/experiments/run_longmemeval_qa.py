@@ -21,7 +21,8 @@ from forgetit.core.logging import BenchmarkLogger
 from forgetit.retrieval import LexicalOverlapRetriever, BM25Retriever, EmbeddingRetriever
 from forgetit.policies import LRUPolicy, LFUPolicy, FIFOPolicy, RandomPolicy, LLMCompressionPolicy, EbbinghausPolicy, \
     MemoryBankCompressionPolicy, KeepSmallestPolicy, EvictSmallestPolicy, \
-    SemanticRedundancyPolicy, SemanticCoveragePolicy
+    SemanticRedundancyPolicy, SemanticCoveragePolicy, \
+    SalienceDecayPolicy, GDSFPolicy
 from forgetit.llm import get_llm
 from forgetit.llm.readers import PlainTextReader
 from forgetit.settings import LETTA_BASE_URL, LETTA_API_KEY
@@ -123,6 +124,10 @@ def default_policy_specs(llm, seed: int = 42) -> list[PolicySpec]:
         ("random",         lambda: RandomPolicy(seed=seed)),
         ("keep_smallest",  lambda: KeepSmallestPolicy()),    # evict largest
         ("evict_smallest", lambda: EvictSmallestPolicy()),   # evict smallest
+        # Value-per-byte (density) family — metadata-only, no LLM/embeddings:
+        ("salience_decay", lambda: SalienceDecayPolicy()),   # FiFA priority-decay density
+        ("gdsf",           lambda: GDSFPolicy()),            # GreedyDual-Size w/ Frequency
+        ("gdsf_frozen",    lambda: GDSFPolicy(freeze_L=True)),  # L≡0 ablation: pure frequency-density
         # Content-aware (need --dense; fall back to size on non-dense runs).
         # Two side by side so cheap-proxy vs principled-coverage is itself a result:
         ("semantic",          lambda: SemanticRedundancyPolicy()),      # nearest-pair (cheap)

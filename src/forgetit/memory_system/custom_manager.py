@@ -101,6 +101,11 @@ class RetentionManager(MemorySystem):
             self._bytes_by_id[item.id] = b
             self.used_bytes += b
 
+            # Stateful policies (GDSF) set their credit at admission time.
+            on_insert = getattr(self.policy, "on_insert", None)
+            if on_insert is not None:
+                on_insert(item)
+
             self.logger.event(
                 "insert",
                 {"id": item.id, "bytes": b, "t_insert": self._n_inserts,
@@ -120,6 +125,13 @@ class RetentionManager(MemorySystem):
             it.access_count += 1
             it.last_access = float(self._tick)
             self.backend.upsert(it)
+
+        # Stateful policies (GDSF) refresh their credit on access — the same
+        # signal the access_count bump encodes, delivered as a hook.
+        on_access = getattr(self.policy, "on_access", None)
+        if on_access is not None:
+            for it in results:
+                on_access(it)
 
         self.logger.event("retrieve", {"q": query.id, "hits": [r.id for r in results]})
         return results
@@ -328,6 +340,11 @@ class RetentionManager(MemorySystem):
         self.backend.delete(record_id)              # if this throws, nothing changed
         self._bytes_by_id.pop(record_id, None)
         self.used_bytes = max(0, self.used_bytes - freed)
+
+        # Stateful policies (GDSF) drop their per-item bookkeeping.
+        on_evict = getattr(self.policy, "on_evict", None)
+        if on_evict is not None:
+            on_evict(record_id)
         return freed
 
     def rebuild_accounting(self) -> None:

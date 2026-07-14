@@ -51,6 +51,7 @@ from forgetit.policies import (
     LLMCompressionPolicy, EbbinghausPolicy, MemoryBankCompressionPolicy,
     KeepSmallestPolicy, EvictSmallestPolicy,
     SemanticRedundancyPolicy, SemanticCoveragePolicy,
+    SalienceDecayPolicy, GDSFPolicy,
 )
 from forgetit.llm import get_llm
 from forgetit.llm.readers import PlainTextReader
@@ -126,6 +127,10 @@ def default_policy_specs(llm, seed: int = 42) -> list[PolicySpec]:
         ("random",         lambda: RandomPolicy(seed=seed)),
         ("keep_smallest",  lambda: KeepSmallestPolicy()),    # evict largest
         ("evict_smallest", lambda: EvictSmallestPolicy()),   # evict smallest
+        # Value-per-byte (density) family — metadata-only, no LLM/embeddings:
+        ("salience_decay", lambda: SalienceDecayPolicy()),   # FiFA priority-decay density
+        ("gdsf",           lambda: GDSFPolicy()),            # GreedyDual-Size w/ Frequency
+        ("gdsf_frozen",    lambda: GDSFPolicy(freeze_L=True)),  # L≡0 ablation: pure frequency-density
         # Content-aware (need --dense; fall back to size on non-dense runs).
         # Cheap nearest-pair beside principled marginal coverage — the ablation:
         ("semantic",          lambda: SemanticRedundancyPolicy()),      # nearest-pair (cheap)
