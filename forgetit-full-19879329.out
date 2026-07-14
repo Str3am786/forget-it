@@ -1,0 +1,195 @@
+The following modules were not unloaded:
+  (Use "module --force purge" to unload all):
+
+  1) ModuleLabel/label   2) lumi-tools/26.06   3) init-lumi/0.2
+
+The following sticky modules could not be reloaded:
+
+  1) lumi-tools
+[lumi] embedding server will use: --runner pooling
+[lumi] GCD 0: chat vLLM on port 8000 ...
+[lumi] GCD 1: chat vLLM on port 8001 ...
+[lumi] GCD 2: chat vLLM on port 8002 ...
+[lumi] GCD 3: chat vLLM on port 8003 ...
+[lumi] GCD 4: chat vLLM on port 8004 ...
+[lumi] GCD 5: chat vLLM on port 8005 ...
+[lumi] GCD 6: chat vLLM on port 8006 ...
+[lumi] GCD 7: embed vLLM (Qwen3-Embedding-0.6B) on port 8100 ...
+[lumi] waiting for 8 servers ...
+[lumi]   chat GCD 0 up (port 8000).
+[lumi]   chat GCD 1 up (port 8001).
+[lumi]   chat GCD 2 up (port 8002).
+[lumi]   chat GCD 3 up (port 8003).
+[lumi]   chat GCD 4 up (port 8004).
+[lumi]   chat GCD 5 up (port 8005).
+[lumi]   chat GCD 6 up (port 8006).
+[lumi]   embed GCD 7 up (port 8100).
+[lumi] all servers up.
+[lumi] encoder pin written to /scratch/project_462001123/artifacts/benchmark_full/ENCODER_PIN.txt
+[lumi] A7 encoder-identity smoke (semantic policies, 1 example, no reader) ...
+[lumi] A7 smoke passed on the wired encoder.
+[lumi] unknown dataset 'locomo'
+[lumi] merging CSVs ...
+found 19 results.csv and 19 summary.csv under /scratch/project_462001123/artifacts/benchmark_full
+wrote /scratch/project_462001123/artifacts/benchmark_full/combined_results.csv  (9500 rows)
+wrote /scratch/project_462001123/artifacts/benchmark_full/combined_summary.csv  (19 rows)
+WARNING: RAGGED grid: fifo covers 3/5 cells — missing ('longmemeval', 'session', '050pct'), ('longmemeval', 'session', '100pct'); pooled per-policy averages over this merge compare unequal supports
+WARNING: RAGGED grid: lfu×bm25 covers 2/5 cells — missing ('longmemeval', 'session', '050pct'), ('longmemeval', 'session', '075pct'), ('longmemeval', 'session', '100pct'); pooled per-policy averages over this merge compare unequal supports
+WARNING: RAGGED grid: lru×bm25 covers 3/5 cells — missing ('longmemeval', 'session', '075pct'), ('longmemeval', 'session', '100pct'); pooled per-policy averages over this merge compare unequal supports
+WARNING: INCOMPLETE grid — no floor row for dataset=longmemeval itemiser=session (rerun with --include-floor)
+[lumi] eviction-regret offline pass ...
+dataset       policy      retr      frac |  q_regret  items norm_avoid  ttr
+longmemeval   fifo        bm25      0.10 |     0.958    859          -  far-shed
+longmemeval   fifo        lexical   0.10 |     0.958    859          -  far-shed
+longmemeval   fifo        lexical   0.25 |     0.848    674          -  far-shed
+longmemeval   fifo        lexical   0.75 |     0.412    244          -  far-shed
+longmemeval   lfu         bm25      0.10 |     0.966    873          -  neutral
+longmemeval   lfu         bm25      0.25 |     0.732    540          -  myopic
+longmemeval   lfu         lexical   0.10 |     0.970    876          -  neutral
+longmemeval   lfu         lexical   0.25 |     0.798    602          -  myopic
+longmemeval   lfu         lexical   0.50 |     0.258    152          -  myopic
+longmemeval   lfu         lexical   0.75 |     0.056     30          -  far-shed
+longmemeval   lfu         lexical   1.00 |     0.000      0          -  unknown
+longmemeval   lru         bm25      0.10 |     0.958    856          -  far-shed
+longmemeval   lru         bm25      0.25 |     0.172    115          -  far-shed
+longmemeval   lru         bm25      0.50 |     0.098     61          -  far-shed
+longmemeval   lru         lexical   0.10 |     0.958    856          -  far-shed
+longmemeval   lru         lexical   0.25 |     0.278    183          -  far-shed
+longmemeval   lru         lexical   0.50 |     0.166    100          -  far-shed
+longmemeval   lru         lexical   0.75 |     0.054     31          -  far-shed
+longmemeval   lru         lexical   1.00 |     0.000      0          -  unknown
+longmemeval   random_s42  lexical   0.10 |     0.950    842          -  far-shed
+
+══ Tier-1 gold ANSWER survival (resident-text containment; localizable, answerable items) ══
+dataset     itemiser  policy      retr    frac |  ans_surv  ans_rec  id_surv cmp_loss |  nLoc nNonL nEvct nCmp | ret/deg/lost
+longmemeval session   fifo        bm25    0.10 |     0.113    0.113    0.113    0.000 |   382   508   339    0 | 0.11/0.00/0.89
+longmemeval session   fifo        lexical 0.10 |     0.113    0.113    0.113    0.000 |   382   508   339    0 | 0.11/0.00/0.89
+longmemeval session   fifo        lexical 0.25 |     0.330    0.325    0.330    0.000 |   382   508   256    0 | 0.33/0.00/0.67
+longmemeval session   fifo        lexical 0.75 |     0.793    0.733    0.793    0.000 |   382   508    79    0 | 0.79/0.00/0.21
+longmemeval session   lfu         bm25    0.10 |     0.065    0.063    0.065    0.000 |   382   508   357    0 | 0.07/0.00/0.93
+longmemeval session   lfu         bm25    0.25 |     0.414    0.372    0.414    0.000 |   382   508   224    0 | 0.41/0.00/0.59
+longmemeval session   lfu         lexical 0.10 |     0.060    0.058    0.060    0.000 |   382   508   359    0 | 0.06/0.00/0.94
+longmemeval session   lfu         lexical 0.25 |     0.330    0.293    0.330    0.000 |   382   508   256    0 | 0.33/0.00/0.67
+longmemeval session   lfu         lexical 0.50 |     0.838    0.772    0.838    0.000 |   382   508    62    0 | 0.84/0.00/0.16
+longmemeval session   lfu         lexical 0.75 |     0.974    0.906    0.974    0.000 |   382   508    10    0 | 0.97/0.00/0.03
+longmemeval session   lfu         lexical 1.00 |     1.000    0.929    1.000    0.000 |   382   508     0    0 | 1.00/0.00/0.00
+longmemeval session   lru         bm25    0.10 |     0.113    0.113    0.113    0.000 |   382   508   339    0 | 0.11/0.00/0.89
+longmemeval session   lru         bm25    0.25 |     0.898    0.827    0.898    0.000 |   382   508    39    0 | 0.90/0.00/0.10
+longmemeval session   lru         bm25    0.50 |     0.937    0.866    0.937    0.000 |   382   508    24    0 | 0.94/0.00/0.06
+longmemeval session   lru         lexical 0.10 |     0.113    0.113    0.113    0.000 |   382   508   339    0 | 0.11/0.00/0.89
+longmemeval session   lru         lexical 0.25 |     0.832    0.767    0.832    0.000 |   382   508    64    0 | 0.83/0.00/0.17
+longmemeval session   lru         lexical 0.50 |     0.908    0.843    0.908    0.000 |   382   508    35    0 | 0.91/0.00/0.09
+longmemeval session   lru         lexical 0.75 |     0.976    0.908    0.976    0.000 |   382   508     9    0 | 0.98/0.00/0.02
+longmemeval session   lru         lexical 1.00 |     1.000    0.929    1.000    0.000 |   382   508     0    0 | 1.00/0.00/0.00
+longmemeval session   random_s42  lexical 0.10 |     0.126    0.126    0.126    0.000 |   382   508   334    0 | 0.13/0.00/0.87
+
+── contract validation ──
+  ✓  session/fifo/bm25/0.10            C1 answer<=id survival                  0.1126 <= 0.1126
+  ✓  session/fifo/bm25/0.10              vs summary.gold_survival_rate        (info)  0.1126 vs 0.1740
+  ✓  session/fifo/bm25/0.10            C2 resident res_contain==1 (n_compress==0)  survival_resident_localizable=1.0000
+  ✓  session/fifo/bm25/0.10            C2 compression_attributable_loss==0     cal=0.000000
+  ✓  session/fifo/bm25/0.10            C3 tiers sum to 1                       sum=1.000000
+  ✓  session/fifo/lexical/0.10         C1 answer<=id survival                  0.1126 <= 0.1126
+  ✓  session/fifo/lexical/0.10           vs summary.gold_survival_rate        (info)  0.1126 vs 0.1740
+  ✓  session/fifo/lexical/0.10         C2 resident res_contain==1 (n_compress==0)  survival_resident_localizable=1.0000
+  ✓  session/fifo/lexical/0.10         C2 compression_attributable_loss==0     cal=0.000000
+  ✓  session/fifo/lexical/0.10         C3 tiers sum to 1                       sum=1.000000
+  ✓  session/fifo/lexical/0.25         C1 answer<=id survival                  0.3298 <= 0.3298
+  ✓  session/fifo/lexical/0.25           vs summary.gold_survival_rate        (info)  0.3298 vs 0.4700
+  ✓  session/fifo/lexical/0.25         C2 resident res_contain==1 (n_compress==0)  survival_resident_localizable=1.0000
+  ✓  session/fifo/lexical/0.25         C2 compression_attributable_loss==0     cal=0.000000
+  ✓  session/fifo/lexical/0.25         C3 tiers sum to 1                       sum=1.000000
+  ✓  session/fifo/lexical/0.75         C1 answer<=id survival                  0.7932 <= 0.7932
+  ✓  session/fifo/lexical/0.75           vs summary.gold_survival_rate        (info)  0.7932 vs 0.9020
+  ✓  session/fifo/lexical/0.75         C2 resident res_contain==1 (n_compress==0)  survival_resident_localizable=1.0000
+  ✓  session/fifo/lexical/0.75         C2 compression_attributable_loss==0     cal=0.000000
+  ✓  session/fifo/lexical/0.75         C3 tiers sum to 1                       sum=1.000000
+  ✓  session/lfu/bm25/0.10             C1 answer<=id survival                  0.0654 <= 0.0654
+  ✓  session/lfu/bm25/0.10               vs summary.gold_survival_rate        (info)  0.0654 vs 0.1480
+  ✓  session/lfu/bm25/0.10             C2 resident res_contain==1 (n_compress==0)  survival_resident_localizable=1.0000
+  ✓  session/lfu/bm25/0.10             C2 compression_attributable_loss==0     cal=0.000000
+  ✓  session/lfu/bm25/0.10             C3 tiers sum to 1                       sum=1.000000
+  ✓  session/lfu/bm25/0.25             C1 answer<=id survival                  0.4136 <= 0.4136
+  ✓  session/lfu/bm25/0.25               vs summary.gold_survival_rate        (info)  0.4136 vs 0.6480
+  ✓  session/lfu/bm25/0.25             C2 resident res_contain==1 (n_compress==0)  survival_resident_localizable=1.0000
+  ✓  session/lfu/bm25/0.25             C2 compression_attributable_loss==0     cal=0.000000
+  ✓  session/lfu/bm25/0.25             C3 tiers sum to 1                       sum=1.000000
+  ✓  session/lfu/lexical/0.10          C1 answer<=id survival                  0.0602 <= 0.0602
+  ✓  session/lfu/lexical/0.10            vs summary.gold_survival_rate        (info)  0.0602 vs 0.1400
+  ✓  session/lfu/lexical/0.10          C2 resident res_contain==1 (n_compress==0)  survival_resident_localizable=1.0000
+  ✓  session/lfu/lexical/0.10          C2 compression_attributable_loss==0     cal=0.000000
+  ✓  session/lfu/lexical/0.10          C3 tiers sum to 1                       sum=1.000000
+  ✓  session/lfu/lexical/0.25          C1 answer<=id survival                  0.3298 <= 0.3298
+  ✓  session/lfu/lexical/0.25            vs summary.gold_survival_rate        (info)  0.3298 vs 0.5620
+  ✓  session/lfu/lexical/0.25          C2 resident res_contain==1 (n_compress==0)  survival_resident_localizable=1.0000
+  ✓  session/lfu/lexical/0.25          C2 compression_attributable_loss==0     cal=0.000000
+  ✓  session/lfu/lexical/0.25          C3 tiers sum to 1                       sum=1.000000
+  ✓  session/lfu/lexical/0.50          C1 answer<=id survival                  0.8377 <= 0.8377
+  ✓  session/lfu/lexical/0.50            vs summary.gold_survival_rate        (info)  0.8377 vs 0.9240
+  ✓  session/lfu/lexical/0.50          C2 resident res_contain==1 (n_compress==0)  survival_resident_localizable=1.0000
+  ✓  session/lfu/lexical/0.50          C2 compression_attributable_loss==0     cal=0.000000
+  ✓  session/lfu/lexical/0.50          C3 tiers sum to 1                       sum=1.000000
+  ✓  session/lfu/lexical/0.75          C1 answer<=id survival                  0.9738 <= 0.9738
+  ✓  session/lfu/lexical/0.75            vs summary.gold_survival_rate        (info)  0.9738 vs 0.9920
+  ✓  session/lfu/lexical/0.75          C2 resident res_contain==1 (n_compress==0)  survival_resident_localizable=1.0000
+  ✓  session/lfu/lexical/0.75          C2 compression_attributable_loss==0     cal=0.000000
+  ✓  session/lfu/lexical/0.75          C3 tiers sum to 1                       sum=1.000000
+  ✓  session/lfu/lexical/1.00          C1 answer<=id survival                  1.0000 <= 1.0000
+  ✓  session/lfu/lexical/1.00            vs summary.gold_survival_rate        (info)  1.0000 vs 1.0000
+  ✓  session/lfu/lexical/1.00          C2 resident res_contain==1 (n_compress==0)  survival_resident_localizable=1.0000
+  ✓  session/lfu/lexical/1.00          C2 compression_attributable_loss==0     cal=0.000000
+  ✓  session/lfu/lexical/1.00          C2 headline==1.0 (no evictions)         gold_answer_survival=1.0000
+  ✓  session/lfu/lexical/1.00          C3 tiers sum to 1                       sum=1.000000
+  ✓  session/lru/bm25/0.10             C1 answer<=id survival                  0.1126 <= 0.1126
+  ✓  session/lru/bm25/0.10               vs summary.gold_survival_rate        (info)  0.1126 vs 0.1800
+  ✓  session/lru/bm25/0.10             C2 resident res_contain==1 (n_compress==0)  survival_resident_localizable=1.0000
+  ✓  session/lru/bm25/0.10             C2 compression_attributable_loss==0     cal=0.000000
+  ✓  session/lru/bm25/0.10             C3 tiers sum to 1                       sum=1.000000
+  ✓  session/lru/bm25/0.25             C1 answer<=id survival                  0.8979 <= 0.8979
+  ✓  session/lru/bm25/0.25               vs summary.gold_survival_rate        (info)  0.8979 vs 0.9740
+  ✓  session/lru/bm25/0.25             C2 resident res_contain==1 (n_compress==0)  survival_resident_localizable=1.0000
+  ✓  session/lru/bm25/0.25             C2 compression_attributable_loss==0     cal=0.000000
+  ✓  session/lru/bm25/0.25             C3 tiers sum to 1                       sum=1.000000
+  ✓  session/lru/bm25/0.50             C1 answer<=id survival                  0.9372 <= 0.9372
+  ✓  session/lru/bm25/0.50               vs summary.gold_survival_rate        (info)  0.9372 vs 0.9900
+  ✓  session/lru/bm25/0.50             C2 resident res_contain==1 (n_compress==0)  survival_resident_localizable=1.0000
+  ✓  session/lru/bm25/0.50             C2 compression_attributable_loss==0     cal=0.000000
+  ✓  session/lru/bm25/0.50             C3 tiers sum to 1                       sum=1.000000
+  ✓  session/lru/lexical/0.10          C1 answer<=id survival                  0.1126 <= 0.1126
+  ✓  session/lru/lexical/0.10            vs summary.gold_survival_rate        (info)  0.1126 vs 0.1800
+  ✓  session/lru/lexical/0.10          C2 resident res_contain==1 (n_compress==0)  survival_resident_localizable=1.0000
+  ✓  session/lru/lexical/0.10          C2 compression_attributable_loss==0     cal=0.000000
+  ✓  session/lru/lexical/0.10          C3 tiers sum to 1                       sum=1.000000
+  ✓  session/lru/lexical/0.25          C1 answer<=id survival                  0.8325 <= 0.8325
+  ✓  session/lru/lexical/0.25            vs summary.gold_survival_rate        (info)  0.8325 vs 0.9160
+  ✓  session/lru/lexical/0.25          C2 resident res_contain==1 (n_compress==0)  survival_resident_localizable=1.0000
+  ✓  session/lru/lexical/0.25          C2 compression_attributable_loss==0     cal=0.000000
+  ✓  session/lru/lexical/0.25          C3 tiers sum to 1                       sum=1.000000
+  ✓  session/lru/lexical/0.50          C1 answer<=id survival                  0.9084 <= 0.9084
+  ✓  session/lru/lexical/0.50            vs summary.gold_survival_rate        (info)  0.9084 vs 0.9640
+  ✓  session/lru/lexical/0.50          C2 resident res_contain==1 (n_compress==0)  survival_resident_localizable=1.0000
+  ✓  session/lru/lexical/0.50          C2 compression_attributable_loss==0     cal=0.000000
+  ✓  session/lru/lexical/0.50          C3 tiers sum to 1                       sum=1.000000
+  ✓  session/lru/lexical/0.75          C1 answer<=id survival                  0.9764 <= 0.9764
+  ✓  session/lru/lexical/0.75            vs summary.gold_survival_rate        (info)  0.9764 vs 0.9920
+  ✓  session/lru/lexical/0.75          C2 resident res_contain==1 (n_compress==0)  survival_resident_localizable=1.0000
+  ✓  session/lru/lexical/0.75          C2 compression_attributable_loss==0     cal=0.000000
+  ✓  session/lru/lexical/0.75          C3 tiers sum to 1                       sum=1.000000
+  ✓  session/lru/lexical/1.00          C1 answer<=id survival                  1.0000 <= 1.0000
+  ✓  session/lru/lexical/1.00            vs summary.gold_survival_rate        (info)  1.0000 vs 1.0000
+  ✓  session/lru/lexical/1.00          C2 resident res_contain==1 (n_compress==0)  survival_resident_localizable=1.0000
+  ✓  session/lru/lexical/1.00          C2 compression_attributable_loss==0     cal=0.000000
+  ✓  session/lru/lexical/1.00          C2 headline==1.0 (no evictions)         gold_answer_survival=1.0000
+  ✓  session/lru/lexical/1.00          C3 tiers sum to 1                       sum=1.000000
+  ✓  session/random_s42/lexical/0.10   C1 answer<=id survival                  0.1257 <= 0.1257
+  ✓  session/random_s42/lexical/0.10     vs summary.gold_survival_rate        (info)  0.1257 vs 0.2020
+  ✓  session/random_s42/lexical/0.10   C2 resident res_contain==1 (n_compress==0)  survival_resident_localizable=1.0000
+  ✓  session/random_s42/lexical/0.10   C2 compression_attributable_loss==0     cal=0.000000
+  ✓  session/random_s42/lexical/0.10   C3 tiers sum to 1                       sum=1.000000
+
+wrote /scratch/project_462001123/artifacts/benchmark_full/eviction_regret_report.json  (20 runs)
+[lumi] done (exit 1).
+[lumi]   CSVs:        /scratch/project_462001123/artifacts/benchmark_full/combined_results.csv + combined_summary.csv
+[lumi]   regret:      /scratch/project_462001123/artifacts/benchmark_full/eviction_regret_report.json
+[lumi]   encoder pin: /scratch/project_462001123/artifacts/benchmark_full/ENCODER_PIN.txt
+[lumi] stopping servers

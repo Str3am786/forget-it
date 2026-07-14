@@ -22,12 +22,16 @@
 #     them — the runners build the chat client for explicitly-requested LLM
 #     policies even under --no-reader.
 #
-# RUN ONE DATASET PER JOB:
-#   DATASETS="longmemeval" sbatch scripts/lumi/run_lumi_full_eval.sh
-#   DATASETS="beam"        sbatch scripts/lumi/run_lumi_full_eval.sh
+# HOW TO SUBMIT (one dataset per job; the three jobs run side by side):
+#   export SBATCH_ACCOUNT=project_<your-id>    # once per shell — NEVER in the repo
+#   cd <repo-root>                             # paths are derived from here
+#   for ds in longmemeval beam locomo; do
+#       DATASETS="$ds" sbatch scripts/lumi/run_lumi_full_eval.sh
+#   done
+# The container is expected at <repo-parent>/forgetit.sif; override with
+# CLIENT_SIF=/path/to.sif if yours lives elsewhere.
 # ============================================================================
 #SBATCH --job-name=forgetit-full
-#SBATCH --account=project_462001123
 #SBATCH --partition=standard-g
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=8
@@ -39,10 +43,19 @@
 
 set -euo pipefail
 
-# ── paths ───────────────────────────────────────────────────────────────────
-PROJ=project_462001123
-REPO=$HOME/15-07-forgetit/forget-it
-CLIENT_SIF=$HOME/15-07-forgetit/forgetit.sif
+# ── identity & paths — derived, never hardcoded ───────────────────────────────────────────────────────────────────
+# The project ID comes from the account this job was submitted under
+# (SBATCH_ACCOUNT / --account at submit time), and the repo is wherever you
+# ran sbatch from. Nothing project- or machine-specific lives in this file,
+# so it is always safe to commit and push, and the script survives repo moves.
+PROJ="${SLURM_JOB_ACCOUNT:?no Slurm account — submit via sbatch with SBATCH_ACCOUNT exported (see header)}"
+REPO="${SLURM_SUBMIT_DIR:?}"
+if [ ! -e "$REPO/pyproject.toml" ] || [ ! -d "$REPO/src/forgetit" ]; then
+    echo "[lumi] REFUSING: sbatch was not run from the repo root (SLURM_SUBMIT_DIR=$REPO)" >&2
+    echo "[lumi]   cd <repo-root> && DATASETS=... sbatch scripts/lumi/run_lumi_full_eval.sh" >&2
+    exit 1
+fi
+CLIENT_SIF="${CLIENT_SIF:-$(dirname "$REPO")/forgetit.sif}"   # default: sibling of the repo
 VLLM_SIF=/appl/local/laifs/containers/lumi-multitorch-latest.sif
 
 CHAT_MODEL_PATH=/scratch/$PROJ/models/Qwen2.5-7B-Instruct
@@ -50,6 +63,7 @@ EMBED_MODEL_PATH=/scratch/$PROJ/models/Qwen3-Embedding-0.6B
 
 LME_DATASET=$REPO/data/longmemeval_s_cleaned.json
 BEAM_DATASET=$REPO/data/beam_500K.jsonl
+LOCOMO_DATASET=$REPO/data/locomo10.json
 
 OUT_DIR=/scratch/$PROJ/artifacts/benchmark_full
 # Smoke output lives OUTSIDE OUT_DIR: step 4 runs concat_results.py over
@@ -79,11 +93,11 @@ fi
 # ── FROZEN GRID — this block IS the run record ──────────────────────────────
 # Explicit on the command line so the sbatch script, not code defaults,
 # defines the grid.
-# VERIFIED (V1): every name below matches the policy registry. NOTE for the
-# author: evict_smallest / semantic_coverage / ebbinghaus / memorybank are
-# DISTINCT registered policies NOT in this grid — add them here if they
-# survived the §0 freeze. gdsf_frozen = GDSF with L≡0 (frequency-density).
-POLICIES="fifo lru lfu random keep_smallest evict_smallest salience_decay ebbinghaus gdsf gdsf_frozen semantic semantic_keep semantic_coverage compression oracle"
+# VERIFIED (V1): every name below matches the policy registry. The only
+# registered policy deliberately omitted is memorybank (compression covers
+# the LLM-compression cell; memorybank differs only in selector+prompt).
+# gdsf_frozen = GDSF with L≡0 (frequency-density).
+POLICIES="fifo lru lfu random keep_smallest evict_smallest salience_decay gdsf gdsf_frozen semantic semantic_coverage semantic_keep ebbinghaus compression oracle"
 # VERIFIED (V2): runners expose --budgets and --seeds; both wired explicitly.
 # Module default budgets match this ladder; stating them here freezes them.
 BUDGETS="1.0 0.75 0.50 0.25 0.10"
@@ -100,6 +114,7 @@ SERVED_EMBED=qwen3-embedding-0.6b
 
 LME_WORKERS=12             # per-config example concurrency (LongMemEval)
 BEAM_WORKERS=8             # leaner: BEAM conversations hold big per-example stores
+LOCOMO_WORKERS=8           # LoCoMo has only 10 conversations — workers ≤ 10 by construction
 POOL=64                    # httpx pool >= per-shard concurrency
 
 # One dataset per job (see header): refuse a bare sbatch rather than silently
@@ -109,6 +124,7 @@ if [ -z "${DATASETS:-}" ]; then
     echo "[lumi] REFUSING: DATASETS is unset — run one dataset per job:" >&2
     echo "[lumi]   DATASETS=\"longmemeval\" sbatch $0" >&2
     echo "[lumi]   DATASETS=\"beam\"        sbatch $0" >&2
+    echo "[lumi]   DATASETS=\"locomo\"      sbatch $0" >&2
     exit 1
 fi
 
@@ -148,6 +164,7 @@ for ds in $DATASETS; do
     case "$ds" in
         longmemeval) [ -e "$LME_DATASET" ]  || { echo "[lumi] MISSING dataset: $LME_DATASET" >&2; exit 1; } ;;
         beam)        [ -e "$BEAM_DATASET" ] || { echo "[lumi] MISSING dataset: $BEAM_DATASET (or set DATASETS=\"longmemeval\")" >&2; exit 1; } ;;
+        locomo)      [ -e "$LOCOMO_DATASET" ] || { echo "[lumi] MISSING dataset: $LOCOMO_DATASET" >&2; exit 1; } ;;
     esac
 done
 # The A7 smoke (step 2b) runs run_longmemeval_qa regardless of DATASETS, so a
@@ -294,11 +311,12 @@ for ds in $DATASETS; do
     case "$ds" in
         longmemeval) run_dataset longmemeval forgetit.experiments.run_longmemeval_qa "$LME_WORKERS" || rc=1 ;;
         beam)        run_dataset beam        forgetit.experiments.run_beam            "$BEAM_WORKERS" || rc=1 ;;
+        locomo)      run_dataset locomo      forgetit.experiments.run_locomo_qa       "$LOCOMO_WORKERS" || rc=1 ;;
         *) echo "[lumi] unknown dataset '$ds'" >&2; rc=1 ;;
     esac
 done
 
-# ── 4. merge CSVs (adds policy_identity; warns on INCOMPLETE/RAGGED grids) ──
+# ── 4. merge CSVs (adds policy_identity; warns on INCOMPLETE/RAGGED grids) ──────
 echo "[lumi] merging CSVs ..."
 singularity exec -B "/scratch/$PROJ,$REPO" "$CLIENT_SIF" \
     bash -c "cd '$REPO' && PYTHONPATH='$REPO/src' python scripts/concat_results.py '$OUT_DIR'" || rc=1
@@ -319,4 +337,3 @@ echo "[lumi]   CSVs:        $OUT_DIR/combined_results.csv + combined_summary.csv
 echo "[lumi]   regret:      $OUT_DIR/eviction_regret_report.json"
 echo "[lumi]   encoder pin: $OUT_DIR/ENCODER_PIN.txt"
 exit $rc
-
