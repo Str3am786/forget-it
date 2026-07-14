@@ -124,6 +124,22 @@ class RetentionManager(MemorySystem):
         self.logger.event("retrieve", {"q": query.id, "hits": [r.id for r in results]})
         return results
 
+    def search(self, query: Query, k: int | None = None) -> list[MemRecord]:
+        """READ-ONLY retrieval: same ranking as ``retrieve`` but mutates nothing —
+        no access_count bump, no last_access, no tick.
+
+        This is the EVAL path. Benchmark eval queries must not feed back into
+        policy state (ingestion probes are the sanctioned access signal);
+        otherwise every scored question rehearses its hits and perturbs
+        LRU/LFU/ebbinghaus state mid-example. The event log records it under a
+        distinct name so probe hits and eval hits stay distinguishable offline.
+        """
+        if k is None:
+            raise ValueError("RetentionManager.search requires k.")
+        results = self.backend.search(query, k)
+        self.logger.event("search", {"q": query.id, "hits": [r.id for r in results]})
+        return results
+
     def get(self, item_id: str) -> Optional[MemRecord]:
         return self.backend.get(item_id)
 

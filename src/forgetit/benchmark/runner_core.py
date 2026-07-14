@@ -113,6 +113,20 @@ class _StoreView:
         except TypeError:
             return self.store.retrieve(query)
 
+    def search(self, query: Query, k: int):
+        """
+        READ-ONLY retrieval for EVAL queries: same ranking as ``retrieve`` but
+        with no access/recency side-effects on the store (RetentionManager
+        exposes ``search`` for exactly this). Eval must not feed policy state —
+        only ingestion probes may. Opaque stores without a read-only path fall
+        back to ``retrieve``; their rows already carry introspectable=False, so
+        the read-only guarantee is scoped to introspectable stores.
+        """
+        fn = getattr(self.store, "search", None)
+        if callable(fn):
+            return fn(query, k=k)
+        return self.retrieve(query, k)
+
     def safe_call(self, method_name: str) -> None:
         """Call ``store.method_name()`` if it exists.  Used for connect/close."""
         fn = getattr(self.store, method_name, None)
@@ -320,12 +334,14 @@ def _evaluate_scored_query(
 
     # Retrieve deep enough to score the whole hit/nDCG curve (top-K_MAX), then
     # hand only the configured top-k to the reader — so the QA context is
-    # unchanged by the metric depth. Probe (access-only) retrieval elsewhere
-    # stays at k, so eviction/retention is unperturbed.
+    # unchanged by the metric depth. The eval retrieval is READ-ONLY
+    # (view.search): scored queries must not bump access_count/last_access —
+    # ingestion probes are the only sanctioned access signal, so the
+    # measurement never rewrites the policy state being measured.
     eval_k = max(k, RETRIEVAL_EVAL_DEPTH)
     t0 = time.perf_counter()
     with phase("retrieve"):
-        retrieved_full = view.retrieve(query, eval_k)
+        retrieved_full = view.search(query, eval_k)
     latency = time.perf_counter() - t0
 
     retrieved_ids = [r.id for r in retrieved_full]
