@@ -21,9 +21,11 @@ class FIFOPolicy(SimpleEvictionPolicy):
         oldest_id: str | None = None
         oldest_ts: float | None = None
 
+        n = 0
         for feat in store.iter_features():
             if candidates is not None and feat.id not in candidates:
                 continue
+            n += 1
             created = feat.created_at if feat.created_at is not None else 0.0
             if oldest_ts is None or created < oldest_ts:
                 oldest_ts = created
@@ -32,6 +34,7 @@ class FIFOPolicy(SimpleEvictionPolicy):
         if oldest_id is None:
             raise RuntimeError("No records to evict")
 
+        self._note_decision(oldest_ts, n)
         return oldest_id
 
 class RandomPolicy(SimpleEvictionPolicy):
@@ -48,7 +51,9 @@ class RandomPolicy(SimpleEvictionPolicy):
         if not ids:
             raise RuntimeError("No records to evict")
 
-        return self._rng.choice(ids)
+        draw = self._rng.randrange(len(ids))     # the logged "score" IS the draw
+        self._note_decision(draw, len(ids))
+        return ids[draw]
 
 
 class LFUPolicy(SimpleEvictionPolicy):
@@ -58,9 +63,11 @@ class LFUPolicy(SimpleEvictionPolicy):
         victim_id = None
         best = None
 
+        n = 0
         for it in store.iter_features():
             if candidates is not None and it.id not in candidates:
                 continue
+            n += 1
             created = it.created_at if it.created_at is not None else 0.0
             score = (it.access_count, it.last_access, created, it.id)
             if best is None or score < best:
@@ -69,6 +76,7 @@ class LFUPolicy(SimpleEvictionPolicy):
 
         if victim_id is None:
             raise RuntimeError("LFU: store empty but eviction requested.")
+        self._note_decision(best[0], n)
         return victim_id
 
 
@@ -79,9 +87,11 @@ class LRUPolicy(SimpleEvictionPolicy):
         victim_id = None
         best = None
 
+        n = 0
         for it in store.iter_features():
             if candidates is not None and it.id not in candidates:
                 continue
+            n += 1
             created = it.created_at if it.created_at is not None else 0.0
             score = (it.last_access, created, it.id)
             if best is None or score < best:
@@ -90,6 +100,7 @@ class LRUPolicy(SimpleEvictionPolicy):
 
         if victim_id is None:
             raise RuntimeError("LRU: store empty but eviction requested.")
+        self._note_decision(best[0], n)
         return victim_id
 
 
@@ -105,9 +116,11 @@ class KeepSmallestPolicy(SimpleEvictionPolicy):
     def select_victim(self, store, candidates: set[str] | None = None):
         victim_id = None
         best = None
+        n = 0
         for it in store.iter_features():
             if candidates is not None and it.id not in candidates:
                 continue
+            n += 1
             created = it.created_at if it.created_at is not None else 0.0
             # min of (-bytes, created, id) == largest, then oldest, then lowest id
             score = (-it.bytes, created, it.id)
@@ -116,6 +129,7 @@ class KeepSmallestPolicy(SimpleEvictionPolicy):
                 victim_id = it.id
         if victim_id is None:
             raise RuntimeError("keep_smallest: store empty but eviction requested.")
+        self._note_decision(best[0], n)
         return victim_id
 
 
@@ -130,9 +144,11 @@ class EvictSmallestPolicy(SimpleEvictionPolicy):
     def select_victim(self, store, candidates: set[str] | None = None):
         victim_id = None
         best = None
+        n = 0
         for it in store.iter_features():
             if candidates is not None and it.id not in candidates:
                 continue
+            n += 1
             created = it.created_at if it.created_at is not None else 0.0
             score = (it.bytes, created, it.id)   # smallest, then oldest, then id
             if best is None or score < best:
@@ -140,4 +156,5 @@ class EvictSmallestPolicy(SimpleEvictionPolicy):
                 victim_id = it.id
         if victim_id is None:
             raise RuntimeError("evict_smallest: store empty but eviction requested.")
+        self._note_decision(best[0], n)
         return victim_id

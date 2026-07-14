@@ -181,11 +181,15 @@ class RetentionManager(MemorySystem):
     def _do_evict(self, record_id: str) -> None:
         """Policy-driven eviction."""
         freed = self._remove_record(record_id)
+        # Decision provenance captured AT DECISION TIME: the policy stamps
+        # last_decision in select_victim; scores are never reconstructed offline.
+        decision = getattr(self.policy, "last_decision", None) or {}
         self.logger.event("evict", {
             "id": record_id,
             "freed_bytes": freed,
             "t_insert": self._n_inserts,
             "used_bytes": self.used_bytes,
+            **decision,
         })
 
     def _do_compress(self, record_id: str, new_text: str) -> None:
@@ -300,6 +304,7 @@ class RetentionManager(MemorySystem):
                 "t_insert": self._n_inserts,
                 "dur_select_s": t1 - t0,           # decision cost (policy.select_action)
                 "dur_exec_s": t2 - t1,             # apply cost (evict/compress + re-embed)
+                **(getattr(self.policy, "last_decision", None) or {}),
             })
 
             made_progress = (

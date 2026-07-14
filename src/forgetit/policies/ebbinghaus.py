@@ -77,9 +77,11 @@ class EbbinghausPolicy(SimpleEvictionPolicy):
         # Pass 2: rank by log-retention. Tiebreak deterministically.
         victim_id: str | None = None
         best: tuple[float, float, str] | None = None
+        n = 0
         for feat in store.iter_features():
             if candidates is not None and feat.id not in candidates:
                 continue
+            n += 1
             ts = feat.created_at or 0.0
             score = (self._log_retention(now, ts, feat.access_count), ts, feat.id)
             if best is None or score < best:
@@ -88,6 +90,7 @@ class EbbinghausPolicy(SimpleEvictionPolicy):
 
         if victim_id is None:
             raise RuntimeError("Ebbinghaus: store empty but eviction requested.")
+        self._note_decision(best[0], n)
         return victim_id
 
 

@@ -36,14 +36,16 @@ from __future__ import annotations
 from forgetit.policies.base import SimpleEvictionPolicy
 
 
-def _evict_largest(store, candidates: set[str] | None):
+def _evict_largest(store, candidates: set[str] | None, policy=None):
     """Content-agnostic fallback shared by both semantic policies: evict the
     largest item (the keep_smallest rule). Ties: largest, oldest, id."""
     victim_id = None
     best = None
+    n = 0
     for it in store.iter_features():
         if candidates is not None and it.id not in candidates:
             continue
+        n += 1
         created = it.created_at if it.created_at is not None else 0.0
         key = (-it.bytes, created, it.id)
         if best is None or key < best:
@@ -51,6 +53,8 @@ def _evict_largest(store, candidates: set[str] | None):
             victim_id = it.id
     if victim_id is None:
         raise RuntimeError("semantic: store empty but eviction requested.")
+    if policy is not None:
+        policy._note_decision(best[0], n)
     return victim_id
 
 
@@ -94,7 +98,7 @@ class SemanticRedundancyPolicy(SimpleEvictionPolicy):
     def select_victim(self, store, candidates: set[str] | None = None):
         ids, vecs, sizes = _embedded_residents(store)
         if len(ids) < 2:
-            return _evict_largest(store, candidates)
+            return _evict_largest(store, candidates, policy=self)
 
         from forgetit.embeddings.similarity import nearest_within
         import numpy as np
@@ -102,16 +106,20 @@ class SemanticRedundancyPolicy(SimpleEvictionPolicy):
 
         victim_id = None
         best = None
+        n = 0
         for i, rid in enumerate(ids):
             if candidates is not None and rid not in candidates:
                 continue
+            n += 1
             red = float(redundancy[i])
             score = red * sizes[i] if self.size_weighted else red
             key = (score, sizes[i], rid)        # maximise: most redundant, then larger, then id
             if best is None or key > best:
                 best = key
                 victim_id = rid
-        return victim_id if victim_id is not None else _evict_largest(store, candidates)
+        if victim_id is not None:
+            self._note_decision(best[0], n)
+        return victim_id if victim_id is not None else _evict_largest(store, candidates, policy=self)
 
 
 class SemanticCoveragePolicy(SimpleEvictionPolicy):
@@ -140,7 +148,7 @@ class SemanticCoveragePolicy(SimpleEvictionPolicy):
     def select_victim(self, store, candidates: set[str] | None = None):
         ids, vecs, _sizes = _embedded_residents(store)
         if len(ids) < 2:
-            return _evict_largest(store, candidates)
+            return _evict_largest(store, candidates, policy=self)
 
         import numpy as np
         n = len(ids)
@@ -163,11 +171,15 @@ class SemanticCoveragePolicy(SimpleEvictionPolicy):
 
         victim_id = None
         best = None
+        n = 0
         for i, rid in enumerate(ids):
             if candidates is not None and rid not in candidates:
                 continue
+            n += 1
             key = (float(marginal[i]), rid)         # minimise marginal, tie by id
             if best is None or key < best:
                 best = key
                 victim_id = rid
-        return victim_id if victim_id is not None else _evict_largest(store, candidates)
+        if victim_id is not None:
+            self._note_decision(best[0], n)
+        return victim_id if victim_id is not None else _evict_largest(store, candidates, policy=self)

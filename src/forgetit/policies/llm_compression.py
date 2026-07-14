@@ -124,6 +124,8 @@ class LLMCompressionPolicy(EvictionPolicy):
         # Everything resident is already compressed and we're still over budget:
         # last resort — delete the least-useful item.
         victim_id = self.evict_selector.select_victim(store)
+        # Surface the selector's decision provenance as our own (event logging).
+        self.last_decision = getattr(self.evict_selector, "last_decision", None)
         log.info("[compress] all resident items compressed → EVICT least-useful %s", victim_id)
         return Evict(id=victim_id)
 
@@ -131,6 +133,8 @@ class LLMCompressionPolicy(EvictionPolicy):
         self, store: RetentionManager, uncompressed: set[str]
     ) -> Evict | Compress:
         victim_id = self.compress_selector.select_victim(store, candidates=uncompressed)
+        # Surface the selector's decision provenance as our own (event logging).
+        self.last_decision = getattr(self.compress_selector, "last_decision", None)
 
         record = store.backend.get(victim_id)
         if record is None:
