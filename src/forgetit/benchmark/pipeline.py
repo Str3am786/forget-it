@@ -94,6 +94,41 @@ def _stamp_provenance(results, *, config_hash: str, reader_impl, store_probe) ->
         r.prompt_reader_sha = prompt_reader_sha
 
 
+# ── per-config skip-if-done (resumable shards) ──────────────────────
+# A completed config leaves a DONE.json next to its CSVs, keyed by the SAME
+# config hash the provenance columns carry. Re-running a finished shard finds
+# the marker, sees the identical identity, and returns the stored summary as
+# a no-op. A marker written by a DIFFERENT config in the same directory (e.g.
+# a --limit smoke before the full run — different n_examples, different hash)
+# never satisfies the check. FORGETIT_FORCE_RERUN=1 overrides.
+
+
+def _done_marker_path(base: Path) -> Path:
+    return base / "DONE.json"
+
+
+def _check_done(base: Path, config_hash: str) -> dict | None:
+    """Return the stored summary when this exact config already completed."""
+    import os
+    if os.environ.get("FORGETIT_FORCE_RERUN", "").lower() in ("1", "true", "on"):
+        return None
+    p = _done_marker_path(base)
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+    if data.get("config_hash") != config_hash:
+        return None            # same directory, different config → rerun
+    return data.get("summary")
+
+
+def _write_done(base: Path, config_hash: str, summary: dict) -> None:
+    p = _done_marker_path(base)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({"config_hash": config_hash, "summary": summary}),
+                 encoding="utf-8")
+
+
 def save_results_csv(results, path: str | Path) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -425,6 +460,15 @@ def run_pipeline_concurrent(
         n_examples=len(indexed), write_events=write_events,
     )
 
+    # Skip-if-done: a crashed/re-submitted shard re-runs only its unfinished
+    # configs. Returns the completed run's summary with an empty results list
+    # (callers use the summary; the rows are already in results.csv).
+    done_summary = _check_done(base, cfg_hash)
+    if done_summary is not None:
+        log.info("  [%s] config %s already DONE — skipping "
+                 "(FORGETIT_FORCE_RERUN=1 to override)", store_label, cfg_hash)
+        return [], done_summary
+
     collected: list[tuple | None] = [None] * len(indexed)
 
     if example_workers > 1 and len(indexed) > 1:
@@ -513,5 +557,6 @@ def run_pipeline_concurrent(
     save_summary_csv(summary, base / "summary.csv")
     save_summary_by_qtype_csv(all_results, base / "summary_by_qtype.csv")
     save_timings_json(timing, wall_s, base / "timings.json")
+    _write_done(base, cfg_hash, summary)    # marker LAST: only a full save counts
 
     return all_results, summary
