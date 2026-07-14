@@ -274,6 +274,9 @@ class RetentionManager(MemorySystem):
             "freed_bytes": freed,
             "t_insert": self._n_inserts,
             "used_bytes": self.used_bytes,
+            # With this key the raw LLM output is recoverable from the disk
+            # cache (scripts/show_compressed.py re-derives the applied text).
+            "cache_key": getattr(self.policy, "last_llm_cache_key", None),
         })
 
     def _ensure_budget(self, incoming_bytes: int) -> None:

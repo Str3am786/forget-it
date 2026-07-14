@@ -154,6 +154,13 @@ class LLMCompressionPolicy(EvictionPolicy):
             return Evict(id=victim_id)
 
         prompt = self.prompt_template.format(text=record.text)
+        # Cache-key provenance: computed here as a pure function — NOT read off
+        # the shared client (which would race across example threads). The store
+        # logs it into the compress event, making the compressed text
+        # recoverable from the disk cache for any logged compression.
+        from forgetit.llm.disk_cache import cache_key
+        self.last_llm_cache_key = cache_key(
+            getattr(self.llm, "model", "?"), prompt, self.max_tokens, 0.0)
         try:
             with phase("compress_llm"):
                 raw = self.llm.generate(prompt, max_tokens=self.max_tokens, temperature=0.0)
