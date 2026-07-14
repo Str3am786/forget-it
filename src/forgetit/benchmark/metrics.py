@@ -64,8 +64,102 @@ def _recall(ranks: list[int], n_gold: int, k: int) -> float:
     return sum(1 for rank in ranks if rank <= k) / n_gold
 
 
+# ── coupled identity (decision #10) ─────────────────────────────────
+# History policies form their state THROUGH the ingest retriever (probe hits
+# feed access_count/last_access, and for GDSF the credit trajectory), so
+# "lru under bm25" and "lru under lexical" are different policies. Every
+# ranking / mean-rank / matrix aggregation must treat (policy × retriever) as
+# the unit; name-level cross-retriever averages are only allowed in views
+# explicitly labeled as such. Enforced at the merge layer
+# (scripts/concat_results.py adds ``policy_identity``) — not by memory.
+HISTORY_POLICIES = frozenset({
+    "lru", "lfu", "ebbinghaus", "salience_decay", "gdsf", "gdsf_frozen",
+    "compression", "memorybank",   # their selectors are history policies
+})
+
+
+def coupled_identity(policy: str, retriever: str) -> str:
+    """Aggregation identity: ``policy×retriever`` for history policies (whose
+    state is formed by the ingest retriever's probe hits), plain ``policy``
+    for retriever-independent ones (fifo/random/size/semantic/oracle)."""
+    p = (policy or "").strip()
+    if p.lower() in HISTORY_POLICIES:
+        return f"{p}×{(retriever or '').strip()}"
+    return p
+
+
+def grid_raggedness(cells_by_identity: dict[str, set]) -> list[str]:
+    """Completeness check for the merged grid: one warning line per coupled
+    identity that covers only PART of the grid.
+
+    A partially-present identity is worse than an absent one: it silently
+    skews every pooled per-policy average through unequal support (e.g. a
+    policy added to NEW runs whose rows exist only for the cells that were
+    re-run, merged with old CSVs that lack it — mean-rank and name-level
+    comparisons then compare policies on different budget/dataset mixes).
+    Entirely-absent identities never reach this function (they have no rows),
+    which is exactly right: not being in the sweep is a roster choice; being
+    half-in is a data defect.
+
+    ``cells_by_identity``: {policy_identity: set of grid-cell tuples it covers}
+    where a cell is whatever granularity the caller merges over — the concat
+    script uses (dataset, itemiser, budget). Returns [] for a complete grid.
+    """
+    if not cells_by_identity:
+        return []
+    all_cells: set = set().union(*cells_by_identity.values())
+    lines: list[str] = []
+    for ident, cells in sorted(cells_by_identity.items()):
+        missing = all_cells - cells
+        if missing:
+            sample = ", ".join(map(str, sorted(missing)[:3]))
+            more = f" (+{len(missing) - 3} more)" if len(missing) > 3 else ""
+            lines.append(
+                f"RAGGED grid: {ident} covers {len(cells)}/{len(all_cells)} cells "
+                f"— missing {sample}{more}; pooled per-policy averages over this "
+                f"merge compare unequal supports")
+    return lines
+
+
+def censored_bounds_row(gold_ranks: list[int], n_gold: int, gold_survived: bool,
+                        introspectable: bool, depth: int = 10) -> dict[str, float]:
+    """Interval bounds for LEGACY (depth-censored) rows.
+
+    Rows written before 2026-07-14 observed ranks only to ``depth``; a
+    retained gold with no observed rank is somewhere in [depth+1, N] — and N
+    (n_residents) was not logged then, so the upper bound is unknown (NaN).
+    Emits: legacy_censored (1.0 when the row's best rank is only bounded, not
+    observed), gold_rank_best_lo, gold_rank_best_hi. Never apply to
+    uncensored rows — their gold_rank_best is exact.
+    """
+    ranks = [r for r in (gold_ranks or []) if r <= depth]
+    if not (introspectable and gold_survived):
+        return {"legacy_censored": float("nan"),
+                "gold_rank_best_lo": float("nan"), "gold_rank_best_hi": float("nan")}
+    if ranks:      # best rank observed within depth → exact
+        best = float(min(ranks))
+        return {"legacy_censored": 0.0,
+                "gold_rank_best_lo": best, "gold_rank_best_hi": best}
+    # retained but unobserved → bracketed below by depth+1, unbounded above
+    return {"legacy_censored": 1.0,
+            "gold_rank_best_lo": float(depth + 1), "gold_rank_best_hi": float("nan")}
+
+
+def rank_percentile(best_rank: int, n_residents: int) -> float:
+    """Store-size-normalized rank: pct = 1 - (r-1)/(N-1) ∈ [0, 1].
+
+    1.0 = gold ranked first, 0.0 = ranked last among N residents. The fixed-k
+    hit confounds ranking quality with store size (hit@5 of a 10-item store is
+    a different bar than of a 400-item store); the percentile is the
+    size-invariant headline. N == 1 → 1.0 (the sole resident is rank 1)."""
+    if n_residents <= 1:
+        return 1.0
+    return 1.0 - (best_rank - 1) / (n_residents - 1)
+
+
 def ranking_columns(gold_ranks: list[int], n_gold: int,
-                    introspectable: bool, gold_survived: bool) -> dict[str, float]:
+                    introspectable: bool, gold_survived: bool,
+                    n_residents: int = 0) -> dict[str, float]:
     """The per-(metric, k) scalar columns for ONE results.csv row.
 
     A row is a single query, so the "curve" isn't a per-row object — it's these
@@ -74,6 +168,11 @@ def ranking_columns(gold_ranks: list[int], n_gold: int,
     multi-gold scoping is a downstream filter on question_type, not stored here).
     hit_at_k_given_retained is NaN unless the gold was resident, mirroring the
     existing scalar — averaging the non-NaN rows gives the conditioned curve.
+
+    gold_rank_best / rank_pct: best (lowest) gold rank and its percentile among
+    the N residents — CONDITIONED on retention (NaN when gold was evicted, when
+    the store is opaque, or when N is unknown), so the column isolates ranking
+    quality from survival exactly like the given-retained hit curve.
     """
     ranks = gold_ranks or []
     n_gold = n_gold or 0
@@ -84,6 +183,11 @@ def ranking_columns(gold_ranks: list[int], n_gold: int,
         cols[f"hit_at_{k}_given_retained"] = h if (introspectable and gold_survived) else float("nan")
         cols[f"ndcg_at_{k}"] = _ndcg(ranks, n_gold, k)
         cols[f"recall_at_{k}"] = _recall(ranks, n_gold, k)
+
+    best = min(ranks) if ranks else None
+    observed = (introspectable and gold_survived and best is not None and n_residents > 0)
+    cols["gold_rank_best"] = float(best) if observed else float("nan")
+    cols["rank_pct"] = rank_percentile(best, n_residents) if observed else float("nan")
     return cols
 
 
@@ -374,7 +478,48 @@ def summarize(results: list[EvalResult]) -> dict[str, float]:
         out[f"hit_at_{kk}_given_retained"] = hit_at_given_retained(results, kk)
         out[f"ndcg_at_{kk}"] = ndcg_at(results, kk)
         out[f"recall_at_{kk}_multigold"] = recall_at(results, kk)
+
+    # ── size-normalized ranking view (uncensored-depth runs only) ──
+    # rank_pct_mean: mean gold rank-percentile among residents, conditioned on
+    # retention — the size-invariant headline reported BESIDE gold_survival.
+    # hit_at_5_prop_n: k∝N sensitivity — k scaled so it equals 5 at the run's
+    # median store size (rows with unknown N fall back to fixed k=5).
+    # deployment_view_hit_at_5: the fixed-k number under its honest name — what
+    # a deployed top-5 pipeline sees; confounds ranking with store size.
+    pcts = [p for p in (_row_rank_pct(r) for r in results) if p == p]
+    out["rank_pct_mean"] = (sum(pcts) / len(pcts)) if pcts else float("nan")
+    out["hit_at_5_prop_n"] = _hit_at_prop_n(results, k_ref=5)
+    out["deployment_view_hit_at_5"] = out["hit_at_5"]
     return out
+
+
+def _row_rank_pct(r: EvalResult) -> float:
+    """Per-row gold rank-percentile, conditioned on retention (NaN otherwise)."""
+    ranks = _gold_ranks(r)
+    n_res = getattr(r, "n_residents", 0) or 0
+    if not (getattr(r, "introspectable", False) and getattr(r, "gold_survived", False)
+            and ranks and n_res > 0):
+        return float("nan")
+    return rank_percentile(min(ranks), n_res)
+
+
+def _hit_at_prop_n(results: list[EvalResult], k_ref: int = 5) -> float:
+    """Hit at k ∝ N: per-row k scaled so it equals ``k_ref`` at the run's
+    MEDIAN store size (k_row = max(1, round(k_ref · N_row / median N))). Rows
+    with unknown N (opaque) use fixed k_ref. NaN when no rows."""
+    if not results:
+        return float("nan")
+    sizes = sorted((getattr(r, "n_residents", 0) or 0)
+                   for r in results if (getattr(r, "n_residents", 0) or 0) > 0)
+    if not sizes:
+        return hit_at(results, k_ref)
+    median_n = sizes[len(sizes) // 2]
+    total = 0.0
+    for r in results:
+        n_res = getattr(r, "n_residents", 0) or 0
+        k_row = max(1, round(k_ref * n_res / median_n)) if (n_res > 0 and median_n > 0) else k_ref
+        total += _hit(_gold_ranks(r), k_row)
+    return total / len(results)
 
 
 def summarize_by_question_type(results: list[EvalResult]) -> dict[str, dict[str, float]]:

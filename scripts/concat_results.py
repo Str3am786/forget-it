@@ -22,6 +22,25 @@ from pathlib import Path
 
 import pandas as pd
 
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from forgetit.benchmark.metrics import coupled_identity, grid_raggedness  # noqa: E402
+
+
+def _add_policy_identity(df: pd.DataFrame) -> pd.DataFrame:
+    """Decision #10: history policies form state THROUGH the ingest retriever,
+    so every downstream ranking/mean-rank/matrix aggregation must group by
+    ``policy_identity`` (policy×retriever for history policies), never by bare
+    ``policy``. Name-level cross-retriever averages are only allowed in views
+    explicitly labeled as such."""
+    if "policy" in df.columns:
+        retr = df["retriever"] if "retriever" in df.columns else [""] * len(df)
+        df["policy_identity"] = [
+            coupled_identity(str(p), str(r))
+            for p, r in zip(df["policy"].fillna(""), retr)
+        ]
+    return df
+
 
 def _tag_from_path(summary_csv: Path, root: Path) -> dict[str, str]:
     """Best-effort identifiers from the directory layout under ``root``."""
@@ -57,7 +76,7 @@ def concat(root: Path, out_dir: Path) -> None:
     print(f"found {len(results)} results.csv and {len(summaries)} summary.csv under {root}")
 
     if results:
-        frames = [pd.read_csv(p) for p in results]
+        frames = [_add_policy_identity(pd.read_csv(p)) for p in results]
         combined = pd.concat(frames, ignore_index=True)
         dest = out_dir / "combined_results.csv"
         combined.to_csv(dest, index=False)
@@ -76,6 +95,33 @@ def concat(root: Path, out_dir: Path) -> None:
         dest = out_dir / "combined_summary.csv"
         combined.to_csv(dest, index=False)
         print(f"wrote {dest}  ({len(combined)} rows)")
+
+        # B3 completeness gate: a coupled identity present in only PART of
+        # the merged grid (e.g. a policy added to new runs while old CSVs
+        # lack it) silently skews pooled per-policy averages via unequal
+        # support. Cells = (dataset, itemiser, budget); floor/letta rows are
+        # roster-exempt (no policy tag or deliberately budget-less).
+        if {"dataset", "itemiser", "policy"}.issubset(combined.columns):
+            cells_by_identity: dict[str, set] = {}
+            sub = combined[combined["policy"].notna() & (combined["policy"] != "floor")]
+            for _, row in sub.iterrows():
+                ident = coupled_identity(str(row["policy"]),
+                                         str(row.get("retriever", "") or ""))
+                cell = (row["dataset"], row["itemiser"],
+                        str(row.get("budget_bytes", "") or ""))
+                cells_by_identity.setdefault(ident, set()).add(cell)
+            for line in grid_raggedness(cells_by_identity):
+                print(f"WARNING: {line}")
+
+        # E2b completeness gate: every (dataset, itemiser) grid needs its
+        # empty-store floor row — answer-stage tables report lift over it, and
+        # floor ≈ policy accuracy is the contamination check. A grid without
+        # one is INCOMPLETE; run the runner with --include-floor to add it.
+        if {"dataset", "itemiser", "config_dir"}.issubset(combined.columns):
+            for (ds, it), grp in combined.groupby(["dataset", "itemiser"]):
+                if not grp["config_dir"].astype(str).str.contains("floor/").any():
+                    print(f"WARNING: INCOMPLETE grid — no floor row for "
+                          f"dataset={ds} itemiser={it} (rerun with --include-floor)")
 
 
 def main() -> None:

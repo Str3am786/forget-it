@@ -144,6 +144,12 @@ class EvalResult:
     prompt_compress_sha: str = "" # sha of the compression prompt template in use
     prompt_reader_sha: str = ""   # sha of the reader prompt-builder source
 
+    # ── size-normalized ranking view (B1) ──
+    # Best (lowest) gold rank and its percentile among the N residents,
+    # conditioned on retention — NaN when gold was evicted / store opaque.
+    gold_rank_best: float = float("nan")
+    rank_pct: float = float("nan")
+
     # ── per-query ranking columns (the k-curve, one scalar per (metric, k)) ──
     # A row is one query, so the curve isn't a per-row object — these flat scalars
     # average across rows into Hit@k / nDCG@k / Recall@k / given-retained curves

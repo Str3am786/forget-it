@@ -171,6 +171,8 @@ def _run_reader(
     answer_max_tokens: int,
     ref_answer: str,
     question_type: str,
+    grader_embedder=None,
+    grade_sim_threshold: float = 0.83,
 ) -> QAFields:
     if reader_impl is None:
         return QAFields(ref_answer=ref_answer,
@@ -192,9 +194,12 @@ def _run_reader(
     )
 
     # Deterministic headline grade (reproducible, no models). The paraphrase
-    # (embedding) and judge tiers are offline refinements over reader_answer +
-    # ref_answer, which are both persisted — so past runs can always be re-graded.
-    g = grade(answer_result.answer, ref_answer, abstained=answer_result.abstained)
+    # (embedding) tier is OPT-IN via grader_embedder — threshold stays a
+    # parameter (calibration happens on the budget=1.0 run); the judge tier
+    # stays offline. reader_answer + ref_answer are both persisted, so past
+    # runs can always be re-graded.
+    g = grade(answer_result.answer, ref_answer, abstained=answer_result.abstained,
+              embedder=grader_embedder, sim_threshold=grade_sim_threshold)
 
     return QAFields(
         reader_answer=answer_result.answer,
@@ -584,7 +589,8 @@ def run_one_example(
             store=store_label,
             introspectable=base.introspectable,
             **ranking_columns(base.gold_ranks, base.n_gold,
-                              base.introspectable, base.gold_survived),
+                              base.introspectable, base.gold_survived,
+                              base.n_residents),
         )
         results.append(result)
 
@@ -843,7 +849,8 @@ def run(
                 store=store_label,
                 introspectable=base.introspectable,
                 **ranking_columns(base.gold_ranks, base.n_gold,
-                                  base.introspectable, base.gold_survived),
+                                  base.introspectable, base.gold_survived,
+                                  base.n_residents),
             )
         )
 

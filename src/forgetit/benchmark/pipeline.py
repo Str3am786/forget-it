@@ -380,8 +380,15 @@ def run_pipeline_concurrent(
     retriever_label: str = "",
     out_dir: str = "artifacts/benchmark",
     write_events: bool = False,
+    grader_embedder=None,
+    grade_sim_threshold: float = 0.83,
 ) -> tuple[list, dict[str, float]]:
     """Across-example concurrent driver — same outputs as :func:`run_pipeline`.
+
+    ``grader_embedder`` (opt-in): enables grade()'s embedding-similarity tier
+    for the reader pass; ``grade_sim_threshold`` stays a parameter —
+    calibration happens on the budget=1.0 run, not here. Default None keeps
+    the deterministic tiers as the only graders (current behavior).
 
     The unit of concurrency is the workload *example* (LongMemEval example /
     BEAM conversation). For one config, every example is replayed against its
@@ -510,7 +517,8 @@ def run_pipeline_concurrent(
             result, query, retrieved, ref, qtype = task
             qa = _run_reader(reader_impl=reader_impl, query=query, retrieved=retrieved,
                              answer_max_tokens=answer_max_tokens, ref_answer=ref,
-                             question_type=qtype)
+                             question_type=qtype, grader_embedder=grader_embedder,
+                             grade_sim_threshold=grade_sim_threshold)
             return result, qa
 
         if reader_workers > 1 and len(all_ctx) > 1:

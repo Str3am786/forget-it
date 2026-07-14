@@ -169,9 +169,17 @@ def fig_policy_comparison(df: pd.DataFrame, ax=None):
         "evictions_total_at_query_time", pd.Series(0, index=df.index)) > 0]
     if len(P) == 0:
         return None
-    order = ["lru", "lfu", "random", "compression"]
-    g = (P.groupby("policy")[["gold_survived", "hit_at_k"]].mean()
-           .reindex([p for p in order if p in P["policy"].unique()]))
+    # Decision #10: history policies aggregate as policy×retriever pairs;
+    # bare-name grouping is only valid when the frame is single-retriever or
+    # the column is absent (legacy frames).
+    key = "policy_identity" if "policy_identity" in P.columns else "policy"
+    if key == "policy" and "retriever" in P.columns and P["retriever"].nunique() > 1:
+        import warnings
+        warnings.warn("fig_policy_comparison: multi-retriever frame without "
+                      "policy_identity — name-level averages mix coupled "
+                      "identities (run scripts/concat_results.py first).")
+    g = (P.groupby(key)[["gold_survived", "hit_at_k"]].mean()
+           .sort_values("gold_survived", ascending=False))
     if ax is None:
         _, ax = plt.subplots(figsize=(6.5, 3.6))
     x = np.arange(len(g)); w = 0.38
