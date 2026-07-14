@@ -160,11 +160,15 @@ def make_stores(
             for frac in budget_fracs:
                 def _factory(fr=frac, pf=policy_fn, rf=retriever_fn, pn=pname, rn=rname,
                              emb=embedder, av=attach_vectors):
-                    return build_retention_store(
+                    
+                    label, store, extras = build_retention_store(
                         budget_frac=fr, policy=pf(), retriever=rf(),
                         policy_name=pn, retriever_name=rn, embedder=emb,
                         attach_vectors=av,
                     )
+                    if pn.startswith("random_s"):        # --seeds sweep: seed column
+                        extras["seed"] = int(pn.rsplit("_s", 1)[1])
+                    return label, store, extras
                 pct = f"{int(round(frac * 100)):03d}pct"
                 yield f"retention/{pname}/{rname}/budget_{pct}", _factory
 
@@ -200,6 +204,11 @@ def parse_args() -> argparse.Namespace:
                         "retrieval, to exercise re-embed-on-compress, or to count vector bytes. "
                         "Semantic policies attach vectors on their own; --embed forces them "
                         "onto all configs. Needs an embedding endpoint (EMBED_* settings).")
+    p.add_argument("--seeds", nargs="+", type=int, default=None, metavar="SEED",
+                   help="Seed sweep for the stochastic policy (random): one config "
+                        "per seed, labeled random_s<seed> — so each seed gets its own "
+                        "artifact dir, config hash (skip-if-done), and seed column. "
+                        "Deterministic policies are unaffected.")
     p.add_argument("--policies", nargs="+", default=None, metavar="NAME",
                    help="Restrict the sweep to these policy names (e.g. lru lfu). "
                         "Default: every registered policy.")
@@ -211,6 +220,8 @@ def parse_args() -> argparse.Namespace:
                         "(e.g. 1.0 0.9). Default: 1.0 0.75 0.50 0.25 0.10.")
     p.add_argument("--out-dir", type=str, default=str(REPO_ROOT / "artifacts" / "benchmark"),
                    help="Root directory for per-config result CSVs.")
+    p.add_argument("--include-floor", action="store_true",
+                   help="Add the E2b empty-store floor config (one per itemiser): the reader answers every question with ZERO evidence, measuring parametric knowledge. Answer-stage tables report lift over this floor; a grid without its floor row per dataset+itemiser is INCOMPLETE.")
     p.add_argument("--event-log", action="store_true",
                    help="Stream a per-eviction event trace (events.jsonl) next to each config's "
                         "CSVs — enables the survival/regret/value-decay analysis.")
@@ -260,6 +271,16 @@ def main() -> None:
         reader_impl = PlainTextReader(llm)
         reader_name = getattr(reader_impl, "name", type(reader_impl).__name__)
 
+    # LLM-driven POLICIES (compression/memorybank) are gated on an endpoint, not
+    # on the reader: --no-reader turns off the ANSWER stage only. When such a
+    # policy is explicitly requested, build the chat client anyway — the
+    # state-forming half's compression calls need it. Without --policies, the
+    # old behavior stands (retrieval-only runs need no inference server).
+    _LLM_POLICY_NAMES = {"compression", "memorybank"}
+    if llm is None and args.policies and set(args.policies) & _LLM_POLICY_NAMES:
+        llm = get_llm()
+
+
     # Policies first, then filter — we need the *selected* policy set to decide
     # whether an embedder is required (a content-aware policy needs item vectors
     # even under BM25 retrieval, so the embedder is not a dense-only concern).
@@ -271,6 +292,20 @@ def main() -> None:
         if missing:
             raise SystemExit(f"--policies: unknown {sorted(missing)}; "
                              f"have {[s[0] for s in default_policy_specs(llm)]}")
+
+
+    # --seeds: expand the stochastic policy into one config per seed. The label
+    # carries the seed; make_stores parses it back out so the results rows'
+    # seed column records the actual draw seed, not the module default.
+    if args.seeds:
+        expanded = []
+        for _name, _fn in policy_specs:
+            if _name == "random":
+                for s in args.seeds:
+                    expanded.append((f"random_s{s}", lambda s=s: RandomPolicy(seed=s)))
+            else:
+                expanded.append((_name, _fn))
+        policy_specs = expanded
 
     # The embedder serves three consumers, not just dense retrieval: (1) the dense
     # retriever, (2) content-aware eviction policies (semantic*) reading item
@@ -314,6 +349,21 @@ def main() -> None:
         ):
             all_configs.append((itemiser, label, factory))
 
+    # E2b floor: one empty-store config per itemiser. EmptyStore retains
+    # nothing, so graded answers measure the reader's parametric knowledge —
+    # the floor every end-to-end number is reported as lift over.
+    if args.include_floor:
+        from forgetit.memory_system import EmptyStore
+
+        def _floor_factory():
+            return "floor/empty", EmptyStore(), {
+                "policy_label": "floor", "retriever_label": "none",
+                "budget_frac": 0.0,
+            }
+
+        for itemiser in itemisers:
+            all_configs.append((itemiser, "floor/empty", _floor_factory))
+
     my_configs = all_configs[args.shard::args.num_shards]
     log.info(
         "shard %d/%d: running %d of %d configs (limit=%s, reader=%s)",
@@ -354,7 +404,7 @@ def main() -> None:
             store_factory=lambda f=factory: f()[1],
             store_label=label,
             k=5,
-            seed=seed,
+            seed=extras.pop("seed", seed),
             itemiser=itemiser.name,
             reader=reader_name,
             reader_impl=reader_impl,

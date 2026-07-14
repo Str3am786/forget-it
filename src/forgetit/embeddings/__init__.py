@@ -27,6 +27,18 @@ def get_embedder(*, cache: bool = True) -> Embedder:
     True and ``EMBED_CACHE_PATH`` is set, vectors are memoised to disk so corpus
     passes and reruns don't re-hit the provider.
     """
+    # Encoder pre-flight: settings.py silently falls back to its default model
+    # when .env is absent, and post-hoc provenance only catches that AFTER a
+    # run has burned compute. A launcher that pins the encoder exports
+    # EXPECTED_EMBED_MODEL; any mismatch fails loudly before the first vector.
+    expected = os.environ.get("EXPECTED_EMBED_MODEL")
+    if expected and expected != EMBED_MODEL:
+        raise RuntimeError(
+            f"Encoder pin mismatch: EMBED_MODEL={EMBED_MODEL!r} but the launcher "
+            f"pinned EXPECTED_EMBED_MODEL={expected!r}. Refusing to embed — check "
+            f".env / environment (settings.py silently defaults when unset)."
+        )
+
     mc = os.environ.get("EMBED_MAX_CONNECTIONS") or os.environ.get("LLM_MAX_CONNECTIONS")
     inner: Embedder = OpenAiEmbedder(
         base_url=EMBED_BASE_URL,
