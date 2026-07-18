@@ -215,3 +215,5 @@ artifacts/
 figs/
 src.zip
 *.zip
+forgetit-*.out
+slurm-*.out
