@@ -67,7 +67,7 @@ LOCOMO_DATASET=$REPO/data/locomo10.json
 
 # FRESH tree — the state-forming grid in benchmark_full stays untouched.
 OUT_DIR=/scratch/$PROJ/artifacts/benchmark_reader
-A7_SMOKE_DIR=/scratch/$PROJ/artifacts/a7_smoke_reader
+A7_SMOKE_DIR=/scratch/$PROJ/artifacts/a7_smoke_reader_${SLURM_JOB_ID}
 LOGS=/scratch/$PROJ/logs
 export HF_HOME=/scratch/$PROJ/hf_cache
 
@@ -236,7 +236,7 @@ if [ -z "${SKIP_A7_SMOKE:-}" ]; then
                  LLM_BASE_URL='http://localhost:${CHAT_PORT_BASE}/v1' LLM_API_KEY=sk-lumi LLM_MODEL='$SERVED_CHAT' \
                  EMBED_BASE_URL='http://localhost:${EMBED_PORT}/v1' EMBED_API_KEY=sk-lumi EMBED_MODEL='$SERVED_EMBED' \
                  EXPECTED_EMBED_MODEL='$SERVED_EMBED' \
-                 EMBED_MAX_INPUT_CHARS=28000 EMBED_CACHE_PATH='$EMB_CACHE_DIR/a7_smoke_reader.sqlite' \
+                 EMBED_MAX_INPUT_CHARS=28000 EMBED_CACHE_PATH='$EMB_CACHE_DIR/a7_smoke_reader_${SLURM_JOB_ID}.sqlite' \
                  LLM_CACHE_DIR='$LLM_CACHE_DIR' \
                  python -m forgetit.experiments.run_longmemeval_qa \
                    --policies semantic semantic_keep --limit 1 \
