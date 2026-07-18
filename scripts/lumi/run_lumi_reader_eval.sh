@@ -6,35 +6,26 @@
 # complete and frozen; this job re-runs the same frozen grid WITH the reader.
 # Because `reader` is inside _config_hash, every config's hash differs from
 # the no-reader run — the DONE guard auto-invalidates, nothing needs
-# FORGETIT_FORCE_RERUN. State-forming replays warm from the persistent
-# caches (emb_cache sqlite + llm_cache disk replay); the new compute is the
-# answer generation (+ grading).
+# FORGETIT_FORCE_RERUN.
 #
-# WHAT THIS SCRIPT CHANGES vs run_lumi_full_eval.sh:
-#   • OUT_DIR = benchmark_reader (FRESH TREE — benchmark_full is never
-#     touched; the two artifact sets stay separately provenanced)
-#   • --no-reader dropped; --reader-workers added (two-pass concurrent reader)
-#   • --event-log dropped: events were captured by the state-forming run and
-#     an identical replay would duplicate them; the regret report belongs to
-#     the benchmark_full tree
-#   • A7 smoke runs READER-ON so the gate exercises the answer path
-#   • step 5 (eviction-regret) removed for the same reason as --event-log
-#   • CALIBRATION MODE: LIMIT=n sbatch ... runs the grid with --limit n into
-#     a side tree (benchmark_reader_calib) to measure per-query reader cost
-#     before committing a full allocation. n_examples is in the config hash,
-#     so calib rows can never satisfy (or pollute) the full run's DONE files.
+# v2 (2026-07-18, post-inode-incident):
+#   • LLM cache moved to NODE TMPFS: per-answer cache files on scratch blew
+#     the project's 2.0M-inode quota and killed 4 jobs. Within-job dedup
+#     (the valuable part) survives; cross-job persistence is deliberately
+#     sacrificed — resume works at config granularity via the DONE guard.
+#   • Inode-headroom preflight: refuse to start if scratch is near its file
+#     quota, instead of dying 8 hours in.
+#   • Per-job A7 smoke dir + smoke embed-cache (fixes the sqlite lock when
+#     several jobs start simultaneously).
 #
-# HOW TO SUBMIT (one dataset per job; calibrate FIRST):
+# HOW TO SUBMIT (one dataset per job; calibrate with LIMIT=n if needed):
 #   export SBATCH_ACCOUNT=project_<your-id>
 #   cd <repo-root>
-#   # 1) calibration (~30-60 min): 2 examples across the whole grid
-#   LIMIT=2 DATASETS="locomo" sbatch scripts/lumi/run_lumi_reader_eval.sh
-#   # 2) full runs, time limits set from what calibration measured:
 #   DATASETS="longmemeval" sbatch scripts/lumi/run_lumi_reader_eval.sh
 #   DATASETS="beam"        sbatch scripts/lumi/run_lumi_reader_eval.sh
-#   DATASETS="locomo"      sbatch --time=48:00:00 scripts/lumi/run_lumi_reader_eval.sh
-# LoCoMo is the HEAVY one here (1,986 queries/config × 1,083 configs), the
-# reverse of the state-forming run — do not treat it as the quick canary.
+#   DATASETS="locomo"      sbatch scripts/lumi/run_lumi_reader_eval.sh
+# LoCoMo is the HEAVY one here (1,986 queries/config × 1,083 configs).
+# Chain BEAM continuations with: sbatch --dependency=afterany:<prev-jobid> ...
 # ============================================================================
 #SBATCH --job-name=forgetit-reader
 #SBATCH --partition=standard-g
@@ -80,6 +71,26 @@ if [ -n "$LIMIT" ]; then
     OUT_DIR="${OUT_DIR}_calib"
     LIMIT_FLAG="--limit $LIMIT"
     echo "[lumi] CALIBRATION MODE: --limit $LIMIT → $OUT_DIR"
+fi
+
+# ── inode-headroom preflight — refuse to start into a near-full quota ───────
+# The 2026-07-18 incident: scratch hit its 2.0M-file quota mid-run and every
+# writer died with Errno 122 hours into its allocation. Fail at minute zero
+# instead. (awk fields verified against `lfs quota -p` output; if the format
+# shifts on a Lustre upgrade, this degrades to a warning, never a bad refusal.)
+SCRATCH_GID=$(stat -c %g "/scratch/$PROJ" 2>/dev/null || echo "")
+if [ -n "$SCRATCH_GID" ]; then
+    read -r INODE_USED INODE_LIMIT <<< "$(lfs quota -p "$SCRATCH_GID" /scratch 2>/dev/null | awk 'NR==3{print $5, $6}')"
+    if [[ "$INODE_USED" =~ ^[0-9]+$ ]] && [[ "$INODE_LIMIT" =~ ^[0-9]+$ ]] && [ "$INODE_LIMIT" -gt 0 ]; then
+        FREE=$((INODE_LIMIT - INODE_USED))
+        echo "[lumi] scratch inodes: $INODE_USED/$INODE_LIMIT ($FREE free)"
+        if [ "$FREE" -lt 100000 ]; then
+            echo "[lumi] REFUSING: <100k inodes free on /scratch/$PROJ — purge before submitting" >&2
+            exit 1
+        fi
+    else
+        echo "[lumi] WARNING: could not parse lfs quota output — inode preflight skipped" >&2
+    fi
 fi
 
 # ── recorded-run guard — refuse a dirty tree ────────────────────────────────
@@ -129,13 +140,20 @@ EMBED_SERVE_FLAG="${EMBED_SERVE_FLAG:-}"
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 mkdir -p "$LOGS" "$OUT_DIR" "$A7_SMOKE_DIR"
 
-# ── caches — SAME paths as the state-forming run, on purpose ────────────────
-# The warm-replay economics of this job depend on reusing these exact caches:
-# emb_cache keys on encoder identity (V3b), llm_cache replays compression
-# calls. Do NOT point these anywhere fresh.
+# ── embedding cache — scratch, persistent, per-shard sqlite (67 inodes total;
+# this cache is the model citizen and stays exactly where it is) ─────────────
 EMB_CACHE_DIR=/scratch/$PROJ/emb_cache
-LLM_CACHE_DIR=/scratch/$PROJ/llm_cache
-mkdir -p "$EMB_CACHE_DIR" "$LLM_CACHE_DIR"
+mkdir -p "$EMB_CACHE_DIR"
+
+# ── LLM cache — NODE-LOCAL TMPFS, NOT scratch (v2 change) ───────────────────
+# Scratch has a 2.0M-inode project quota; per-answer cache files blew it on
+# 2026-07-18 and killed 4 jobs mid-run. Node tmpfs (/tmp, RAM-backed, ~353G
+# shared with /dev/shm) has no such quota. Within-job dedup survives —
+# identical contexts across policies at budget_100pct still collapse to one
+# generation. The cache dies with the job, by design: resume is the DONE
+# guard's job, not the cache's.
+LLM_CACHE_DIR=/tmp/llm_cache_${SLURM_JOB_ID}
+mkdir -p "$LLM_CACHE_DIR"
 
 # ── preflight ───────────────────────────────────────────────────────────────
 for f in "$VLLM_SIF" "$CLIENT_SIF" \
@@ -218,7 +236,6 @@ done
 echo "[lumi] all servers up."
 
 # ── 2b. encoder pin record + A7 identity smoke — READER-ON ──────────────────
-# The pin lives in THIS tree too: benchmark_reader must be self-describing.
 cat > "$OUT_DIR/ENCODER_PIN.txt" <<EOF
 model_path:            $EMBED_MODEL_PATH
 model_config_sha256:   $(sha256sum "$EMBED_MODEL_PATH/config.json" | cut -d' ' -f1)
@@ -289,13 +306,19 @@ for ds in $DATASETS; do
     esac
 done
 
-# ── 4. merge CSVs over the READER tree ──────────────────────────────────────
-echo "[lumi] merging CSVs ..."
-singularity exec -B "/scratch/$PROJ,$REPO" "$CLIENT_SIF" \
-    bash -c "cd '$REPO' && PYTHONPATH='$REPO/src' python scripts/concat_results.py '$OUT_DIR'" || rc=1
+# ── 4. merge CSVs over the READER tree — only if every shard succeeded ──────
+# (A failed shard means an incomplete grid; a merged CSV over it looks
+# success-shaped and misleads. The next successful run redoes the merge.)
+if [ "$rc" -eq 0 ]; then
+    echo "[lumi] merging CSVs ..."
+    singularity exec -B "/scratch/$PROJ,$REPO" "$CLIENT_SIF" \
+        bash -c "cd '$REPO' && PYTHONPATH='$REPO/src' python scripts/concat_results.py '$OUT_DIR'" || rc=1
+else
+    echo "[lumi] SKIPPING merge: one or more shards failed (rc=$rc) — resubmit to resume, merge runs on the clean pass"
+fi
 
-# NOTE: no eviction-regret step here — events and the regret report belong to
-# the state-forming tree (benchmark_full); this tree carries the answers.
+# NOTE: no eviction-regret step — events and the regret report belong to the
+# state-forming tree (benchmark_full); this tree carries the answers.
 
 echo "[lumi] done (exit $rc)."
 echo "[lumi]   CSVs:        $OUT_DIR/combined_results.csv + combined_summary.csv"
