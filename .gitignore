@@ -217,3 +217,7 @@ src.zip
 *.zip
 forgetit-*.out
 slurm-*.out
+.env*
+*.out
+Show
+grep
