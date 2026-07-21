@@ -40,10 +40,14 @@ from forgetit.policies import (
 )
 from forgetit.llm import get_llm
 from forgetit.llm.readers import (
+    ANSWER_MAX_TOKENS_HELP,
     PlainTextReader,
+    READER_ABSTENTION_HELP,
     READER_CLEAN_HELP,
     READER_PROMPT_HELP,
     READER_TOKEN_BUDGET_HELP,
+    log_answer_max_tokens,
+    log_reader_abstention,
     log_reader_clean,
     log_reader_context,
     log_reader_prompt,
@@ -253,6 +257,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--reader-clean", "--clean-mode",
                    choices=["firstline", "full"], default="firstline",
                    metavar="{firstline,full}", help=READER_CLEAN_HELP)
+    p.add_argument("--reader-abstention", "--abstention-match",
+                   choices=["loose", "exact"], default="loose",
+                   metavar="{loose,exact}", help=READER_ABSTENTION_HELP)
+    p.add_argument("--answer-max-tokens", type=int, default=128, metavar="N",
+                   help=ANSWER_MAX_TOKENS_HELP)
     args = p.parse_args()
     if args.num_shards < 1:
         p.error("--num-shards must be >= 1")
@@ -269,6 +278,14 @@ def parse_args() -> argparse.Namespace:
                 "--no-reader turns the reader off — pass one or the other")
     if args.reader_clean != "firstline" and args.no_reader:
         p.error("--reader-clean post-processes the reader's answers, but "
+                "--no-reader turns the reader off — pass one or the other")
+    if args.reader_abstention != "loose" and args.no_reader:
+        p.error("--reader-abstention judges the reader's answers, but "
+                "--no-reader turns the reader off — pass one or the other")
+    if args.answer_max_tokens <= 0:
+        p.error("--answer-max-tokens must be > 0")
+    if args.answer_max_tokens != 128 and args.no_reader:
+        p.error("--answer-max-tokens caps the reader's generation, but "
                 "--no-reader turns the reader off — pass one or the other")
     return args
 
@@ -298,11 +315,14 @@ def main() -> None:
         llm = get_llm()
         reader_impl = PlainTextReader(llm, token_budget=args.reader_token_budget,
                                       prompt_version=args.reader_prompt,
-                                      clean_mode=args.reader_clean)
+                                      clean_mode=args.reader_clean,
+                                      abstention_match=args.reader_abstention)
         reader_name = getattr(reader_impl, "name", type(reader_impl).__name__)
         log_reader_context(log, args.reader_token_budget)
         log_reader_prompt(log, args.reader_prompt)
         log_reader_clean(log, args.reader_clean)
+        log_reader_abstention(log, args.reader_abstention)
+        log_answer_max_tokens(log, args.answer_max_tokens)
 
     # LLM-driven POLICIES (compression/memorybank) are gated on an endpoint, not
     # on the reader: --no-reader turns off the ANSWER stage only. When such a
@@ -441,7 +461,7 @@ def main() -> None:
             itemiser=itemiser.name,
             reader=reader_name,
             reader_impl=reader_impl,
-            answer_max_tokens=128,
+            answer_max_tokens=args.answer_max_tokens,
             example_workers=args.workers,
             reader_workers=args.reader_workers,
             out_dir=args.out_dir,

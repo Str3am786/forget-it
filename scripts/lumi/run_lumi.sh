@@ -56,6 +56,13 @@ READER_PROMPT=v2
 # Answer cleaning: firstline (legacy) keeps only the first line — multi-line and
 # enumerated answers are decapitated. full keeps the whole stripped answer.
 READER_CLEAN=full
+# Abstention detection: loose (legacy) flags a refusal phrase ANYWHERE in the
+# answer — hedged-but-informative answers score as no answer. exact requires the
+# whole answer to be a refusal (both prompts instruct an exact-form IDK).
+READER_ABSTENTION=exact
+# Generation cap: legacy 128 truncated ~1 in 3 answered generations mid-sentence.
+# 256 is validated. Lives in the config hash, not the reader name.
+ANSWER_MAX_TOKENS=256
 EVENT_LOG=""          # set to "--event-log" for per-eviction traces (large on disk)
 EXPERIMENTS=(run_longmemeval_qa run_beam)
 
@@ -121,6 +128,8 @@ for EXP in "${EXPERIMENTS[@]}"; do
             --reader-token-budget "$READER_TOKEN_BUDGET" \
             --reader-prompt "$READER_PROMPT" \
             --reader-clean "$READER_CLEAN" \
+            --reader-abstention "$READER_ABSTENTION" \
+            --answer-max-tokens "$ANSWER_MAX_TOKENS" \
             --out-dir "$REPO/artifacts/benchmark" $EVENT_LOG \
             > "logs/${EXP}-${SLURM_JOB_ID}-${i}.log" 2>&1 &
         pids+=($!)

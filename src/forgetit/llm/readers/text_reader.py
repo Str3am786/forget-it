@@ -113,6 +113,94 @@ READER_CLEAN_HELP = (
 )
 
 
+# Abstention detection mode (D4 fix vii, detection half). loose stays the
+# default so a no-flag run reproduces historical abstention flags exactly.
+DEFAULT_READER_ABSTENTION = "loose"
+RECOMMENDED_READER_ABSTENTION = "exact"
+
+# Shared --reader-abstention help text (argparse %-formats these — no percents).
+READER_ABSTENTION_HELP = (
+    "How an answer is judged to be a refusal. loose (default) flags the answer "
+    "if a refusal phrase appears ANYWHERE in it, so an informative answer "
+    "carrying a trailing hedge ('the rent was 2,100, IDK if there were "
+    "others') is recorded as an abstention and scored as no answer at all — "
+    "a measured false-positive class, kept only so historical runs reproduce. "
+    "exact requires the WHOLE normalized answer to be a refusal phrase, which "
+    "is sound here because both prompt versions instruct an exact-form 'say "
+    "exactly: IDK'. Pairs with --reader-clean full, which lengthens the text "
+    "this runs over and so widens the loose mode's exposure. Non-default "
+    "renames the reader (PlainTextReader_absexact), so artifact paths, config "
+    "hashes and the `reader` column can never confuse the two. Detection only "
+    "— whether abstaining was CORRECT is a separate grading concern."
+)
+
+
+# Answer GENERATION cap (D4 fix vii, cap half) — how many tokens the reader is
+# allowed to emit. Unlike the four mode flags this is NOT part of the reader
+# name: it has always lived in the config hash instead (pipeline._config_hash
+# takes answer_max_tokens as a field), so changing it re-runs configs without
+# renaming anything. That asymmetry is deliberate, not an oversight.
+DEFAULT_ANSWER_MAX_TOKENS = 128
+RECOMMENDED_ANSWER_MAX_TOKENS = 256
+
+# Shared --answer-max-tokens help text (argparse %-formats these — no percents).
+ANSWER_MAX_TOKENS_HELP = (
+    "Hard cap on how many tokens the reader may generate per answer. The "
+    "legacy 128 cut roughly a third of answered generations off mid-sentence "
+    "in the probe (10 of 32), which lands hardest on multi-item answers — an "
+    "ordered list stops mid-item and is graded on the fragment. 256 is the "
+    "validated setting. This value does NOT appear in the reader name; it is "
+    "a field of the config hash, so changing it re-runs affected configs and "
+    "invalidates their DONE markers on its own. It is also part of the LLM "
+    "disk-cache key, so a 256 run never reuses a 128-capped cached answer. "
+    "NOTE: a generation that HITS the cap is not recorded anywhere per row — "
+    "the LLM layer returns text only and discards finish_reason — so cap-hits "
+    "cannot be counted after the fact, only avoided by setting this high "
+    "enough."
+)
+
+
+def log_answer_max_tokens(log, answer_max_tokens: int) -> None:
+    """Announce the generation cap the answer stage is running under.
+
+    Same reason as the reader-mode logs, with one extra: because a cap-hit
+    leaves no per-row trace, the run's own log is the only place the chosen
+    value is recorded outside the config hash.
+    """
+    if answer_max_tokens <= DEFAULT_ANSWER_MAX_TOKENS:
+        log.warning(
+            "answer generation cap = %d tokens (legacy default %d): the probe measured "
+            "~1 in 3 answered generations cut off mid-sentence at this cap, worst on "
+            "multi-item answers. Cap-hits are NOT recorded per row. Pass "
+            "--answer-max-tokens %d for the validated setting.",
+            answer_max_tokens, DEFAULT_ANSWER_MAX_TOKENS, RECOMMENDED_ANSWER_MAX_TOKENS)
+    else:
+        log.info(
+            "answer generation cap = %d tokens (legacy default %d); cap-hits are not "
+            "recorded per row, so this is set-and-trust, not audited",
+            answer_max_tokens, DEFAULT_ANSWER_MAX_TOKENS)
+
+
+def log_reader_abstention(log, abstention_match: str) -> None:
+    """Announce which abstention-detection mode the answer stage is running.
+
+    Same reason as the other three: loose silently converts answers into
+    refusals, which lands as a zero on rows the reader actually got right.
+    """
+    if abstention_match == DEFAULT_READER_ABSTENTION:
+        log.warning(
+            "reader abstention = LEGACY %s: any refusal phrase ANYWHERE in the answer "
+            "flags it as a refusal, so hedged-but-informative answers are recorded as "
+            "abstentions and score as no answer. Pass --reader-abstention %s to require "
+            "the whole answer to be a refusal.",
+            DEFAULT_READER_ABSTENTION, RECOMMENDED_READER_ABSTENTION)
+    else:
+        log.info(
+            "reader abstention = %s: the whole normalized answer must BE a refusal "
+            "phrase; hedged answers keep their content and are graded on it",
+            abstention_match)
+
+
 def log_reader_clean(log, clean_mode: str) -> None:
     """Announce which post-processing mode the answer stage is running.
 

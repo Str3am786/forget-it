@@ -14,6 +14,8 @@ import pytest
 
 from forgetit.experiments import run_beam, run_locomo_qa, run_longmemeval_qa
 from forgetit.llm.readers import (
+    ANSWER_MAX_TOKENS_HELP,
+    READER_ABSTENTION_HELP,
     READER_CLEAN_HELP,
     READER_PROMPT_HELP,
     READER_TOKEN_BUDGET_HELP,
@@ -58,6 +60,8 @@ def test_help_text_is_shared_verbatim():
         assert module.READER_TOKEN_BUDGET_HELP is READER_TOKEN_BUDGET_HELP
         assert module.READER_PROMPT_HELP is READER_PROMPT_HELP
         assert module.READER_CLEAN_HELP is READER_CLEAN_HELP
+        assert module.READER_ABSTENTION_HELP is READER_ABSTENTION_HELP
+        assert module.ANSWER_MAX_TOKENS_HELP is ANSWER_MAX_TOKENS_HELP
 
 
 # ── --reader-prompt (D4 fix iv) ──────────────────────────────────────
@@ -132,6 +136,91 @@ def test_rejected_clean_configs(monkeypatch, module, argv):
         parse(monkeypatch, module, argv)
 
 
+# ── --reader-abstention (D4 fix vii, detection half) ─────────────────
+
+
+@pytest.mark.parametrize("module", RUNNERS, ids=RUNNER_IDS)
+def test_abstention_mode_parsed(monkeypatch, module):
+    assert parse(monkeypatch, module,
+                 ["--reader-abstention", "exact"]).reader_abstention == "exact"
+
+
+@pytest.mark.parametrize("module", RUNNERS, ids=RUNNER_IDS)
+def test_abstention_default_is_legacy_loose(monkeypatch, module):
+    assert parse(monkeypatch, module, []).reader_abstention == "loose"
+
+
+@pytest.mark.parametrize("module", RUNNERS, ids=RUNNER_IDS)
+def test_branch_era_abstention_flag_name_still_works(monkeypatch, module):
+    # `--abstention-match` is the verification-sprint branch's name.
+    assert parse(monkeypatch, module,
+                 ["--abstention-match", "exact"]).reader_abstention == "exact"
+
+
+@pytest.mark.parametrize("module", RUNNERS, ids=RUNNER_IDS)
+@pytest.mark.parametrize("argv", [
+    ["--reader-abstention", "fuzzy"],               # unknown mode
+    ["--reader-abstention", "exact", "--no-reader"],  # contradictory
+])
+def test_rejected_abstention_configs(monkeypatch, module, argv):
+    with pytest.raises(SystemExit):
+        parse(monkeypatch, module, argv)
+
+
+# ── --answer-max-tokens (D4 fix vii, cap half) ───────────────────────
+
+
+@pytest.mark.parametrize("module", RUNNERS, ids=RUNNER_IDS)
+def test_answer_max_tokens_parsed(monkeypatch, module):
+    assert parse(monkeypatch, module,
+                 ["--answer-max-tokens", "256"]).answer_max_tokens == 256
+
+
+@pytest.mark.parametrize("module", RUNNERS, ids=RUNNER_IDS)
+def test_answer_max_tokens_default_is_legacy_128(monkeypatch, module):
+    assert parse(monkeypatch, module, []).answer_max_tokens == 128
+
+
+@pytest.mark.parametrize("module", RUNNERS, ids=RUNNER_IDS)
+@pytest.mark.parametrize("argv", [
+    ["--answer-max-tokens", "0"],
+    ["--answer-max-tokens", "-8"],
+    ["--answer-max-tokens", "256", "--no-reader"],   # contradictory
+])
+def test_rejected_answer_max_tokens_configs(monkeypatch, module, argv):
+    with pytest.raises(SystemExit):
+        parse(monkeypatch, module, argv)
+
+
+@pytest.mark.parametrize("module", RUNNERS, ids=RUNNER_IDS)
+def test_cap_reaches_the_pipeline_not_the_reader_name(module):
+    """The cap is threaded to run_pipeline, NOT into the reader label — it has
+    always lived in the config hash instead. Pinned so nobody 'fixes' the
+    asymmetry and silently renames every artifact directory."""
+    src = inspect.getsource(module.main)
+    assert "answer_max_tokens=args.answer_max_tokens" in src
+    assert "answer_max_tokens=128" not in src          # literal really gone
+    assert "log_answer_max_tokens(log, args.answer_max_tokens)" in src
+
+
+def test_cap_is_a_config_hash_field_and_not_in_the_reader_name():
+    from forgetit.benchmark.pipeline import _config_hash
+    from forgetit.llm.readers import PlainTextReader
+
+    class _NoLLM:
+        def generate(self, *a, **k):
+            raise AssertionError
+
+    base = dict(dataset="d", itemiser="i", store_label="s", reader="r",
+                k=5, seed=0, budget_bytes=1, budget_frac=1.0,
+                n_examples=1, write_events=False)
+    assert _config_hash(**base, answer_max_tokens=128) != \
+           _config_hash(**base, answer_max_tokens=256)
+    # ...and the reader name is blind to it, by design.
+    assert PlainTextReader(_NoLLM(), max_tokens=128).name == \
+           PlainTextReader(_NoLLM(), max_tokens=256).name == "PlainTextReader"
+
+
 @pytest.mark.parametrize("module", RUNNERS, ids=RUNNER_IDS)
 def test_main_passes_the_budget_to_the_reader(module):
     """A parsed-but-unused flag is exactly the failure mode being fixed, and
@@ -144,3 +233,5 @@ def test_main_passes_the_budget_to_the_reader(module):
     assert "log_reader_prompt(log, args.reader_prompt)" in src
     assert "clean_mode=args.reader_clean" in src
     assert "log_reader_clean(log, args.reader_clean)" in src
+    assert "abstention_match=args.reader_abstention" in src
+    assert "log_reader_abstention(log, args.reader_abstention)" in src

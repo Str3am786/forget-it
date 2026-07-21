@@ -166,6 +166,23 @@ READER_PROMPT="${READER_PROMPT:-v2}"
 # first place. Rides in the reader name (…_cleanfull).
 READER_CLEAN="${READER_CLEAN:-full}"
 
+# ── reader abstention detection (D4 fix vii, detection half) ────────────────
+# loose (legacy) flags an answer as a refusal if a refusal phrase appears
+# ANYWHERE in it, so "the rent was 2,100, IDK if there were others" is recorded
+# as an abstention and scores as no answer. exact requires the WHOLE answer to
+# be a refusal — sound because both prompts instruct an exact-form IDK. This
+# matters more with READER_CLEAN=full, which gives loose more text to match in.
+# Rides in the reader name (…_absexact).
+READER_ABSTENTION="${READER_ABSTENTION:-exact}"
+
+# ── answer generation cap (D4 fix vii, cap half) ────────────────────────────
+# The legacy 128 cut ~1 in 3 answered generations off mid-sentence in the probe
+# (10 of 32), worst on multi-item answers. 256 is the validated value. NOT in
+# the reader name — it is a config-hash field, so raising it re-runs affected
+# configs on its own. Cap-HITS are not recorded per row (the LLM layer discards
+# finish_reason), so this is set-high-enough, not audit-after.
+ANSWER_MAX_TOKENS="${ANSWER_MAX_TOKENS:-256}"
+
 if [ -z "${DATASETS:-}" ]; then
     echo "[lumi] REFUSING: DATASETS is unset — run one dataset per job:" >&2
     echo "[lumi]   DATASETS=\"longmemeval\" sbatch $0" >&2
@@ -300,6 +317,8 @@ if [ -z "${SKIP_A7_SMOKE:-}" ]; then
                    --reader-token-budget $READER_TOKEN_BUDGET \
                    --reader-prompt $READER_PROMPT \
                    --reader-clean $READER_CLEAN \
+                   --reader-abstention $READER_ABSTENTION \
+                   --answer-max-tokens $ANSWER_MAX_TOKENS \
                    --shard 0 --num-shards 1 --out-dir '$A7_SMOKE_DIR' --dense" \
         > "$LOGS/a7-smoke-reader-${SLURM_JOB_ID}.log" 2>&1 \
         || { echo "[lumi] REFUSING: reader-on A7 smoke failed — see $LOGS/a7-smoke-reader-${SLURM_JOB_ID}.log" >&2; exit 1; }
@@ -309,7 +328,7 @@ fi
 # ── 3. run each dataset's sweep, sharded, READER ON ─────────────────────────
 run_dataset () {
     local dataset="$1" module="$2" workers="$3"
-    echo "[lumi] ===== $dataset: $NUM_SHARDS shards (workers=$workers, reader-workers=$READER_WORKERS, reader=ON, reader-token-budget=$READER_TOKEN_BUDGET, reader-prompt=$READER_PROMPT, reader-clean=$READER_CLEAN) ====="
+    echo "[lumi] ===== $dataset: $NUM_SHARDS shards (workers=$workers, reader-workers=$READER_WORKERS, reader=ON, reader-token-budget=$READER_TOKEN_BUDGET, reader-prompt=$READER_PROMPT, reader-clean=$READER_CLEAN, reader-abstention=$READER_ABSTENTION, answer-max-tokens=$ANSWER_MAX_TOKENS) ====="
     local pids=() i cport
     for i in $(seq 0 $((NUM_SHARDS - 1))); do
         cport=$((CHAT_PORT_BASE + i % NUM_CHAT_GCDS))
@@ -332,7 +351,9 @@ run_dataset () {
                        --reader-workers $READER_WORKERS \
                        --reader-token-budget $READER_TOKEN_BUDGET \
                        --reader-prompt $READER_PROMPT \
-                       --reader-clean $READER_CLEAN $LIMIT_FLAG" \
+                       --reader-clean $READER_CLEAN \
+                       --reader-abstention $READER_ABSTENTION \
+                       --answer-max-tokens $ANSWER_MAX_TOKENS $LIMIT_FLAG" \
             > "$LOGS/${dataset}-reader-${SLURM_JOB_ID}-${i}.log" 2>&1 &
         pids+=($!)
     done
