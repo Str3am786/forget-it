@@ -26,6 +26,12 @@
 #     Now: one total budget, whole items in rank order. The budget rides in the
 #     reader name (PlainTextReader_rtok1500), which is a path component and part
 #     of the config hash, so budgeted rows can never be mixed with legacy ones.
+#   • --reader-prompt v2 (READER_PROMPT to override). The legacy v1 wrapper
+#     forbids derivation ("using ONLY the memories") and caps answers at one
+#     sentence, so answers the reader had the evidence for — a sum of two
+#     figures, a difference of two dates, an ordered list — scored as misses.
+#     v2 permits combining/computing and drops the cap, keeping the exact-form
+#     IDK line. Also in the reader name (…_pv2).
 #
 # HOW TO SUBMIT (one dataset per job; calibrate with LIMIT=n if needed):
 #   export SBATCH_ACCOUNT=project_<your-id>
@@ -142,6 +148,15 @@ POOL=64
 # retrieved, then cut before the reader saw it. The budget is in the reader
 # name (PlainTextReader_rtok1500), so this tree never mixes with legacy rows.
 READER_TOKEN_BUDGET="${READER_TOKEN_BUDGET:-1500}"
+
+# ── reader instruction wrapper (D4 fix iv) ──────────────────────────────────
+# v1 (legacy) says "using ONLY the memories … one sentence maximum": it forbids
+# DERIVING an answer the evidence supports (summing two figures, differencing
+# two dates) and truncates ordered lists, so those score as misses even when
+# retrieval delivered every needed item. v2 permits combining/computing and
+# drops the cap, keeping the exact-form IDK line abstention detection matches.
+# Rides in the reader name (…_pv2), so v1 and v2 rows never mix.
+READER_PROMPT="${READER_PROMPT:-v2}"
 
 if [ -z "${DATASETS:-}" ]; then
     echo "[lumi] REFUSING: DATASETS is unset — run one dataset per job:" >&2
@@ -275,6 +290,7 @@ if [ -z "${SKIP_A7_SMOKE:-}" ]; then
                  python -m forgetit.experiments.run_longmemeval_qa \
                    --policies semantic semantic_keep --limit 1 \
                    --reader-token-budget $READER_TOKEN_BUDGET \
+                   --reader-prompt $READER_PROMPT \
                    --shard 0 --num-shards 1 --out-dir '$A7_SMOKE_DIR' --dense" \
         > "$LOGS/a7-smoke-reader-${SLURM_JOB_ID}.log" 2>&1 \
         || { echo "[lumi] REFUSING: reader-on A7 smoke failed — see $LOGS/a7-smoke-reader-${SLURM_JOB_ID}.log" >&2; exit 1; }
@@ -284,7 +300,7 @@ fi
 # ── 3. run each dataset's sweep, sharded, READER ON ─────────────────────────
 run_dataset () {
     local dataset="$1" module="$2" workers="$3"
-    echo "[lumi] ===== $dataset: $NUM_SHARDS shards (workers=$workers, reader-workers=$READER_WORKERS, reader=ON, reader-token-budget=$READER_TOKEN_BUDGET) ====="
+    echo "[lumi] ===== $dataset: $NUM_SHARDS shards (workers=$workers, reader-workers=$READER_WORKERS, reader=ON, reader-token-budget=$READER_TOKEN_BUDGET, reader-prompt=$READER_PROMPT) ====="
     local pids=() i cport
     for i in $(seq 0 $((NUM_SHARDS - 1))); do
         cport=$((CHAT_PORT_BASE + i % NUM_CHAT_GCDS))
@@ -305,7 +321,8 @@ run_dataset () {
                        --include-floor \
                        --dense --workers $workers \
                        --reader-workers $READER_WORKERS \
-                       --reader-token-budget $READER_TOKEN_BUDGET $LIMIT_FLAG" \
+                       --reader-token-budget $READER_TOKEN_BUDGET \
+                       --reader-prompt $READER_PROMPT $LIMIT_FLAG" \
             > "$LOGS/${dataset}-reader-${SLURM_JOB_ID}-${i}.log" 2>&1 &
         pids+=($!)
     done

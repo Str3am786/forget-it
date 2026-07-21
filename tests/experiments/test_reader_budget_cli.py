@@ -1,10 +1,11 @@
-"""--reader-token-budget is wired identically in every runner.
+"""The reader-configuration flags are wired identically in every runner.
 
-The bug this guards: the budgeted reader existed but no runner could reach it,
-so every answer-stage run silently used the legacy context (5 items, each cut
-to 300 chars ≈ 375 tokens ≈ ONE retrieved item) and abstained on gold that
-retrieval had already delivered. Two things must stay true — the flag exists
-with the same semantics in all three runners, and the mode reaches the reader.
+The bug this guards, twice over: both the budgeted evidence window (E6c) and
+the repaired prompt wrapper (D4 fix iv) were implemented and tested in
+text_reader.py, but no runner could reach either — so every answer-stage run
+silently took the legacy path. A parsed-but-unused flag is the same failure
+wearing a flag, so these tests check the value reaches the reader, not just
+that argparse accepts it.
 """
 import inspect
 import sys
@@ -12,7 +13,7 @@ import sys
 import pytest
 
 from forgetit.experiments import run_beam, run_locomo_qa, run_longmemeval_qa
-from forgetit.llm.readers import READER_TOKEN_BUDGET_HELP
+from forgetit.llm.readers import READER_PROMPT_HELP, READER_TOKEN_BUDGET_HELP
 
 RUNNERS = [run_beam, run_locomo_qa, run_longmemeval_qa]
 RUNNER_IDS = [m.__name__.rsplit(".", 1)[-1] for m in RUNNERS]
@@ -48,9 +49,42 @@ def test_rejected_configs(monkeypatch, module, argv):
 
 
 def test_help_text_is_shared_verbatim():
-    """One help string, imported by all three — the flag cannot drift apart."""
+    """One help string per flag, imported by all three — they cannot drift."""
     for module in RUNNERS:
         assert module.READER_TOKEN_BUDGET_HELP is READER_TOKEN_BUDGET_HELP
+        assert module.READER_PROMPT_HELP is READER_PROMPT_HELP
+
+
+# ── --reader-prompt (D4 fix iv) ──────────────────────────────────────
+
+
+@pytest.mark.parametrize("module", RUNNERS, ids=RUNNER_IDS)
+def test_prompt_version_parsed(monkeypatch, module):
+    assert parse(monkeypatch, module, ["--reader-prompt", "v2"]).reader_prompt == "v2"
+
+
+@pytest.mark.parametrize("module", RUNNERS, ids=RUNNER_IDS)
+def test_prompt_default_is_legacy_v1(monkeypatch, module):
+    # A no-flag run must stay byte-identical to historical prompts.
+    assert parse(monkeypatch, module, []).reader_prompt == "v1"
+
+
+@pytest.mark.parametrize("module", RUNNERS, ids=RUNNER_IDS)
+def test_branch_era_flag_name_still_works(monkeypatch, module):
+    # `--reader-prompt-version` is what the verification-sprint branch called
+    # this flag; commands written against it must not die on "unrecognized".
+    assert parse(monkeypatch, module,
+                 ["--reader-prompt-version", "v2"]).reader_prompt == "v2"
+
+
+@pytest.mark.parametrize("module", RUNNERS, ids=RUNNER_IDS)
+@pytest.mark.parametrize("argv", [
+    ["--reader-prompt", "v3"],                  # unknown version
+    ["--reader-prompt", "v2", "--no-reader"],   # contradictory
+])
+def test_rejected_prompt_configs(monkeypatch, module, argv):
+    with pytest.raises(SystemExit):
+        parse(monkeypatch, module, argv)
 
 
 @pytest.mark.parametrize("module", RUNNERS, ids=RUNNER_IDS)
@@ -70,5 +104,7 @@ def test_main_passes_the_budget_to_the_reader(module):
     main() can't be called in a test (it runs a whole sweep) — so assert on the
     wiring itself: the budget reaches the reader, and the mode gets logged."""
     src = inspect.getsource(module.main)
-    assert "PlainTextReader(llm, token_budget=args.reader_token_budget)" in src
+    assert "token_budget=args.reader_token_budget" in src
+    assert "prompt_version=args.reader_prompt" in src
     assert "log_reader_context(log, args.reader_token_budget)" in src
+    assert "log_reader_prompt(log, args.reader_prompt)" in src

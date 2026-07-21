@@ -70,6 +70,49 @@ READER_TOKEN_BUDGET_HELP = (
 )
 
 
+# Prompt wrapper selection (D4 fix iv). v1 stays the default so a no-flag run
+# reproduces historical prompts byte-for-byte; v2 is the repaired instruction.
+DEFAULT_READER_PROMPT = "v1"
+RECOMMENDED_READER_PROMPT = "v2"
+
+# Shared --reader-prompt help text (see the '%' warning on the budget help —
+# argparse %-formats these, so keep this string free of percent signs).
+READER_PROMPT_HELP = (
+    "Which instruction wrapper the reader uses. v1 (default) is the legacy "
+    "prompt, kept so historical runs reproduce byte-for-byte: it says 'using "
+    "ONLY the memories' and 'one sentence maximum', which forbids DERIVING an "
+    "answer the evidence supports (summing two figures, differencing two "
+    "dates) and truncates ordered-list answers — both score as misses even "
+    "when every needed item was retrieved. v2 explicitly permits combining "
+    "facts and computing derived answers (date differences, counts, ordered "
+    "lists) and drops the sentence cap, while keeping the exact-form 'say "
+    "exactly: IDK' line that abstention detection matches on. Non-default "
+    "renames the reader (PlainTextReader_pv2), so artifact paths, config "
+    "hashes and the `reader` column can never confuse the two."
+)
+
+
+def log_reader_prompt(log, prompt_version: str) -> None:
+    """Announce which instruction wrapper the answer stage is running.
+
+    Same reason as log_reader_context: v1 loses answers the reader had the
+    evidence for (derivation refused, lists cut), and a run doing that should
+    say so up front rather than leave it to be inferred from the grades.
+    """
+    if prompt_version == DEFAULT_READER_PROMPT:
+        log.warning(
+            "reader prompt = LEGACY %s: forbids derivation ('using ONLY the memories') "
+            "and caps answers at one sentence, so combined/computed answers and ordered "
+            "lists score as misses even when the evidence was delivered. Pass "
+            "--reader-prompt %s to permit derivation and drop the cap.",
+            DEFAULT_READER_PROMPT, RECOMMENDED_READER_PROMPT)
+    else:
+        log.info(
+            "reader prompt = %s: derivation permitted (date differences, counts, "
+            "ordered lists), no sentence cap, exact-form IDK retained",
+            prompt_version)
+
+
 def log_reader_context(log, token_budget: int | None) -> None:
     """Announce which evidence mode the answer stage is running in.
 

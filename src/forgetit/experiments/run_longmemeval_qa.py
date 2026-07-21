@@ -26,8 +26,10 @@ from forgetit.policies import LRUPolicy, LFUPolicy, FIFOPolicy, RandomPolicy, LL
 from forgetit.llm import get_llm
 from forgetit.llm.readers import (
     PlainTextReader,
+    READER_PROMPT_HELP,
     READER_TOKEN_BUDGET_HELP,
     log_reader_context,
+    log_reader_prompt,
 )
 from forgetit.settings import LETTA_BASE_URL, LETTA_API_KEY
 
@@ -262,6 +264,9 @@ def parse_args() -> argparse.Namespace:
                         "where the reader is ~all the LLM cost.")
     p.add_argument("--reader-token-budget", type=int, default=None, metavar="N",
                    help=READER_TOKEN_BUDGET_HELP)
+    p.add_argument("--reader-prompt", "--reader-prompt-version",
+                   choices=["v1", "v2"], default="v1", metavar="{v1,v2}",
+                   help=READER_PROMPT_HELP)
     args = p.parse_args()
     if args.num_shards < 1:
         p.error("--num-shards must be >= 1")
@@ -273,6 +278,9 @@ def parse_args() -> argparse.Namespace:
         if args.no_reader:
             p.error("--reader-token-budget sizes the reader's evidence window, but "
                     "--no-reader turns the reader off — pass one or the other")
+    if args.reader_prompt != "v1" and args.no_reader:
+        p.error("--reader-prompt selects the reader's instruction wrapper, but "
+                "--no-reader turns the reader off — pass one or the other")
     return args
 
 
@@ -298,9 +306,11 @@ def main() -> None:
         reader_name = "none"
     else:
         llm = get_llm()
-        reader_impl = PlainTextReader(llm, token_budget=args.reader_token_budget)
+        reader_impl = PlainTextReader(llm, token_budget=args.reader_token_budget,
+                                      prompt_version=args.reader_prompt)
         reader_name = getattr(reader_impl, "name", type(reader_impl).__name__)
         log_reader_context(log, args.reader_token_budget)
+        log_reader_prompt(log, args.reader_prompt)
 
     # LLM-driven POLICIES (compression/memorybank) are gated on an endpoint, not
     # on the reader: --no-reader turns off the ANSWER stage only. When such a

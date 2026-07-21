@@ -49,6 +49,10 @@ READER_WORKERS=8       # concurrent QA reader calls (two-pass) within a config
 # order. Empty string = legacy context (5 items × 300 chars ≈ 375 tokens ≈ ONE
 # item), which abstains on gold that retrieval already found — don't.
 READER_TOKEN_BUDGET=1500
+# Instruction wrapper: v1 (legacy) forbids derivation and caps answers at one
+# sentence — combined/computed answers and ordered lists score as misses even
+# when the evidence was delivered. v2 permits both, keeps the exact-form IDK.
+READER_PROMPT=v2
 EVENT_LOG=""          # set to "--event-log" for per-eviction traces (large on disk)
 EXPERIMENTS=(run_longmemeval_qa run_beam)
 
@@ -112,6 +116,7 @@ for EXP in "${EXPERIMENTS[@]}"; do
             --shard "$i" --num-shards "$NUM_SHARDS" \
             --workers "$WORKERS" --reader-workers "$READER_WORKERS" \
             --reader-token-budget "$READER_TOKEN_BUDGET" \
+            --reader-prompt "$READER_PROMPT" \
             --out-dir "$REPO/artifacts/benchmark" $EVENT_LOG \
             > "logs/${EXP}-${SLURM_JOB_ID}-${i}.log" 2>&1 &
         pids+=($!)

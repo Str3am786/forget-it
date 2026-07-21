@@ -78,6 +78,15 @@ def _stamp_provenance(results, *, config_hash: str, reader_impl, store_probe) ->
             else:
                 blob = (inspect.getsource(text_reader._build_evidence_budgeted)
                         + f"\n# token_budget={budget}")
+            # ...and the instruction WRAPPER it wraps that evidence in (D4 fix
+            # iv). v1 vs v2 changes what the model is allowed to do with the
+            # same evidence — different prompt, so different sha. Appended only
+            # for non-v1 so every v1 row keeps its historical hash exactly.
+            version = getattr(reader_impl, "prompt_version", "v1")
+            if version != "v1":
+                wrapper = text_reader.PROMPT_BUILDERS[version]
+                blob += (f"\n# prompt_version={version}\n"
+                         + inspect.getsource(wrapper))
             prompt_reader_sha = hashlib.sha256(blob.encode("utf-8")).hexdigest()[:12]
         except Exception:
             pass
