@@ -53,6 +53,9 @@ READER_TOKEN_BUDGET=1500
 # sentence — combined/computed answers and ordered lists score as misses even
 # when the evidence was delivered. v2 permits both, keeps the exact-form IDK.
 READER_PROMPT=v2
+# Answer cleaning: firstline (legacy) keeps only the first line — multi-line and
+# enumerated answers are decapitated. full keeps the whole stripped answer.
+READER_CLEAN=full
 EVENT_LOG=""          # set to "--event-log" for per-eviction traces (large on disk)
 EXPERIMENTS=(run_longmemeval_qa run_beam)
 
@@ -117,6 +120,7 @@ for EXP in "${EXPERIMENTS[@]}"; do
             --workers "$WORKERS" --reader-workers "$READER_WORKERS" \
             --reader-token-budget "$READER_TOKEN_BUDGET" \
             --reader-prompt "$READER_PROMPT" \
+            --reader-clean "$READER_CLEAN" \
             --out-dir "$REPO/artifacts/benchmark" $EVENT_LOG \
             > "logs/${EXP}-${SLURM_JOB_ID}-${i}.log" 2>&1 &
         pids+=($!)

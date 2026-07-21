@@ -158,6 +158,14 @@ READER_TOKEN_BUDGET="${READER_TOKEN_BUDGET:-1500}"
 # Rides in the reader name (…_pv2), so v1 and v2 rows never mix.
 READER_PROMPT="${READER_PROMPT:-v2}"
 
+# ── reader answer cleaning (D4 fix ii) ──────────────────────────────────────
+# firstline (legacy) keeps only the first line after noise-stripping, so every
+# multi-line answer is decapitated — an ordered list scores as its first item.
+# full keeps the whole stripped answer (same fence/asterisk/quote/preamble
+# removal). Pairs with prompt v2, which is what stops forbidding lists in the
+# first place. Rides in the reader name (…_cleanfull).
+READER_CLEAN="${READER_CLEAN:-full}"
+
 if [ -z "${DATASETS:-}" ]; then
     echo "[lumi] REFUSING: DATASETS is unset — run one dataset per job:" >&2
     echo "[lumi]   DATASETS=\"longmemeval\" sbatch $0" >&2
@@ -291,6 +299,7 @@ if [ -z "${SKIP_A7_SMOKE:-}" ]; then
                    --policies semantic semantic_keep --limit 1 \
                    --reader-token-budget $READER_TOKEN_BUDGET \
                    --reader-prompt $READER_PROMPT \
+                   --reader-clean $READER_CLEAN \
                    --shard 0 --num-shards 1 --out-dir '$A7_SMOKE_DIR' --dense" \
         > "$LOGS/a7-smoke-reader-${SLURM_JOB_ID}.log" 2>&1 \
         || { echo "[lumi] REFUSING: reader-on A7 smoke failed — see $LOGS/a7-smoke-reader-${SLURM_JOB_ID}.log" >&2; exit 1; }
@@ -300,7 +309,7 @@ fi
 # ── 3. run each dataset's sweep, sharded, READER ON ─────────────────────────
 run_dataset () {
     local dataset="$1" module="$2" workers="$3"
-    echo "[lumi] ===== $dataset: $NUM_SHARDS shards (workers=$workers, reader-workers=$READER_WORKERS, reader=ON, reader-token-budget=$READER_TOKEN_BUDGET, reader-prompt=$READER_PROMPT) ====="
+    echo "[lumi] ===== $dataset: $NUM_SHARDS shards (workers=$workers, reader-workers=$READER_WORKERS, reader=ON, reader-token-budget=$READER_TOKEN_BUDGET, reader-prompt=$READER_PROMPT, reader-clean=$READER_CLEAN) ====="
     local pids=() i cport
     for i in $(seq 0 $((NUM_SHARDS - 1))); do
         cport=$((CHAT_PORT_BASE + i % NUM_CHAT_GCDS))
@@ -322,7 +331,8 @@ run_dataset () {
                        --dense --workers $workers \
                        --reader-workers $READER_WORKERS \
                        --reader-token-budget $READER_TOKEN_BUDGET \
-                       --reader-prompt $READER_PROMPT $LIMIT_FLAG" \
+                       --reader-prompt $READER_PROMPT \
+                       --reader-clean $READER_CLEAN $LIMIT_FLAG" \
             > "$LOGS/${dataset}-reader-${SLURM_JOB_ID}-${i}.log" 2>&1 &
         pids+=($!)
     done

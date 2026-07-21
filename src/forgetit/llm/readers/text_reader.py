@@ -92,6 +92,48 @@ READER_PROMPT_HELP = (
 )
 
 
+# Answer post-processing mode (D4 fix ii). firstline stays the default so a
+# no-flag run reproduces historical answers byte-for-byte.
+DEFAULT_READER_CLEAN = "firstline"
+RECOMMENDED_READER_CLEAN = "full"
+
+# Shared --reader-clean help text (argparse %-formats these — no percent signs).
+READER_CLEAN_HELP = (
+    "How much of the model's output to keep after noise-stripping. Both modes "
+    "strip the same noise (code fences, asterisks, wrapping quotes, 'Sure,' / "
+    "'Based on the memories' preambles). firstline (default) then keeps ONLY "
+    "the first line, which reproduces historical runs but decapitates every "
+    "multi-line answer — an ordered list scores as its first item alone, and "
+    "the reader's own docstring records mean raw F1 beating cleaned output in "
+    "every measured condition. full keeps the whole stripped answer, so "
+    "enumerations survive. Non-default renames the reader "
+    "(PlainTextReader_cleanfull), so artifact paths, config hashes and the "
+    "`reader` column can never confuse the two. Both modes are recorded per "
+    "row regardless: AnswerResult.meta carries raw_output and cleaned_output."
+)
+
+
+def log_reader_clean(log, clean_mode: str) -> None:
+    """Announce which post-processing mode the answer stage is running.
+
+    Same reason as the other two: firstline silently discards content the
+    model produced correctly, and a run about to do that should say so rather
+    than leave it to be inferred from list-type grades.
+    """
+    if clean_mode == DEFAULT_READER_CLEAN:
+        log.warning(
+            "reader cleaning = LEGACY %s: keeps only the FIRST LINE of each answer, "
+            "so multi-line and enumerated answers are truncated to their first item "
+            "even when fully correct. Pass --reader-clean %s to keep the whole "
+            "noise-stripped answer.",
+            DEFAULT_READER_CLEAN, RECOMMENDED_READER_CLEAN)
+    else:
+        log.info(
+            "reader cleaning = %s: whole noise-stripped answer kept (fences, "
+            "asterisks, quotes, preamble still removed); multi-line answers survive",
+            clean_mode)
+
+
 def log_reader_prompt(log, prompt_version: str) -> None:
     """Announce which instruction wrapper the answer stage is running.
 

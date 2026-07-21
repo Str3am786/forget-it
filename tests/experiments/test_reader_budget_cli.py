@@ -13,7 +13,11 @@ import sys
 import pytest
 
 from forgetit.experiments import run_beam, run_locomo_qa, run_longmemeval_qa
-from forgetit.llm.readers import READER_PROMPT_HELP, READER_TOKEN_BUDGET_HELP
+from forgetit.llm.readers import (
+    READER_CLEAN_HELP,
+    READER_PROMPT_HELP,
+    READER_TOKEN_BUDGET_HELP,
+)
 
 RUNNERS = [run_beam, run_locomo_qa, run_longmemeval_qa]
 RUNNER_IDS = [m.__name__.rsplit(".", 1)[-1] for m in RUNNERS]
@@ -53,6 +57,7 @@ def test_help_text_is_shared_verbatim():
     for module in RUNNERS:
         assert module.READER_TOKEN_BUDGET_HELP is READER_TOKEN_BUDGET_HELP
         assert module.READER_PROMPT_HELP is READER_PROMPT_HELP
+        assert module.READER_CLEAN_HELP is READER_CLEAN_HELP
 
 
 # ── --reader-prompt (D4 fix iv) ──────────────────────────────────────
@@ -98,6 +103,35 @@ def test_help_renders(monkeypatch, module, capsys):
     assert "--reader-token-budget" in capsys.readouterr().out
 
 
+# ── --reader-clean (D4 fix ii) ───────────────────────────────────────
+
+
+@pytest.mark.parametrize("module", RUNNERS, ids=RUNNER_IDS)
+def test_clean_mode_parsed(monkeypatch, module):
+    assert parse(monkeypatch, module, ["--reader-clean", "full"]).reader_clean == "full"
+
+
+@pytest.mark.parametrize("module", RUNNERS, ids=RUNNER_IDS)
+def test_clean_default_is_legacy_firstline(monkeypatch, module):
+    assert parse(monkeypatch, module, []).reader_clean == "firstline"
+
+
+@pytest.mark.parametrize("module", RUNNERS, ids=RUNNER_IDS)
+def test_branch_era_clean_flag_name_still_works(monkeypatch, module):
+    # `--clean-mode` is the verification-sprint branch's name for this flag.
+    assert parse(monkeypatch, module, ["--clean-mode", "full"]).reader_clean == "full"
+
+
+@pytest.mark.parametrize("module", RUNNERS, ids=RUNNER_IDS)
+@pytest.mark.parametrize("argv", [
+    ["--reader-clean", "partial"],              # unknown mode
+    ["--reader-clean", "full", "--no-reader"],  # contradictory
+])
+def test_rejected_clean_configs(monkeypatch, module, argv):
+    with pytest.raises(SystemExit):
+        parse(monkeypatch, module, argv)
+
+
 @pytest.mark.parametrize("module", RUNNERS, ids=RUNNER_IDS)
 def test_main_passes_the_budget_to_the_reader(module):
     """A parsed-but-unused flag is exactly the failure mode being fixed, and
@@ -108,3 +142,5 @@ def test_main_passes_the_budget_to_the_reader(module):
     assert "prompt_version=args.reader_prompt" in src
     assert "log_reader_context(log, args.reader_token_budget)" in src
     assert "log_reader_prompt(log, args.reader_prompt)" in src
+    assert "clean_mode=args.reader_clean" in src
+    assert "log_reader_clean(log, args.reader_clean)" in src
