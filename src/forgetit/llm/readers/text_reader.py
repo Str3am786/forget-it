@@ -25,6 +25,72 @@ _CHARS_PER_TOKEN = 4
 # HOW the window is filled, not how big it is.
 DEFAULT_READER_TOKEN_BUDGET = 375
 
+# Baseline setting for new answer-stage runs. The parity budget above holds the
+# window at the legacy size, which is the size that starves the reader: ~375
+# tokens is roughly ONE retrieved item, so gold that retrieval delivered at rank
+# 2–5 never reaches the model (measured: hit@5 ≈ 0.86 against abstain ≈ 0.70
+# under legacy context).
+#
+# SIZE THIS TO THE ITEMISER — 1500 is not "enough" everywhere. Measured share of
+# a k=5 retrieved list that actually reaches the reader (data/ corpora, 2026-07):
+#
+#   itemiser               legacy   1500    4000    8000   16000
+#   longmemeval/session       21%    24%     40%     72%    100%
+#   longmemeval/turn_pair     30%    79%    100%    100%    100%
+#   locomo/session            20%    47%     97%    100%    100%
+#   locomo/turn_pair          94%   100%    100%    100%    100%
+#   beam/turn                 30%    65%    100%    100%    100%
+#   beam/turn_pair            20%    39%     79%    100%    100%
+#
+# (legacy's items are all present but each cut to 300 chars — 3-19% of the
+# retrieved CONTENT, which is the number that matters.) Session-itemised grids
+# need ~8000+; turn/turn-pair grids saturate around 4000. Whatever the value,
+# evidence_delivery_rate in summary.csv reports what a run actually delivered.
+RECOMMENDED_READER_TOKEN_BUDGET = 1500
+
+# Shared --reader-token-budget help text: every runner exposes the SAME flag
+# with the SAME semantics, so the string lives with the reader it configures.
+# NOTE: this is passed straight to argparse, which %-formats help strings —
+# keep it free of '%' (write "a quarter", not "25%") or --help raises.
+READER_TOKEN_BUDGET_HELP = (
+    "Give the reader ONE total evidence budget of ~N tokens (len//4 chars), "
+    "filled whole-item in retrieval-rank order, with an explicit …[truncated] "
+    f"marker on a final cut item. {RECOMMENDED_READER_TOKEN_BUDGET} is the "
+    "baseline for new runs; SIZE IT TO THE ITEMISER — at 1500 a k=5 list "
+    "arrives whole for turn-pair LoCoMo but only about a quarter of it "
+    "survives for session-itemised LongMemEval, which needs ~8000+ (see "
+    "RECOMMENDED_READER_TOKEN_BUDGET for the measured table; summary.csv "
+    "reports evidence_delivery_rate for what a run actually delivered). "
+    "Omitted = LEGACY context: at most 5 items, each hard-cut to 300 chars "
+    "(~375 tokens total, a twentieth to a fifth of the retrieved content), "
+    "which abstains on gold retrieval actually found — kept only so historical "
+    "runs reproduce. The budget is carried in the reader name "
+    "(PlainTextReader_rtok1500), so artifact paths, config hashes and the "
+    "`reader` column can never confuse the two modes."
+)
+
+
+def log_reader_context(log, token_budget: int | None) -> None:
+    """Announce which evidence mode the answer stage is running in.
+
+    Legacy mode is the silent failure this exists to make loud: retrieval can
+    report hit@5 ≈ 0.86 while the reader abstains on ~70% of the same queries,
+    because gold was cut out of the prompt after retrieval found it. A run that
+    is about to do that should say so in its first ten log lines.
+    """
+    if token_budget is None:
+        log.warning(
+            "reader evidence = LEGACY context: <=%d items, each hard-cut to %d chars "
+            "(~%d tokens total) — the reader sees roughly ONE retrieved item, so gold "
+            "retrieved at rank 2-5 never reaches it. Pass --reader-token-budget %d "
+            "for whole-item rank-order fill.",
+            5, 300, DEFAULT_READER_TOKEN_BUDGET, RECOMMENDED_READER_TOKEN_BUDGET)
+    else:
+        log.info(
+            "reader evidence = BUDGETED context: ~%d tokens (~%d chars) total, whole "
+            "items in retrieval-rank order, '%s' on a final cut item",
+            token_budget, token_budget * _CHARS_PER_TOKEN, TRUNCATION_MARKER.strip())
+
 
 def _wrap_prompt(question: Question, evidence: str) -> str:
     """v1 (legacy, DEFAULT — pinned byte-for-byte by tests): forbids derivation
@@ -95,7 +161,8 @@ def _build_prompt(question: Question, records: list[MemRecord], *, wrap=_wrap_pr
     return wrap(question, "\n".join(evidence_lines))
 
 
-def _build_evidence_budgeted(records: list[MemRecord], token_budget: int) -> tuple[str, bool]:
+def _build_evidence_budgeted(records: list[MemRecord],
+                             token_budget: int) -> tuple[str, bool, int]:
     """Fill evidence in retrieval-rank order under ONE total token budget.
 
     Whole items preferred — no fixed per-item cap, so a long item (compression
@@ -104,7 +171,10 @@ def _build_evidence_budgeted(records: list[MemRecord], token_budget: int) -> tup
     The same total budget applies to every policy/config: parity is the point —
     compression's "more, shorter items fit" advantage becomes expressible.
 
-    Returns (evidence_block, truncated_any).
+    Returns (evidence_block, truncated_any, n_items_included). The count is the
+    number of retrieved items that REACHED the model, which is what makes hit@k
+    interpretable: 5 retrieved with 1 delivered is a reader-context result, not
+    a retrieval result.
     """
     remaining = token_budget * _CHARS_PER_TOKEN
     lines: list[str] = []
@@ -124,13 +194,13 @@ def _build_evidence_budgeted(records: list[MemRecord], token_budget: int) -> tup
             lines.append(prefix + text[:head].rstrip() + TRUNCATION_MARKER)
             truncated = True
         break
-    return "\n".join(lines), truncated
+    return "\n".join(lines), truncated, len(lines)
 
 
 def _build_prompt_budgeted(question: Question, records: list[MemRecord],
-                           token_budget: int, *, wrap=_wrap_prompt) -> tuple[str, bool]:
-    evidence, truncated = _build_evidence_budgeted(records, token_budget)
-    return wrap(question, evidence), truncated
+                           token_budget: int, *, wrap=_wrap_prompt) -> tuple[str, bool, int]:
+    evidence, truncated, n_included = _build_evidence_budgeted(records, token_budget)
+    return wrap(question, evidence), truncated, n_included
 
 
 # ── post-processing ────────────────────────────────────────────────
@@ -238,11 +308,14 @@ class PlainTextReader:
         hard-truncated to ~300 chars — byte-for-byte what historical runs used.
         An int = E6c budgeted context: ONE total evidence budget of ~N tokens
         (len//4 approximation), filled whole-item in retrieval-rank order with
-        an explicit marker on a final truncated item. The documented choice
-        for new runs; use DEFAULT_READER_TOKEN_BUDGET (~legacy prompt size)
-        unless the experiment says otherwise. The reader ``name`` carries the
-        budget (e.g. ``PlainTextReader_rtok375``) so artifact paths and the
-        ``reader`` results column can never confuse the two modes.
+        an explicit marker on a final truncated item. The documented choice for
+        new runs — size it to the itemiser (see
+        RECOMMENDED_READER_TOKEN_BUDGET for measured delivery per corpus);
+        DEFAULT_READER_TOKEN_BUDGET reproduces the legacy WINDOW SIZE and is
+        for mode-comparison ablations, not for production runs. The reader
+        ``name`` carries the budget (e.g. ``PlainTextReader_rtok1500``) so
+        artifact paths and the ``reader`` results column can never confuse the
+        two modes.
     """
 
     def __init__(
@@ -295,10 +368,11 @@ class PlainTextReader:
             evidence = records[: self.max_evidence]
             prompt = _build_prompt(question, evidence, wrap=wrap)
             truncated = None            # not tracked on the legacy path
+            n_delivered = len(evidence)  # all present, each possibly mutilated
         else:
             # Budgeted: rank-order fill under one total token budget.
             evidence = records
-            prompt, truncated = _build_prompt_budgeted(
+            prompt, truncated, n_delivered = _build_prompt_budgeted(
                 question, evidence, self.token_budget, wrap=wrap)
         tok_limit = max_tokens or self.max_tokens
 
@@ -331,7 +405,11 @@ class PlainTextReader:
                 "raw_output": raw,
                 "cleaned_output": cleaned,
                 "prompt_char_len": len(prompt),
+                # offered = what retrieval handed over; delivered = what the
+                # prompt actually carried. They differ exactly when the budget
+                # (or the legacy cap) cut the tail off the retrieved list.
                 "evidence_count": len(evidence),
+                "evidence_delivered": n_delivered,
                 "token_budget": self.token_budget,
                 "evidence_truncated": truncated,
             },

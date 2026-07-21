@@ -18,6 +18,15 @@
 #   • Per-job A7 smoke dir + smoke embed-cache (fixes the sqlite lock when
 #     several jobs start simultaneously).
 #
+# v3 (2026-07-21, reader evidence window):
+#   • --reader-token-budget 1500 (READER_TOKEN_BUDGET to override). The legacy
+#     evidence path handed the reader 5 items × 300 chars ≈ 375 tokens — about
+#     ONE retrieved item — so gold that retrieval had already found at rank 2-5
+#     was cut before the model saw it (abstain ≈ 0.70 against hit@5 ≈ 0.86).
+#     Now: one total budget, whole items in rank order. The budget rides in the
+#     reader name (PlainTextReader_rtok1500), which is a path component and part
+#     of the config hash, so budgeted rows can never be mixed with legacy ones.
+#
 # HOW TO SUBMIT (one dataset per job; calibrate with LIMIT=n if needed):
 #   export SBATCH_ACCOUNT=project_<your-id>
 #   cd <repo-root>
@@ -125,6 +134,14 @@ BEAM_WORKERS=8
 LOCOMO_WORKERS=8
 READER_WORKERS=8           # concurrent QA reader calls (two-pass) per config
 POOL=64
+
+# ── reader evidence window ──────────────────────────────────────────────────
+# ONE total budget, filled whole-item in retrieval-rank order. Without it the
+# reader runs the legacy context (5 items × 300 chars ≈ 375 tokens ≈ ONE item),
+# which is what produced abstain ≈ 0.70 against hit@5 ≈ 0.86: gold was
+# retrieved, then cut before the reader saw it. The budget is in the reader
+# name (PlainTextReader_rtok1500), so this tree never mixes with legacy rows.
+READER_TOKEN_BUDGET="${READER_TOKEN_BUDGET:-1500}"
 
 if [ -z "${DATASETS:-}" ]; then
     echo "[lumi] REFUSING: DATASETS is unset — run one dataset per job:" >&2
@@ -257,6 +274,7 @@ if [ -z "${SKIP_A7_SMOKE:-}" ]; then
                  LLM_CACHE_DIR='$LLM_CACHE_DIR' \
                  python -m forgetit.experiments.run_longmemeval_qa \
                    --policies semantic semantic_keep --limit 1 \
+                   --reader-token-budget $READER_TOKEN_BUDGET \
                    --shard 0 --num-shards 1 --out-dir '$A7_SMOKE_DIR' --dense" \
         > "$LOGS/a7-smoke-reader-${SLURM_JOB_ID}.log" 2>&1 \
         || { echo "[lumi] REFUSING: reader-on A7 smoke failed — see $LOGS/a7-smoke-reader-${SLURM_JOB_ID}.log" >&2; exit 1; }
@@ -266,7 +284,7 @@ fi
 # ── 3. run each dataset's sweep, sharded, READER ON ─────────────────────────
 run_dataset () {
     local dataset="$1" module="$2" workers="$3"
-    echo "[lumi] ===== $dataset: $NUM_SHARDS shards (workers=$workers, reader-workers=$READER_WORKERS, reader=ON) ====="
+    echo "[lumi] ===== $dataset: $NUM_SHARDS shards (workers=$workers, reader-workers=$READER_WORKERS, reader=ON, reader-token-budget=$READER_TOKEN_BUDGET) ====="
     local pids=() i cport
     for i in $(seq 0 $((NUM_SHARDS - 1))); do
         cport=$((CHAT_PORT_BASE + i % NUM_CHAT_GCDS))
@@ -286,7 +304,8 @@ run_dataset () {
                        --seeds $SEEDS \
                        --include-floor \
                        --dense --workers $workers \
-                       --reader-workers $READER_WORKERS $LIMIT_FLAG" \
+                       --reader-workers $READER_WORKERS \
+                       --reader-token-budget $READER_TOKEN_BUDGET $LIMIT_FLAG" \
             > "$LOGS/${dataset}-reader-${SLURM_JOB_ID}-${i}.log" 2>&1 &
         pids+=($!)
     done

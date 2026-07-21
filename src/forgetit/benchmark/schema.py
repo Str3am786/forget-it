@@ -68,6 +68,12 @@ class QAFields:
     # Deterministic headline grade (normalized EM/containment) + token-F1.
     qa_correct: bool = False
     qa_f1: float = 0.0
+    # What the reader ACTUALLY received. Without these, an abstention is
+    # ambiguous: the model may have refused on evidence it never saw. Compare
+    # against n_retrieved — "5 retrieved, 1 delivered" is a reader-context
+    # result, not a retrieval one.
+    reader_evidence_delivered: int = 0     # items that reached the prompt
+    reader_evidence_truncated: bool = False  # a delivered item was cut mid-text
 
 
 # ── final per-query output ─────────────────────────────────────────
@@ -181,6 +187,13 @@ class EvalResult:
     # The reproducible primary; paraphrase/judge tiers refine it offline.
     qa_correct: bool = False
     qa_f1: float = 0.0
+    # Reader CONTEXT audit — how much of the retrieved list reached the model.
+    # An abstention with delivered < n_retrieved is a prompt-budget artifact,
+    # not a memory-policy result; separating the two is the whole point of the
+    # answer stage. (Legacy evidence mode: delivered == items present, each
+    # hard-cut to 300 chars, and truncated is not tracked → False.)
+    reader_evidence_delivered: int = 0
+    reader_evidence_truncated: bool = False
 
     # reference data
     ref_answer: str = ""

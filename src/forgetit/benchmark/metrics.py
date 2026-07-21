@@ -257,6 +257,24 @@ def _has_reader(results: list[EvalResult]) -> bool:
     return any(r.reader and r.reader != "none" for r in results)
 
 
+def evidence_delivery_rate(results: list[EvalResult]) -> float:
+    """Fraction of the RETRIEVED items that actually reached the reader.
+
+    1.0 = the prompt carried everything retrieval returned, so retrieval
+    metrics and reader metrics are talking about the same evidence. Below 1.0
+    the reader was answering from a subset, and hit@k overstates what it saw —
+    the exact confound behind "hit@5 = 0.86 with abstain = 0.70".
+
+    Rows with nothing retrieved are skipped (no denominator); NaN if none of
+    the rows have one.
+    """
+    pairs = [(getattr(r, "reader_evidence_delivered", 0) or 0, r.n_retrieved)
+             for r in results if (r.n_retrieved or 0) > 0]
+    if not pairs:
+        return float("nan")
+    return sum(min(d, n) / n for d, n in pairs) / len(pairs)
+
+
 def gold_survival_rate(results: list[EvalResult]) -> float:
     introspectable = _introspectable(results)
     if not introspectable:
@@ -454,6 +472,18 @@ def summarize(results: list[EvalResult]) -> dict[str, float]:
                                if _has_reader(results) else float("nan")),
         "abstention_answerable_rate": (abstention_answerable_rate(results)
                                        if _has_reader(results) else float("nan")),
+        # ── Reader-CONTEXT audit (NaN unless a reader ran) ──
+        # The gate on reading any abstention number above. evidence_delivery_rate
+        # is delivered/retrieved: 1.0 means the prompt carried the whole
+        # retrieved list, so abstention is a real refusal on visible evidence.
+        # Below 1.0, retrieval metrics and reader metrics describe different
+        # inputs — hit@k counts items the model was never shown.
+        "mean_evidence_delivered": (mean(lambda r: getattr(r, "reader_evidence_delivered", 0) or 0)
+                                    if _has_reader(results) else float("nan")),
+        "evidence_delivery_rate": (evidence_delivery_rate(results)
+                                   if _has_reader(results) else float("nan")),
+        "evidence_truncation_rate": (mean(lambda r: 1.0 if getattr(r, "reader_evidence_truncated", False) else 0.0)
+                                     if _has_reader(results) else float("nan")),
     }
     # ── Layer-A eviction-activity diagnostics (cheap arithmetic on columns) ──
     # Behaviour, not quality: how hard is the policy working, is it using its

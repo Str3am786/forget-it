@@ -201,6 +201,7 @@ def _run_reader(
     g = grade(answer_result.answer, ref_answer, abstained=answer_result.abstained,
               embedder=grader_embedder, sim_threshold=grade_sim_threshold)
 
+    meta = answer_result.meta or {}
     return QAFields(
         reader_answer=answer_result.answer,
         abstained=answer_result.abstained,
@@ -210,6 +211,10 @@ def _run_reader(
         question_type=question_type,
         qa_correct=g["correct"],
         qa_f1=g["f1"],
+        # Reader-context audit: how much of `retrieved` the prompt carried.
+        # Absent on an LLM-error result, and on readers that don't report it.
+        reader_evidence_delivered=int(meta.get("evidence_delivered", 0) or 0),
+        reader_evidence_truncated=bool(meta.get("evidence_truncated") or False),
     )
 
 
@@ -583,6 +588,8 @@ def run_one_example(
             qa_latency_sec=qa.qa_latency_sec,
             qa_correct=qa.qa_correct,
             qa_f1=qa.qa_f1,
+            reader_evidence_delivered=qa.reader_evidence_delivered,
+            reader_evidence_truncated=qa.reader_evidence_truncated,
             ref_answer=qa.ref_answer,
             question_text=qa.question_text,
             question_type=qa.question_type,
@@ -843,6 +850,8 @@ def run(
                 qa_latency_sec=qa.qa_latency_sec,
                 qa_correct=qa.qa_correct,
                 qa_f1=qa.qa_f1,
+                reader_evidence_delivered=qa.reader_evidence_delivered,
+                reader_evidence_truncated=qa.reader_evidence_truncated,
                 ref_answer=qa.ref_answer,
                 question_text=qa.question_text,
                 question_type=qa.question_type,
@@ -873,6 +882,8 @@ def run(
                 r.qa_latency_sec = qa2.qa_latency_sec
                 r.qa_correct = qa2.qa_correct
                 r.qa_f1 = qa2.qa_f1
+                r.reader_evidence_delivered = qa2.reader_evidence_delivered
+                r.reader_evidence_truncated = qa2.reader_evidence_truncated
 
     elapsed = time.perf_counter() - t_run_start
 

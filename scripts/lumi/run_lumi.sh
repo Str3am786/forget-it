@@ -45,6 +45,10 @@ export HF_HOME=/scratch/project_465XXXXXX/hf_cache              # EDIT: cache on
 NUM_SHARDS=2            # client processes (= dataset copies). Keep small.
 WORKERS=8              # examples replayed concurrently within a config (fresh store each)
 READER_WORKERS=8       # concurrent QA reader calls (two-pass) within a config
+# Total evidence window handed to the reader, whole items in retrieval-rank
+# order. Empty string = legacy context (5 items × 300 chars ≈ 375 tokens ≈ ONE
+# item), which abstains on gold that retrieval already found — don't.
+READER_TOKEN_BUDGET=1500
 EVENT_LOG=""          # set to "--event-log" for per-eviction traces (large on disk)
 EXPERIMENTS=(run_longmemeval_qa run_beam)
 
@@ -107,6 +111,7 @@ for EXP in "${EXPERIMENTS[@]}"; do
         python -m "forgetit.experiments.$EXP" \
             --shard "$i" --num-shards "$NUM_SHARDS" \
             --workers "$WORKERS" --reader-workers "$READER_WORKERS" \
+            --reader-token-budget "$READER_TOKEN_BUDGET" \
             --out-dir "$REPO/artifacts/benchmark" $EVENT_LOG \
             > "logs/${EXP}-${SLURM_JOB_ID}-${i}.log" 2>&1 &
         pids+=($!)

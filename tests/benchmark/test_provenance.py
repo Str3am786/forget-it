@@ -102,6 +102,35 @@ class TestStampProvenance:
         assert rows[0].prompt_reader_sha == ""      # no reader ran
         assert rows[0].embed_model == ""
 
+    def test_reader_sha_separates_legacy_from_budgeted_context(self):
+        # Same retrieval, two evidence modes: legacy cuts each item to 300
+        # chars, budgeted fills one total token budget. Rows from the two must
+        # not claim the same reader prompt — and two different budgets are two
+        # different reader contexts.
+        class FakeLLM:
+            model = "llama-test:1b"
+
+        class FakeReader:
+            llm = FakeLLM()
+
+            def __init__(self, token_budget):
+                self.token_budget = token_budget
+
+        class FakeStore:
+            policy = object()
+            embedder = None
+
+        def sha(token_budget):
+            rows = [_row()]
+            _stamp_provenance(rows, config_hash="x",
+                              reader_impl=FakeReader(token_budget),
+                              store_probe=FakeStore())
+            return rows[0].prompt_reader_sha
+
+        legacy, small, large = sha(None), sha(375), sha(1500)
+        assert len({legacy, small, large}) == 3
+        assert all(len(s) == 12 for s in (legacy, small, large))
+
     def test_plain_policy_leaves_llm_fields_blank(self):
         class FakeStore:
             policy = object()      # no prompt_template, no llm

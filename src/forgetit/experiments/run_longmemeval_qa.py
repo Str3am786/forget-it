@@ -24,7 +24,11 @@ from forgetit.policies import LRUPolicy, LFUPolicy, FIFOPolicy, RandomPolicy, LL
     SemanticRedundancyPolicy, SemanticCoveragePolicy, SemanticKeepSimilarPolicy, \
     SalienceDecayPolicy, GDSFPolicy, OraclePolicy
 from forgetit.llm import get_llm
-from forgetit.llm.readers import PlainTextReader
+from forgetit.llm.readers import (
+    PlainTextReader,
+    READER_TOKEN_BUDGET_HELP,
+    log_reader_context,
+)
 from forgetit.settings import LETTA_BASE_URL, LETTA_API_KEY
 
 
@@ -256,11 +260,19 @@ def parse_args() -> argparse.Namespace:
                    help="Within each config, run the QA reader as a concurrent second pass "
                         "(store-free, pure I/O). Big speedup for the non-compression configs, "
                         "where the reader is ~all the LLM cost.")
+    p.add_argument("--reader-token-budget", type=int, default=None, metavar="N",
+                   help=READER_TOKEN_BUDGET_HELP)
     args = p.parse_args()
     if args.num_shards < 1:
         p.error("--num-shards must be >= 1")
     if not (0 <= args.shard < args.num_shards):
         p.error(f"--shard must be in [0, {args.num_shards})")
+    if args.reader_token_budget is not None:
+        if args.reader_token_budget <= 0:
+            p.error("--reader-token-budget must be > 0")
+        if args.no_reader:
+            p.error("--reader-token-budget sizes the reader's evidence window, but "
+                    "--no-reader turns the reader off — pass one or the other")
     return args
 
 
@@ -286,8 +298,9 @@ def main() -> None:
         reader_name = "none"
     else:
         llm = get_llm()
-        reader_impl = PlainTextReader(llm)
+        reader_impl = PlainTextReader(llm, token_budget=args.reader_token_budget)
         reader_name = getattr(reader_impl, "name", type(reader_impl).__name__)
+        log_reader_context(log, args.reader_token_budget)
 
     # LLM-driven POLICIES (compression/memorybank) are gated on an endpoint, not
     # on the reader: --no-reader turns off the ANSWER stage only. When such a

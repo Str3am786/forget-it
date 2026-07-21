@@ -67,9 +67,18 @@ def _stamp_provenance(results, *, config_hash: str, reader_impl, store_probe) ->
         llm_model = str(getattr(getattr(reader_impl, "llm", None), "model", "") or "")
         try:
             from forgetit.llm.readers import text_reader
-            prompt_reader_sha = hashlib.sha256(
-                inspect.getsource(text_reader._build_prompt).encode("utf-8")
-            ).hexdigest()[:12]
+            # Hash the evidence builder the reader ACTUALLY uses: legacy
+            # (per-item 300-char cut) and budgeted (one total token budget) turn
+            # the same retrieval into different prompts, so one sha for both
+            # would claim two different runs used the same reader context. The
+            # legacy branch stays byte-identical to historical rows.
+            budget = getattr(reader_impl, "token_budget", None)
+            if budget is None:
+                blob = inspect.getsource(text_reader._build_prompt)
+            else:
+                blob = (inspect.getsource(text_reader._build_evidence_budgeted)
+                        + f"\n# token_budget={budget}")
+            prompt_reader_sha = hashlib.sha256(blob.encode("utf-8")).hexdigest()[:12]
         except Exception:
             pass
 
@@ -534,6 +543,8 @@ def run_pipeline_concurrent(
             result.qa_latency_sec = qa.qa_latency_sec
             result.qa_correct = qa.qa_correct
             result.qa_f1 = qa.qa_f1
+            result.reader_evidence_delivered = qa.reader_evidence_delivered
+            result.reader_evidence_truncated = qa.reader_evidence_truncated
 
     if write_events:
         _write_events_jsonl(base / "events.jsonl", event_groups)
