@@ -1,10 +1,50 @@
+"""DEPRECATED — do not use, do not repair (decision R-4, 2026-07-22).
+
+This script predates the current results schema and the current grid. It is kept
+only so the two defects below stay on the record; it is NOT a plotting utility
+for any run in this repository.
+
+DEFECT 1 — SCHEMA MISMATCH. It reads columns the results CSV does not have:
+  * ``gold_retained``  — the schema field is ``gold_survived`` (schema.py:25).
+    ``gold_retained`` appears nowhere in ``src/forgetit``.
+  * ``question_id``    — the per-row id column is ``query_id`` (schema.py:86);
+    ``question_id`` is a raw LongMemEval dataset key, never a results column.
+  Both are dereferenced unguarded (``df[col]``, ``("question_id", "count")``),
+  so against a current CSV this raises KeyError rather than mis-plotting — the
+  one merciful thing about it.
+  It also globs a FLAT ``longmemeval_*.csv`` layout; results are now nested as
+  ``retention/<policy>/<retriever>/budget_<pct>pct/results.csv``, and the sweep
+  axis is a per-example budget FRACTION, not the absolute ``budget_bytes`` this
+  file puts on a log x-axis.
+
+DEFECT 2 — POOLING VIOLATION. ``aggregate()`` groups by
+``(policy, budget_bytes, k)`` only, pooling over ITEMISER and RETRIEVER. Those
+are not nuisance dimensions: the itemiser sets item granularity (so it changes
+what a "budget" even holds) and the retriever sets the ranking (so it changes
+every hit@k). Averaging across them mixes incomparable populations and can
+reverse a policy ordering. Any ranking must be grouped by the COUPLED key
+``(itemiser, retriever, policy)`` — the same correction applied to the pooled
+cell in ``scripts/experimentation.ipynb``.
+
+Per-retriever result tables belong to the analysis phase, not to this file.
+"""
 import argparse
 import glob
 import os
+import sys
 from pathlib import Path
 
 import pandas as pd
 import matplotlib.pyplot as plt
+
+_DEPRECATION_NOTICE = """\
+scripts/plot_longmemeval.py is DEPRECATED (R-4) and will not run.
+  * it reads 'gold_retained' / 'question_id', which are not results columns
+    (the schema has 'gold_survived' / 'query_id')
+  * it pools over itemiser and retriever, which can reverse policy orderings
+Read the module docstring before doing anything with this file. Nothing here
+should be repaired — build the analysis-phase tables instead.
+"""
 
 
 METRICS_MAIN = [
@@ -114,6 +154,16 @@ def _plot_bars_with_errorbars(sub: pd.DataFrame, metric: str, ylabel: str, out_p
 
 
 def main():
+    # Refusing beats emitting a wrong figure: a plot carries no schema, so a
+    # pooled/mis-keyed chart is indistinguishable from a correct one once it is
+    # in a document. (Deliberately a refusal, not a repair — see R-4.)
+    print(_DEPRECATION_NOTICE, file=sys.stderr)
+    return 2
+
+
+def _deprecated_main():
+    """The original entry point, kept UNREPAIRED as the record of both defects.
+    Not reachable from the CLI; see the module docstring."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--results-dir", default="results/longmemeval_lru_lfu_rerun_limit200")
     ap.add_argument("--out-dir", default="results/longmemeval_lru_lfu_rerun_limit200/plots")
@@ -142,4 +192,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -251,3 +251,38 @@ def grade(
             return {"correct": True, "f1": f1, "tier": "embedding", "similarity": sim}
 
     return {"correct": False, "f1": f1, "tier": "miss", "similarity": sim}
+
+
+def grade_with_abstention(
+    answer: str,
+    ref: str,
+    *,
+    abstained: bool,
+    answerable: bool,
+    **grade_kwargs,
+) -> dict:
+    """Abstention-aware tier over :func:`grade` (D4 fix i).
+
+    For ANSWERABLE questions this defers to ``grade()`` unchanged (abstention
+    stays a failure there — that is correct behavior). For UNANSWERABLE
+    questions (LongMemEval ``_abs`` ids, BEAM ability=="abstention" — see
+    :func:`is_answerable`), abstaining IS the reference behavior: correct iff
+    abstained. f1 mirrors correctness (1.0/0.0) so mean-F1 rollups don't
+    silently punish the rows the binary grade rewards. Tiers
+    ``abstain_correct`` / ``abstain_missed`` keep these rows countable apart
+    from content grades.
+
+    SCOPE (SYMS, 2026-07-22): ported from the verification-sprint branch for
+    OFFLINE re-grading only — ``scripts/regrade_answers.py`` is its one caller.
+    The runtime path (``runner_core``) deliberately still calls ``grade()``, so
+    every stored ``qa_correct`` keeps its historical semantics and v1/v2 rows
+    stay comparable. Do not wire this into the runners without re-running the
+    grid: it changes 30 of 500 LongMemEval verdicts.
+    """
+    if answerable:
+        return grade(answer, ref, abstained=abstained, **grade_kwargs)
+    if abstained:
+        return {"correct": True, "f1": 1.0, "tier": "abstain_correct",
+                "similarity": float("nan")}
+    return {"correct": False, "f1": 0.0, "tier": "abstain_missed",
+            "similarity": float("nan")}

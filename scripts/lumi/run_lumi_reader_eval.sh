@@ -19,13 +19,17 @@
 #     several jobs start simultaneously).
 #
 # v3 (2026-07-21, reader evidence window):
-#   • --reader-token-budget 1500 (READER_TOKEN_BUDGET to override). The legacy
+#   • --reader-token-budget 16000 (READER_TOKEN_BUDGET to override). The legacy
 #     evidence path handed the reader 5 items × 300 chars ≈ 375 tokens — about
 #     ONE retrieved item — so gold that retrieval had already found at rank 2-5
 #     was cut before the model saw it (abstain ≈ 0.70 against hit@5 ≈ 0.86).
 #     Now: one total budget, whole items in rank order. The budget rides in the
-#     reader name (PlainTextReader_rtok1500), which is a path component and part
+#     reader name (PlainTextReader_rtok16000), which is a path component and part
 #     of the config hash, so budgeted rows can never be mixed with legacy ones.
+#     D-6 (2026-07-22): 16000, not the first-cut 1.5k budget, whose measured
+#     k-list evidence delivery was 0.4567 — session itemisers overflow it, so
+#     gold was STILL being cut. 32k leaves no headroom against the confirmed
+#     32768 serving window (T2 pins it), so 16000 is the largest safe value.
 #   • --reader-prompt v2 (READER_PROMPT to override). The legacy v1 wrapper
 #     forbids derivation ("using ONLY the memories") and caps answers at one
 #     sentence, so answers the reader had the evidence for — a sum of two
@@ -61,6 +65,10 @@ if [ ! -e "$REPO/pyproject.toml" ] || [ ! -d "$REPO/src/forgetit" ]; then
     echo "[lumi] REFUSING: sbatch was not run from the repo root (SLURM_SUBMIT_DIR=$REPO)" >&2
     exit 1
 fi
+# T3d — SLURM_JOB_ID is unset off-cluster, and under `set -u` its FIRST use
+# aborts the script. That made every guard below unreachable in a local dry
+# run. Default it once, here, before anything interpolates it.
+SLURM_JOB_ID="${SLURM_JOB_ID:-local-$$}"
 CLIENT_SIF="${CLIENT_SIF:-$(dirname "$REPO")/forgetit.sif}"
 VLLM_SIF=/appl/local/laifs/containers/lumi-multitorch-latest.sif
 
@@ -72,7 +80,12 @@ BEAM_DATASET=$REPO/data/beam_500K.jsonl
 LOCOMO_DATASET=$REPO/data/locomo10.json
 
 # FRESH tree — the state-forming grid in benchmark_full stays untouched.
-OUT_DIR=/scratch/$PROJ/artifacts/benchmark_reader
+# _v2: a SEPARATE tree from the v1 reader run in benchmark_reader. The v2 reader
+# name (rtok16000_pv2_absexact_cleanfull) already separates the leaf dirs, so
+# v1 rows were never at risk of being overwritten — but scripts/concat_results.py
+# walks OUT_DIR recursively, so a shared root would merge BOTH generations into
+# one combined_results.csv. Separate roots, separate merges, no mixed-vintage CSV.
+OUT_DIR=/scratch/$PROJ/artifacts/benchmark_reader_v2
 A7_SMOKE_DIR=/scratch/$PROJ/artifacts/a7_smoke_reader_${SLURM_JOB_ID}
 LOGS=/scratch/$PROJ/logs
 export HF_HOME=/scratch/$PROJ/hf_cache
@@ -91,33 +104,135 @@ fi
 # ── inode-headroom preflight — refuse to start into a near-full quota ───────
 # The 2026-07-18 incident: scratch hit its 2.0M-file quota mid-run and every
 # writer died with Errno 122 hours into its allocation. Fail at minute zero
-# instead. (awk fields verified against `lfs quota -p` output; if the format
-# shifts on a Lustre upgrade, this degrades to a warning, never a bad refusal.)
-SCRATCH_GID=$(stat -c %g "/scratch/$PROJ" 2>/dev/null || echo "")
-if [ -n "$SCRATCH_GID" ]; then
-    read -r INODE_USED INODE_LIMIT <<< "$(lfs quota -p "$SCRATCH_GID" /scratch 2>/dev/null | awk 'NR==3{print $5, $6}')"
-    if [[ "$INODE_USED" =~ ^[0-9]+$ ]] && [[ "$INODE_LIMIT" =~ ^[0-9]+$ ]] && [ "$INODE_LIMIT" -gt 0 ]; then
-        FREE=$((INODE_LIMIT - INODE_USED))
-        echo "[lumi] scratch inodes: $INODE_USED/$INODE_LIMIT ($FREE free)"
-        if [ "$FREE" -lt 100000 ]; then
-            echo "[lumi] REFUSING: <100k inodes free on /scratch/$PROJ — purge before submitting" >&2
-            exit 1
-        fi
-    else
-        echo "[lumi] WARNING: could not parse lfs quota output — inode preflight skipped" >&2
+# instead.
+#
+# T3b — SELF-CONTAINED PARSE. The previous version read `awk 'NR==3{print $5,$6}'`,
+# i.e. a fixed row at fixed field numbers. `lfs quota` ships in (at least) two
+# column layouts and only ONE of them puts the inode counters at $5/$6:
+#
+#   LAYOUT A (7 fields):  fs kbytes quota limit files limit grace
+#                         -> used=$5, limit=$6          (what the old awk assumed)
+#   LAYOUT B (9 fields):  fs kbytes quota limit grace files quota limit grace
+#                         -> used=$6, soft=$7, hard=$8  (standard Lustre)
+#
+# On LAYOUT B the old parse read $5 = the KBYTES GRACE column ("-"), failed its
+# ^[0-9]+$ test, and took the "could not parse" branch — so on the standard
+# layout this guard silently never fired at all. Now: find the data row by the
+# MOUNT STRING, pick the columns from the row's field count, tolerate the '*'
+# over-quota marker and '-' placeholders, and when the shape matches neither
+# layout print the raw lfs output and WARN. A preflight that cannot parse must
+# never refuse a valid run — it must never be silent either.
+# >>> T3b-BLOCK-START (extracted verbatim by verification/t3_launcher_guards.sh)
+INODE_FLOOR=100000          # refuse below this many free inodes (not overridable)
+
+_inode_num () {             # echo an lfs numeric field, or nothing if it isn't one
+    local v="${1:-}"
+    v="${v%\*}"             # drop the over-quota marker: "1950000*" -> "1950000"
+    if [[ "$v" =~ ^[0-9]+$ ]]; then printf '%s' "$v"; fi
+}
+
+_inode_raw_dump () {        # never warn about output without showing it
+    printf '[lumi]   raw lfs output >>>\n' >&2
+    if [ -n "${1:-}" ]; then printf '%s\n' "$1" >&2; else printf '(no output)\n' >&2; fi
+    printf '[lumi]   <<< end raw lfs output\n' >&2
+}
+
+inode_preflight () {        # $1 raw lfs text, $2 mount string, $3 label for messages
+    local raw="$1" mount="$2" label="$3"
+    local row nf used lim used_n lim_n free
+    # Data row = the one whose FIRST field starts with the mount we asked about.
+    # ("Disk quotas for prj ..." and the "Filesystem ..." header never match.)
+    row="$(printf '%s\n' "$raw" | awk -v m="$mount" 'index($1, m) == 1 { print; exit }')"
+    if [ -z "$row" ]; then
+        echo "[lumi] WARNING: no '$mount' row in lfs quota output — inode preflight SKIPPED" >&2
+        _inode_raw_dump "$raw"
+        return 0
     fi
+    # shellcheck disable=SC2086  # deliberate word-splitting: $row is lfs columns
+    set -- $row
+    nf=$#
+    case "$nf" in
+        7) used="$5"; lim="$6" ;;                            # LAYOUT A
+        9) used="$6"; lim="$8"                               # LAYOUT B: hard limit,
+           [ "$(_inode_num "$8")" = "0" ] && lim="$7" ;;      #   soft limit if hard is 0
+        *) echo "[lumi] WARNING: unrecognised lfs quota layout ($nf fields on the '$mount' row;" >&2
+           echo "[lumi]          expected 7 or 9) — inode preflight SKIPPED, NOT refusing" >&2
+           _inode_raw_dump "$raw"
+           return 0 ;;
+    esac
+    used_n="$(_inode_num "$used")"
+    lim_n="$(_inode_num "$lim")"
+    if [ -z "$used_n" ] || [ -z "$lim_n" ]; then
+        echo "[lumi] WARNING: non-numeric inode columns (used='$used' limit='$lim') in a" >&2
+        echo "[lumi]          ${nf}-field row — inode preflight SKIPPED, NOT refusing" >&2
+        _inode_raw_dump "$raw"
+        return 0
+    fi
+    if [ "$lim_n" -eq 0 ]; then
+        echo "[lumi] WARNING: no inode limit set on $label (limit=0, used=$used_n) —" >&2
+        echo "[lumi]          headroom is unknowable, inode preflight SKIPPED" >&2
+        return 0
+    fi
+    free=$((lim_n - used_n))
+    echo "[lumi] scratch inodes: $used_n/$lim_n ($free free)  [lfs layout: ${nf} fields]"
+    if [ "$free" -lt "$INODE_FLOOR" ]; then
+        echo "[lumi] REFUSING: <100k inodes free on $label — purge before submitting" >&2
+        exit 1
+    fi
+}
+
+# The stat-failure warning lives OUTSIDE the gid guard: when stat fails (dir
+# absent, wrong account, non-GNU stat) the old block produced zero bytes on
+# stdout AND stderr, so the preflight the header advertises FIRST vanished
+# without a trace. It must announce that it could not run.
+SCRATCH_GID="$(stat -c %g "/scratch/$PROJ" 2>/dev/null || true)"
+if [ -z "$SCRATCH_GID" ]; then
+    echo "[lumi] WARNING: stat -c %g /scratch/$PROJ failed (missing dir, wrong account," >&2
+    echo "[lumi]          or non-GNU stat) — inode preflight SKIPPED" >&2
+else
+    inode_preflight "$(lfs quota -p "$SCRATCH_GID" /scratch 2>/dev/null || true)" \
+                    "/scratch" "/scratch/$PROJ"
 fi
+# >>> T3b-BLOCK-END
 
 # ── recorded-run guard — refuse a dirty tree ────────────────────────────────
+# T3c: UNTRACKED files count as dirty too. _git_commit() stamps rows from
+# `git status --porcelain`, which reports untracked files — so a tree that is
+# clean by `diff` but carries new files stamps every row "<sha>-dirty" while
+# this guard waves the job through. The two must agree.
 if [ -z "${FORGETIT_ALLOW_DIRTY:-}" ]; then
     if ! git -C "$REPO" diff --quiet 2>/dev/null || \
        ! git -C "$REPO" diff --cached --quiet 2>/dev/null; then
         echo "[lumi] REFUSING: uncommitted changes in $REPO — commit+tag, or FORGETIT_ALLOW_DIRTY=1 for smoke" >&2
         exit 1
     fi
+    UNTRACKED="$(git -C "$REPO" ls-files --others --exclude-standard 2>/dev/null || true)"
+    if [ -n "$UNTRACKED" ]; then
+        echo "[lumi] REFUSING: untracked files in $REPO — commit+tag, or FORGETIT_ALLOW_DIRTY=1 for smoke" >&2
+        printf '%s\n' "$UNTRACKED" | sed 's/^/[lumi]     /' >&2
+        exit 1
+    fi
 fi
 if git -C "$REPO" ls-files --error-unmatch .env >/dev/null 2>&1; then
     echo "[lumi] WARNING: $REPO/.env is tracked by git — this job rewrites it" >&2
+fi
+
+# ── git provenance stamp — resolved HERE, OUTSIDE the container (T4) ────────
+# The client image need not carry a git binary and the bind mount need not
+# include .git, so in-container resolution wrote git_commit="unknown" for whole
+# runs — silently. Resolve once out here, where both are known good, and hand
+# the value to every client process; the Python site prefers it and falls back
+# to its own resolution only when it is absent.
+GIT_COMMIT="$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || true)"
+if [ -n "$GIT_COMMIT" ] && [ -n "$(git -C "$REPO" status --porcelain 2>/dev/null)" ]; then
+    GIT_COMMIT="${GIT_COMMIT}-dirty"     # only reachable under FORGETIT_ALLOW_DIRTY=1
+fi
+export GIT_COMMIT
+if [ -z "$GIT_COMMIT" ]; then
+    echo "[lumi] WARNING: no git commit resolvable in $REPO — rows fall back to" >&2
+    echo "[lumi]          in-container resolution and may be stamped 'unknown'" >&2
+else
+    echo "[lumi] git_commit for this run: $GIT_COMMIT"
 fi
 
 # ── FROZEN GRID — identical to the state-forming run; this block IS the run
@@ -146,8 +261,13 @@ POOL=64
 # reader runs the legacy context (5 items × 300 chars ≈ 375 tokens ≈ ONE item),
 # which is what produced abstain ≈ 0.70 against hit@5 ≈ 0.86: gold was
 # retrieved, then cut before the reader saw it. The budget is in the reader
-# name (PlainTextReader_rtok1500), so this tree never mixes with legacy rows.
-READER_TOKEN_BUDGET="${READER_TOKEN_BUDGET:-1500}"
+# name (PlainTextReader_rtok16000), so this tree never mixes with legacy rows.
+# D-6: 16000 is the SIGNED value. The first-cut 1.5k budget measured k-list
+# evidence delivery at 0.4567 — better than legacy, still cutting gold on
+# session-itemised rows. 32k is refused: the chat serving window is pinned at
+# 32768, leaving no room for the instruction wrapper + generation. Check
+# evidence_delivery_rate, not just abstain, when reading the results.
+READER_TOKEN_BUDGET="${READER_TOKEN_BUDGET:-16000}"
 
 # ── reader instruction wrapper (D4 fix iv) ──────────────────────────────────
 # v1 (legacy) says "using ONLY the memories … one sentence maximum": it forbids
@@ -222,6 +342,10 @@ for ds in $DATASETS; do
         longmemeval) [ -e "$LME_DATASET" ]    || { echo "[lumi] MISSING dataset: $LME_DATASET" >&2; exit 1; } ;;
         beam)        [ -e "$BEAM_DATASET" ]   || { echo "[lumi] MISSING dataset: $BEAM_DATASET" >&2; exit 1; } ;;
         locomo)      [ -e "$LOCOMO_DATASET" ] || { echo "[lumi] MISSING dataset: $LOCOMO_DATASET" >&2; exit 1; } ;;
+        # T3a: without this arm a typo ("longmemval") matched nothing, passed
+        # preflight, booted 8 servers, and only then fell through the dispatch
+        # case at step 3 with rc=1 — an hour of allocation for a typo.
+        *)           echo "[lumi] REFUSING: unknown dataset '$ds' — expected one of: longmemeval beam locomo" >&2; exit 1 ;;
     esac
 done
 if [ -z "${SKIP_A7_SMOKE:-}" ] && [ ! -e "$LME_DATASET" ]; then
@@ -253,9 +377,14 @@ server_pids=()
 for g in $(seq 0 $((NUM_CHAT_GCDS - 1))); do
     cport=$((CHAT_PORT_BASE + g))
     echo "[lumi] GCD $g: chat vLLM on port $cport ..."
+    # --max-model-len 32768: PIN the serving window (T2). The reader's evidence
+    # budget (16000) is sized against this number; leaving the window implicit
+    # means a container or config change silently moves the ceiling the budget
+    # was chosen for, and long prompts start 400-ing mid-grid.
     singularity exec -B "/scratch/$PROJ" "$VLLM_SIF" \
         bash -c "ROCR_VISIBLE_DEVICES=$g vllm serve '$CHAT_MODEL_PATH' \
-                 --served-model-name '$SERVED_CHAT' --port $cport --tensor-parallel-size 1" \
+                 --served-model-name '$SERVED_CHAT' --port $cport --tensor-parallel-size 1 \
+                 --max-model-len 32768" \
         > "$LOGS/vllm-chat-${SLURM_JOB_ID}-g${g}.log" 2>&1 &
     server_pids+=($!)
 done
@@ -301,7 +430,12 @@ served_name:           $SERVED_EMBED
 EMBED_MAX_INPUT_CHARS: 28000
 recorded:              $(date -u +%Y-%m-%dT%H:%M:%SZ) job ${SLURM_JOB_ID}
 EOF
-echo "[lumi] encoder pin written to $OUT_DIR/ENCODER_PIN.txt"
+# T5: ENCODER_PIN.txt is OVERWRITTEN by every job that writes into this tree,
+# so the pin describing the rows already in it is destroyed by the next job
+# that appends to them. Keep a per-job copy as well; the unsuffixed file stays
+# in place as the "latest" pointer everything downstream already reads.
+cp "$OUT_DIR/ENCODER_PIN.txt" "$OUT_DIR/ENCODER_PIN_${SLURM_JOB_ID}.txt"
+echo "[lumi] encoder pin written to $OUT_DIR/ENCODER_PIN.txt (+ ENCODER_PIN_${SLURM_JOB_ID}.txt)"
 
 if [ -z "${SKIP_A7_SMOKE:-}" ]; then
     echo "[lumi] A7 smoke — READER ON (semantic policies, 1 example) ..."
@@ -312,6 +446,7 @@ if [ -z "${SKIP_A7_SMOKE:-}" ]; then
                  EXPECTED_EMBED_MODEL='$SERVED_EMBED' \
                  EMBED_MAX_INPUT_CHARS=28000 EMBED_CACHE_PATH='$EMB_CACHE_DIR/a7_smoke_reader_${SLURM_JOB_ID}.sqlite' \
                  LLM_CACHE_DIR='$LLM_CACHE_DIR' \
+                 GIT_COMMIT='$GIT_COMMIT' \
                  python -m forgetit.experiments.run_longmemeval_qa \
                    --policies semantic semantic_keep --limit 1 \
                    --reader-token-budget $READER_TOKEN_BUDGET \
@@ -340,6 +475,7 @@ run_dataset () {
                      EMBED_MAX_INPUT_CHARS=28000 \
                      EMBED_CACHE_PATH='$EMB_CACHE_DIR/${dataset}_shard_${i}.sqlite' \
                      LLM_CACHE_DIR='$LLM_CACHE_DIR' \
+                     GIT_COMMIT='$GIT_COMMIT' \
                      LLM_MAX_CONNECTIONS=$POOL EMBED_MAX_CONNECTIONS=$POOL \
                      python -m $module \
                        --shard $i --num-shards $NUM_SHARDS --out-dir '$OUT_DIR' \

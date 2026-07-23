@@ -58,6 +58,16 @@ class OpenAiEmbedder(Embedder):
         self.max_input_chars = max_input_chars
         self._truncated = 0   # count of inputs we had to shorten (observability)
         self._warned_trunc = False
+        # ── stale-vector accounting (CACHE decision (a)) ──────────────────
+        # The cache-key namespace (``name``) carries the CONFIGURED cap. When a
+        # context-length 400 forces the cap DOWN mid-run, the resulting vectors
+        # describe a shorter head than their key claims, and they are written
+        # under the unshrunken key. The key format is deliberately NOT changed
+        # (that would invalidate the warm emb_cache), so the mismatch is made
+        # COUNTABLE and LOUD instead of silent.
+        self._cap_shrinks = 0             # how many times the cap was halved
+        self._vectors_at_reduced_cap = 0  # vectors keyed at a cap they don't match
+        self._effective_min_cap: int | None = None   # smallest cap actually used
 
     @property
     def name(self) -> str:
@@ -137,11 +147,50 @@ class OpenAiEmbedder(Embedder):
                 last_err = e
                 longest = max((len(t) for t in cleaned), default=0)
                 cap = max(256, min(cap or longest, longest) // 2)
-                log.warning("[embed] context-length 400 — shrinking input cap to "
-                            "%d chars and retrying (longest was %d)", cap, longest)
+                self._cap_shrinks += 1
+                self._vectors_at_reduced_cap += len(cleaned)
+                self._effective_min_cap = (cap if self._effective_min_cap is None
+                                           else min(self._effective_min_cap, cap))
+                # LOUD, not incidental: this is a CACHE-INTEGRITY event, not a
+                # retry. These vectors are about to be written under the
+                # namespace "<name>" — which advertises the CONFIGURED cap —
+                # while describing only the first `cap` chars. Any later run
+                # with the same configured cap will read them as if they were
+                # full-cap vectors. See CACHE decision (a): the key format is
+                # kept so the warm cache survives, so this counter is the only
+                # record that the mismatch happened.
+                log.warning(
+                    "[embed] CACHE INTEGRITY: context-length 400 forced the input cap "
+                    "DOWN to %d chars (configured %s, longest input %d). %d vector(s) "
+                    "in this batch will be stored under namespace '%s', which claims "
+                    "the configured cap — they describe a shorter head. "
+                    "Run totals so far: %d shrink event(s), %d affected vector(s). "
+                    "Lower EMBED_MAX_INPUT_CHARS to the effective value and re-embed "
+                    "if these vectors matter.",
+                    cap, self.max_input_chars or "uncapped", longest, len(cleaned),
+                    self.name, self._cap_shrinks, self._vectors_at_reduced_cap)
                 cleaned = self._truncate(cleaned, cap)
         assert last_err is not None
         raise last_err
+
+    def cache_integrity_stats(self) -> dict:
+        """Stale-vector accounting for this embedder (CACHE decision (a)).
+
+        ``vectors_at_reduced_cap > 0`` means this process wrote vectors into the
+        ``namespace`` below that describe a SHORTER head than the namespace
+        claims. The key format is intentionally unchanged (a warm ``emb_cache``
+        is worth more than a perfectly self-describing key here), so this is the
+        only signal that it happened — surface it in run attestation rather than
+        letting it live and die in the log.
+        """
+        return {
+            "namespace": self.name,
+            "configured_cap": self.max_input_chars,
+            "effective_min_cap": self._effective_min_cap,
+            "cap_shrink_events": self._cap_shrinks,
+            "vectors_at_reduced_cap": self._vectors_at_reduced_cap,
+            "inputs_truncated": self._truncated,
+        }
 
     def _maybe_norm(self, v: list[float]) -> list[float]:
         if not self.normalize:

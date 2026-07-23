@@ -221,3 +221,8 @@ slurm-*.out
 *.out
 Show
 grep
+
+# Verification campaign is local-only (author ruling 2026-07-24): the audit
+# trail stays out of the branch; the branch carries shippable code and tests.
+verification/
+report2/

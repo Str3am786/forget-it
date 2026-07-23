@@ -55,6 +55,10 @@ if [ ! -e "$REPO/pyproject.toml" ] || [ ! -d "$REPO/src/forgetit" ]; then
     echo "[lumi]   cd <repo-root> && DATASETS=... sbatch scripts/lumi/run_lumi_full_eval.sh" >&2
     exit 1
 fi
+# T3d — SLURM_JOB_ID is unset off-cluster, and under `set -u` its FIRST use
+# aborts the script. That made every guard below unreachable in a local dry
+# run. Default it once, here, before anything interpolates it.
+SLURM_JOB_ID="${SLURM_JOB_ID:-local-$$}"
 CLIENT_SIF="${CLIENT_SIF:-$(dirname "$REPO")/forgetit.sif}"   # default: sibling of the repo
 VLLM_SIF=/appl/local/laifs/containers/lumi-multitorch-latest.sif
 
@@ -77,10 +81,20 @@ export HF_HOME=/scratch/$PROJ/hf_cache
 # Provenance stamps git_commit into every row; a recorded run from an
 # uncommitted tree is unreproducible ("<sha>-dirty"). Commit + tag first.
 # Smoke-only override:  FORGETIT_ALLOW_DIRTY=1 sbatch ...
+# T3c: UNTRACKED files count as dirty too. _git_commit() stamps rows from
+# `git status --porcelain`, which reports untracked files — so a tree that is
+# clean by `diff` but carries new files stamps every row "<sha>-dirty" while
+# this guard waves the job through. The two must agree.
 if [ -z "${FORGETIT_ALLOW_DIRTY:-}" ]; then
     if ! git -C "$REPO" diff --quiet 2>/dev/null || \
        ! git -C "$REPO" diff --cached --quiet 2>/dev/null; then
         echo "[lumi] REFUSING: uncommitted changes in $REPO — commit+tag, or FORGETIT_ALLOW_DIRTY=1 for smoke" >&2
+        exit 1
+    fi
+    UNTRACKED="$(git -C "$REPO" ls-files --others --exclude-standard 2>/dev/null || true)"
+    if [ -n "$UNTRACKED" ]; then
+        echo "[lumi] REFUSING: untracked files in $REPO — commit+tag, or FORGETIT_ALLOW_DIRTY=1 for smoke" >&2
+        printf '%s\n' "$UNTRACKED" | sed 's/^/[lumi]     /' >&2
         exit 1
     fi
 fi
@@ -88,6 +102,24 @@ fi
 # dirties the tree and the NEXT submission fails the guard above confusingly.
 if git -C "$REPO" ls-files --error-unmatch .env >/dev/null 2>&1; then
     echo "[lumi] WARNING: $REPO/.env is tracked by git — this job rewrites it; gitignore it or the next dirty-tree check will fail" >&2
+fi
+
+# ── git provenance stamp — resolved HERE, OUTSIDE the container (T4) ────────
+# The client image need not carry a git binary and the bind mount need not
+# include .git, so in-container resolution wrote git_commit="unknown" for whole
+# runs — silently. Resolve once out here, where both are known good, and hand
+# the value to every client process; the Python site prefers it and falls back
+# to its own resolution only when it is absent.
+GIT_COMMIT="$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || true)"
+if [ -n "$GIT_COMMIT" ] && [ -n "$(git -C "$REPO" status --porcelain 2>/dev/null)" ]; then
+    GIT_COMMIT="${GIT_COMMIT}-dirty"     # only reachable under FORGETIT_ALLOW_DIRTY=1
+fi
+export GIT_COMMIT
+if [ -z "$GIT_COMMIT" ]; then
+    echo "[lumi] WARNING: no git commit resolvable in $REPO — rows fall back to" >&2
+    echo "[lumi]          in-container resolution and may be stamped 'unknown'" >&2
+else
+    echo "[lumi] git_commit for this run: $GIT_COMMIT"
 fi
 
 # ── FROZEN GRID — this block IS the run record ──────────────────────────────
@@ -165,6 +197,10 @@ for ds in $DATASETS; do
         longmemeval) [ -e "$LME_DATASET" ]  || { echo "[lumi] MISSING dataset: $LME_DATASET" >&2; exit 1; } ;;
         beam)        [ -e "$BEAM_DATASET" ] || { echo "[lumi] MISSING dataset: $BEAM_DATASET (or set DATASETS=\"longmemeval\")" >&2; exit 1; } ;;
         locomo)      [ -e "$LOCOMO_DATASET" ] || { echo "[lumi] MISSING dataset: $LOCOMO_DATASET" >&2; exit 1; } ;;
+        # T3a: without this arm a typo ("longmemval") matched nothing, passed
+        # preflight, booted 8 servers, and only then fell through the dispatch
+        # case at step 3 with rc=1 — an hour of allocation for a typo.
+        *)           echo "[lumi] REFUSING: unknown dataset '$ds' — expected one of: longmemeval beam locomo" >&2; exit 1 ;;
     esac
 done
 # The A7 smoke (step 2b) runs run_longmemeval_qa regardless of DATASETS, so a
@@ -198,9 +234,13 @@ server_pids=()
 for g in $(seq 0 $((NUM_CHAT_GCDS - 1))); do
     cport=$((CHAT_PORT_BASE + g))
     echo "[lumi] GCD $g: chat vLLM on port $cport ..."
+    # --max-model-len 32768: PIN the serving window (T2), same value as the
+    # reader job. This tree is --no-reader, but COMPRESSION drives these chat
+    # servers, and an implicit window is an unrecorded, drifting one.
     singularity exec -B "/scratch/$PROJ" "$VLLM_SIF" \
         bash -c "ROCR_VISIBLE_DEVICES=$g vllm serve '$CHAT_MODEL_PATH' \
-                 --served-model-name '$SERVED_CHAT' --port $cport --tensor-parallel-size 1" \
+                 --served-model-name '$SERVED_CHAT' --port $cport --tensor-parallel-size 1 \
+                 --max-model-len 32768" \
         > "$LOGS/vllm-chat-${SLURM_JOB_ID}-g${g}.log" 2>&1 &
     server_pids+=($!)
 done
@@ -256,7 +296,12 @@ served_name:           $SERVED_EMBED
 EMBED_MAX_INPUT_CHARS: 28000
 recorded:              $(date -u +%Y-%m-%dT%H:%M:%SZ) job ${SLURM_JOB_ID}
 EOF
-echo "[lumi] encoder pin written to $OUT_DIR/ENCODER_PIN.txt"
+# T5: ENCODER_PIN.txt is OVERWRITTEN by every job that writes into this tree,
+# so the pin describing the rows already in it is destroyed by the next job
+# that appends to them. Keep a per-job copy as well; the unsuffixed file stays
+# in place as the "latest" pointer everything downstream already reads.
+cp "$OUT_DIR/ENCODER_PIN.txt" "$OUT_DIR/ENCODER_PIN_${SLURM_JOB_ID}.txt"
+echo "[lumi] encoder pin written to $OUT_DIR/ENCODER_PIN.txt (+ ENCODER_PIN_${SLURM_JOB_ID}.txt)"
 
 if [ -z "${SKIP_A7_SMOKE:-}" ]; then
     echo "[lumi] A7 encoder-identity smoke (semantic policies, 1 example, no reader) ..."
@@ -266,6 +311,7 @@ if [ -z "${SKIP_A7_SMOKE:-}" ]; then
                  EMBED_BASE_URL='http://localhost:${EMBED_PORT}/v1' EMBED_API_KEY=sk-lumi EMBED_MODEL='$SERVED_EMBED' \
                  EXPECTED_EMBED_MODEL='$SERVED_EMBED' \
                  EMBED_MAX_INPUT_CHARS=28000 EMBED_CACHE_PATH='$EMB_CACHE_DIR/a7_smoke.sqlite' \
+                 GIT_COMMIT='$GIT_COMMIT' \
                  python -m forgetit.experiments.run_longmemeval_qa \
                    --policies semantic semantic_keep --limit 1 --no-reader \
                    --shard 0 --num-shards 1 --out-dir '$A7_SMOKE_DIR' --dense" \
@@ -289,6 +335,7 @@ run_dataset () {
                      EMBED_MAX_INPUT_CHARS=28000 \
                      EMBED_CACHE_PATH='$EMB_CACHE_DIR/${dataset}_shard_${i}.sqlite' \
                      LLM_CACHE_DIR='$LLM_CACHE_DIR' \
+                     GIT_COMMIT='$GIT_COMMIT' \
                      LLM_MAX_CONNECTIONS=$POOL EMBED_MAX_CONNECTIONS=$POOL \
                      python -m $module \
                        --shard $i --num-shards $NUM_SHARDS --out-dir '$OUT_DIR' \
@@ -317,9 +364,16 @@ for ds in $DATASETS; do
 done
 
 # ── 4. merge CSVs (adds policy_identity; warns on INCOMPLETE/RAGGED grids) ──────
-echo "[lumi] merging CSVs ..."
-singularity exec -B "/scratch/$PROJ,$REPO" "$CLIENT_SIF" \
-    bash -c "cd '$REPO' && PYTHONPATH='$REPO/src' python scripts/concat_results.py '$OUT_DIR'" || rc=1
+# T3e: only merge when every shard succeeded, matching run_lumi_reader_eval.sh.
+# A failed shard means an incomplete grid; a merged CSV over it looks
+# success-shaped and misleads. The next successful run redoes the merge.
+if [ "$rc" -eq 0 ]; then
+    echo "[lumi] merging CSVs ..."
+    singularity exec -B "/scratch/$PROJ,$REPO" "$CLIENT_SIF" \
+        bash -c "cd '$REPO' && PYTHONPATH='$REPO/src' python scripts/concat_results.py '$OUT_DIR'" || rc=1
+else
+    echo "[lumi] SKIPPING merge: one or more shards failed (rc=$rc) — resubmit to resume, merge runs on the clean pass"
+fi
 
 # ── 5. eviction-regret (offline) ────────────────────────────────────────────
 # VERIFIED (V5): the pass tolerates reader-off runs — the answer-survival tier

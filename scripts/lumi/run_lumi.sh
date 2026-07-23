@@ -35,6 +35,11 @@
 
 set -euo pipefail
 
+# T3d — SLURM_JOB_ID is unset off-cluster, and under `set -u` its FIRST use
+# (the vLLM log path below) aborts the script before anything can be checked.
+# Default it once, here.
+SLURM_JOB_ID="${SLURM_JOB_ID:-local-$$}"
+
 # ---- paths (EDIT) ----------------------------------------------------------
 REPO=/scratch/project_465XXXXXX/forget-it                       # EDIT: repo on scratch
 VLLM_SIF=/scratch/project_465XXXXXX/containers/vllm-rocm.sif     # EDIT: ROCm vLLM image
@@ -48,7 +53,10 @@ READER_WORKERS=8       # concurrent QA reader calls (two-pass) within a config
 # Total evidence window handed to the reader, whole items in retrieval-rank
 # order. Empty string = legacy context (5 items × 300 chars ≈ 375 tokens ≈ ONE
 # item), which abstains on gold that retrieval already found — don't.
-READER_TOKEN_BUDGET=1500
+# D-6: 16000. The earlier 1.5k budget measured k-list evidence delivery at
+# 0.4567 — session itemisers overflow it and gold still gets cut. 32k has no
+# headroom against the 32768 chat serving window pinned below.
+READER_TOKEN_BUDGET=16000
 # Instruction wrapper: v1 (legacy) forbids derivation and caps answers at one
 # sentence — combined/computed answers and ordered lists score as misses even
 # when the evidence was delivered. v2 permits both, keeps the exact-form IDK.
@@ -82,13 +90,32 @@ export TRANSFORMERS_OFFLINE=1
 mkdir -p logs "$REPO/artifacts"
 cd "$REPO"
 
+# ── git provenance stamp — resolved once, up front (T4) ─────────────────────
+# The Python stamping site prefers $GIT_COMMIT and falls back to resolving git
+# itself. Resolving here means a run is never stamped "unknown" just because
+# the worker's cwd or PATH differed from this shell's.
+GIT_COMMIT="$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || true)"
+if [ -n "$GIT_COMMIT" ] && [ -n "$(git -C "$REPO" status --porcelain 2>/dev/null)" ]; then
+    GIT_COMMIT="${GIT_COMMIT}-dirty"
+fi
+export GIT_COMMIT
+if [ -z "$GIT_COMMIT" ]; then
+    echo "[lumi] WARNING: no git commit resolvable in $REPO — rows may be stamped 'unknown'" >&2
+else
+    echo "[lumi] git_commit for this run: $GIT_COMMIT"
+fi
+
 # ---- 1. start vLLM in the background ---------------------------------------
+# --max-model-len 32768 PINS the serving window: READER_TOKEN_BUDGET above is
+# sized against this exact number, so it must not be left to the container's
+# default (which a rebuild can move without any record in the run).
 echo "[lumi] launching vLLM (ROCm) on port $PORT ($VLLM_PARALLEL) ..."
 apptainer exec --rocm "$VLLM_SIF" \
     vllm serve "$MODEL_PATH" \
         --served-model-name "$SERVED_NAME" \
         --host 0.0.0.0 --port "$PORT" \
         --api-key "$API_KEY" \
+        --max-model-len 32768 \
         $VLLM_PARALLEL \
     > "logs/vllm-${SLURM_JOB_ID}.log" 2>&1 &
 VLLM_PID=$!
@@ -140,8 +167,15 @@ for EXP in "${EXPERIMENTS[@]}"; do
 done
 
 # ---- 5. merge per-config CSVs (combined table has a `dataset` column) ------
-echo "[lumi] merging per-config CSVs ..."
-python scripts/concat_results.py "$REPO/artifacts/benchmark"
+# T3e: only merge when every shard succeeded, matching run_lumi_reader_eval.sh.
+# A failed shard means an incomplete grid; a merged CSV over it looks
+# success-shaped and misleads. The next successful run redoes the merge.
+if [ "$rc" -eq 0 ]; then
+    echo "[lumi] merging per-config CSVs ..."
+    python scripts/concat_results.py "$REPO/artifacts/benchmark" || rc=1
+else
+    echo "[lumi] SKIPPING merge: one or more shards failed (rc=$rc) — resubmit to resume, merge runs on the clean pass"
+fi
 
 echo "[lumi] done (shard exit status: $rc)."
 exit $rc

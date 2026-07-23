@@ -5,6 +5,7 @@ import hashlib
 import inspect
 import json
 import logging
+import os
 import subprocess
 import time
 from dataclasses import asdict
@@ -30,20 +31,49 @@ _git_commit_cache: str | None = None
 
 def _git_commit() -> str:
     """Short sha of HEAD, '-dirty' suffixed when the tree has changes.
-    Cached per process; 'unknown' outside a git checkout."""
+
+    Resolution order (T4):
+      1. ``$GIT_COMMIT`` — stamped by the job script OUTSIDE the container,
+         where a git binary and a .git directory are both known to exist.
+         INSIDE the container neither is guaranteed: the image need not carry
+         git, and the bind mount need not include .git. That is how whole runs
+         came to be stamped ``unknown``.
+      2. ``git`` in this checkout, as before.
+
+    Cached per process. Failing BOTH is a provenance hole — the rows cannot be
+    tied to any source state — so it is announced loudly, naming the exception,
+    instead of quietly writing ``unknown``.
+    """
     global _git_commit_cache
-    if _git_commit_cache is None:
-        try:
-            cwd = Path(__file__).resolve().parent
-            sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
-                                 capture_output=True, text=True, cwd=cwd,
-                                 timeout=10).stdout.strip()
-            dirty = subprocess.run(["git", "status", "--porcelain"],
-                                   capture_output=True, text=True, cwd=cwd,
-                                   timeout=10).stdout.strip()
-            _git_commit_cache = (sha + ("-dirty" if dirty else "")) if sha else "unknown"
-        except Exception:
-            _git_commit_cache = "unknown"
+    if _git_commit_cache is not None:
+        return _git_commit_cache
+
+    env_sha = (os.environ.get("GIT_COMMIT") or "").strip()
+    if env_sha:
+        _git_commit_cache = env_sha
+        return _git_commit_cache
+
+    try:
+        cwd = Path(__file__).resolve().parent
+        sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                             capture_output=True, text=True, cwd=cwd,
+                             timeout=10).stdout.strip()
+        if not sha:
+            raise RuntimeError(
+                "`git rev-parse --short HEAD` produced no output "
+                f"(cwd={cwd}) — not a git checkout, or git is absent")
+        dirty = subprocess.run(["git", "status", "--porcelain"],
+                               capture_output=True, text=True, cwd=cwd,
+                               timeout=10).stdout.strip()
+        _git_commit_cache = sha + ("-dirty" if dirty else "")
+    except Exception as exc:
+        log.warning(
+            "PROVENANCE HOLE: git_commit could not be resolved, so every row in "
+            "this run will be stamped 'unknown' and cannot be tied to a source "
+            "state. Cause: %s: %s. FIX: export GIT_COMMIT=$(git -C <repo> "
+            "rev-parse --short HEAD) in the job script, outside the container.",
+            type(exc).__name__, exc)
+        _git_commit_cache = "unknown"
     return _git_commit_cache
 
 
