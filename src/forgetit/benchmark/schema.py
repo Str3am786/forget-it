@@ -110,6 +110,12 @@ class EvalResult:
     # optional / future fields with defaults
     compressions: int = 0
 
+    # Oracle only. Count of evictions where every candidate was answer-bearing,
+    # so a gold sacrifice was compelled rather than chosen. Non-zero marks an
+    # example where the ceiling guarantee lapsed: see OraclePolicy's SCOPE OF
+    # THE CEILING. 0 for every other policy.
+    oracle_forced_gold_evictions: int = 0
+
     # Relative-budget config: budget_frac is the fraction of each example's own
     # footprint used as its byte cap (budget_bytes above is the resolved per-example
     # value). 0.0 means a fixed byte budget was used instead.

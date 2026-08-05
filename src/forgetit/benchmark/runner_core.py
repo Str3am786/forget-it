@@ -4,6 +4,8 @@ import json
 import logging
 import time
 
+from collections import Counter
+
 from forgetit.benchmark.workloads.base import Workload
 from forgetit.benchmark.schema import EvalResult, QueryEval, QAFields
 from forgetit.benchmark.metrics import EVAL_K_CURVE, ranking_columns
@@ -487,11 +489,19 @@ def run_one_example(
     # does not mark gold on every dataset (BEAM resolves gold per query).
     policy_obj = getattr(store, "policy", None)
     if getattr(policy_obj, "wants_gold_ids", False):
-        policy_obj.protected_ids = {
+        gold_counts: Counter[str] = Counter(
             gid for e in events
             if e.type == "query" and e.gold_item_ids
             for gid in e.gold_item_ids
-        }
+        )
+        policy_obj.protected_ids = set(gold_counts)
+        policy_obj.gold_counts = gold_counts
+        policy_obj.forced_gold_evictions = 0
+        # policy_obj.protected_ids = {
+        #     gid for e in events
+        #     if e.type == "query" and e.gold_item_ids
+        #     for gid in e.gold_item_ids
+        # }
 
     results: list[EvalResult] = []
     context_rows: list[tuple] = []
@@ -604,6 +614,10 @@ def run_one_example(
         if collect_reader_context:
             context_rows.append((result, event.query, base.retrieved,
                                  event.ref_answer, event.question_type))
+
+    forced = int(getattr(policy_obj, "forced_gold_evictions", 0))
+    for r in results:
+        r.oracle_forced_gold_evictions = forced
 
     event_rows: list[dict] = []
     if collect_events:
