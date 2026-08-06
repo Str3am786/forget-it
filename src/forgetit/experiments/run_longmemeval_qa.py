@@ -127,7 +127,7 @@ PolicySpec = tuple[str, Callable]      # (name, zero-arg factory)
 RetrieverSpec = tuple[str, Callable]   # (name, zero-arg factory)
 
 
-def default_policy_specs(llm, seed: int = 42) -> list[PolicySpec]:
+def default_policy_specs(llm, seed: int = 42, max_compress_bytes: int | None = None) -> list[PolicySpec]:
     """Zero-arg factories for every policy. Edit here to add/remove policies."""
     specs: list[PolicySpec] = [
         ("lru",            lambda: LRUPolicy()),
@@ -150,12 +150,15 @@ def default_policy_specs(llm, seed: int = 42) -> list[PolicySpec]:
         # normalized-regret ceiling, not an implementable policy:
         ("oracle",      lambda: OraclePolicy()),
     ]
-    # LLM-driven policies compress/evict via the model itself, so they need an
-    # endpoint even when the reader is disabled.  Skip them when llm is None
-    # (e.g. --no-reader) so retrieval-only runs need no inference server.
+    # LLM-driven policies need an endpoint even when the reader is disabled, so
+    # skip them when llm is None (--no-reader) → retrieval-only runs need no server.
     if llm is not None:
-        specs.append(("compression", lambda: LLMCompressionPolicy(llm=llm, selector=LFUPolicy())))
-        specs.append(("memorybank",  lambda: MemoryBankCompressionPolicy(llm=llm, selector=EbbinghausPolicy())))
+        specs.append(("compression", lambda: LLMCompressionPolicy(
+            llm=llm, selector=LFUPolicy(),
+            max_compress_bytes=max_compress_bytes)))
+        specs.append(("memorybank", lambda: MemoryBankCompressionPolicy(
+            llm=llm, selector=EbbinghausPolicy(),
+            max_compress_bytes=max_compress_bytes)))
     return specs
 
 
@@ -261,6 +264,9 @@ def parse_args() -> argparse.Namespace:
                    help="write gold_answer_snapshot.jsonl: original vs retained "
                         "text per (query, gold id) at final store state. Needed "
                         "to measure answer preservation under compression.")
+    p.add_argument("--compress-context-tokens", type=int, default=32_000,
+                   help="the compressor model's context window; items whose "
+                        "prompt would not fit are skipped rather than sent.")
     p.add_argument("--workers", type=int, default=1,
                    help="Replay this many EXAMPLES concurrently within a config (thread "
                         "pool). Each example gets its own fresh, isolated store, so the "
@@ -329,6 +335,7 @@ def main() -> None:
 
     # The reader is the only thing that needs an LLM endpoint; skip it for
     # pure retrieval/eviction runs (e.g. while debugging policies on LUMI).
+    seed = 42
     if args.no_reader:
         llm = None
         reader_impl = None
@@ -369,7 +376,10 @@ def main() -> None:
     # Policies first, then filter — we need the *selected* policy set to decide
     # whether an embedder is required (a content-aware policy needs item vectors
     # even under BM25 retrieval, so the embedder is not a dense-only concern).
-    policy_specs = default_policy_specs(llm, seed=42)
+    max_compress_bytes = (args.compress_context_tokens - 512) * 4
+
+    policy_specs = default_policy_specs(llm, seed=seed,
+                                        max_compress_bytes=max_compress_bytes)
     if args.policies is not None:
         want = set(args.policies)
         policy_specs = [s for s in policy_specs if s[0] in want]

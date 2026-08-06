@@ -101,6 +101,7 @@ class LLMCompressionPolicy(EvictionPolicy):
         max_tokens: int = 128,
         min_saving_ratio: float = 0.5,
         min_compress_bytes: int = 200,
+        max_compress_bytes: int | None = None,
         prompt_template: str = _COMPRESS_PROMPT,
     ) -> None:
         # Lazy import keeps the policy package free of import-order surprises.
@@ -113,6 +114,14 @@ class LLMCompressionPolicy(EvictionPolicy):
         self.max_tokens = max_tokens
         self.min_saving_ratio = min_saving_ratio
         self.min_compress_bytes = min_compress_bytes
+        # Upper bound mirroring the lower one. An item whose prompt exceeds the
+        # model's context window cannot be compressed: the call raises and the
+        # handler below evicts, so the policy degrades to its evict selector on
+        # that whole input class. 90% of BEAM's batch-level items are 50k-98k
+        # tokens against a 32k window, so `compression` there was LFU eviction
+        # for an entire campaign, and the only trace was a log line. Set this
+        # from the wired model's window; None keeps the previous behaviour.
+        self.max_compress_bytes = max_compress_bytes
         self.prompt_template = prompt_template
 
     def select_action(self, store: RetentionManager) -> Evict | Compress:
@@ -124,8 +133,11 @@ class LLMCompressionPolicy(EvictionPolicy):
         # Everything resident is already compressed and we're still over budget:
         # last resort — delete the least-useful item.
         victim_id = self.evict_selector.select_victim(store)
-        # Surface the selector's decision provenance as our own (event logging).
-        self.last_decision = getattr(self.evict_selector, "last_decision", None)
+        # COPY the selector's provenance rather than aliasing it: we annotate
+        # below, and mutating the selector's own dict would corrupt its state.
+        sel = getattr(self.evict_selector, "last_decision", None)
+        self.last_decision = dict(sel) if sel else {}
+        self._annotate_decision(action="evict", outcome="all_compressed")
         log.info("[compress] all resident items compressed → EVICT least-useful %s", victim_id)
         return Evict(id=victim_id)
 
@@ -133,12 +145,14 @@ class LLMCompressionPolicy(EvictionPolicy):
         self, store: RetentionManager, uncompressed: set[str]
     ) -> Evict | Compress:
         victim_id = self.compress_selector.select_victim(store, candidates=uncompressed)
-        # Surface the selector's decision provenance as our own (event logging).
-        self.last_decision = getattr(self.compress_selector, "last_decision", None)
+        # COPY, not alias — see _annotate_decision and the evict phase above.
+        sel = getattr(self.compress_selector, "last_decision", None)
+        self.last_decision = dict(sel) if sel else {}
 
         record = store.backend.get(victim_id)
         if record is None:
             log.info("[compress] %s vanished before compression → EVICT", victim_id)
+            self._annotate_decision(action="compress", outcome="vanished")
             return Evict(id=victim_id)
 
         # Compression only rewrites the text, so every decision here is measured
@@ -151,6 +165,17 @@ class LLMCompressionPolicy(EvictionPolicy):
             # budget loop still makes progress.
             log.info("[compress] %s too small to compress (%dB text < %dB floor) → EVICT",
                      victim_id, original_text_bytes, self.min_compress_bytes)
+            self._annotate_decision(action="compress", outcome="too_small",
+                                    orig_bytes=original_text_bytes)
+            return Evict(id=victim_id)
+
+        if self.max_compress_bytes is not None and original_text_bytes > self.max_compress_bytes:
+            # Declared skip, not a thrown call: same eviction, but countable,
+            # and it stops spending an unservable request per decision.
+            log.info("[compress] %s too large to compress (%dB text > %dB ceiling) → EVICT",
+                     victim_id, original_text_bytes, self.max_compress_bytes)
+            self._annotate_decision(action="compress", outcome="too_large",
+                                    orig_bytes=original_text_bytes)
             return Evict(id=victim_id)
 
         prompt = self.prompt_template.format(text=record.text)
@@ -165,7 +190,11 @@ class LLMCompressionPolicy(EvictionPolicy):
             with phase("compress_llm"):
                 raw = self.llm.generate(prompt, max_tokens=self.max_tokens, temperature=0.0)
         except Exception as e:
-            log.warning("[compress] %s LLM error → EVICT: %s", victim_id, e)
+            log.warning("[compress] %s LLM error (%s) → EVICT: %s",
+                        victim_id, type(e).__name__, e)
+            self._annotate_decision(action="compress", outcome="llm_error",
+                                    orig_bytes=original_text_bytes,
+                                    error=type(e).__name__)
             return Evict(id=victim_id)
 
         compressed = _sanitise(raw)
@@ -182,8 +211,20 @@ class LLMCompressionPolicy(EvictionPolicy):
             log.info("[compress] %s REJECT %dB→%dB text saving=%.0f%% (need ≥%.0f%%) → EVICT",
                      victim_id, original_text_bytes, compressed_bytes,
                      100 * saving, 100 * self.min_saving_ratio)
+            self._annotate_decision(
+                action="compress",
+                outcome="empty_output" if not compressed else "low_saving",
+                orig_bytes=original_text_bytes, out_bytes=compressed_bytes,
+                raw_bytes=len(raw.encode("utf-8")))
             return Evict(id=victim_id)
 
         log.info("[compress] %s APPLY %dB→%dB text saving=%.0f%% (kept, marked compressed)",
                  victim_id, original_text_bytes, compressed_bytes, 100 * saving)
+        # raw_bytes vs out_bytes separates what the model produced from what
+        # survived _sanitise: with max_tokens=128 a truncated generation ends
+        # mid-clause and the trailing-fragment rule deletes it, silently.
+        self._annotate_decision(action="compress", outcome="applied",
+                                orig_bytes=original_text_bytes,
+                                out_bytes=compressed_bytes,
+                                raw_bytes=len(raw.encode("utf-8")))
         return Compress(id=victim_id, new_text=compressed)

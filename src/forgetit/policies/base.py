@@ -29,6 +29,24 @@ class EvictionPolicy(ABC):
             "policy_score": float(score),
             "candidate_count": int(candidate_count),
         }
+     
+    def _annotate_decision(self, **fields) -> None:
+        """Attach action-specific detail to the decision already noted.
+ 
+        ``_note_decision`` records what every policy has: the score and the
+        candidate count. A DELIBERATING policy also has an outcome — compress
+        applied, or rejected and why; Prune will have its own — and that is a
+        property of the decision, not of the query rows the example later
+        produces. RetentionManager spreads ``last_decision`` into the evict and
+        decision events (custom_manager._do_evict / _do_step), so anything added
+        here reaches events.jsonl with no schema change and no per-policy
+        columns on EvalResult.
+        """
+        if self.last_decision is None:
+            self.last_decision = {}
+        self.last_decision.update(fields)
+ 
+
 
 class SimpleEvictionPolicy(EvictionPolicy):
     """Base for delete-only policies"""
