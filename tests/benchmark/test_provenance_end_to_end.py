@@ -176,7 +176,8 @@ def test_concurrent_pipeline_stamps_every_row(tmp_path):
         dataset=CFG["dataset"], itemiser=CFG["itemiser"],
         store_label=CFG["store_label"], reader=reader.name, k=CFG["k"],
         seed=CFG["seed"], budget_bytes=CFG["budget_bytes"], budget_frac=0.0,
-        answer_max_tokens=128, n_examples=2, write_events=False)
+        answer_max_tokens=128, n_examples=2, write_events=False,
+        write_gold_snapshot=False)
     _assert_provenance(rows, expected_hash)
 
 
