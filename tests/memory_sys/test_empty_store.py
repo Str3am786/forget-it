@@ -36,7 +36,7 @@ def test_run_one_example_floor_rows():
     assert row.policy == "empty_store_floor"
     assert row.store == "floor/empty_store"
     assert row.introspectable is True          # zeros are real, not sentinels
-    assert row.gold_survived is False
+    assert row.gold_id_retained is False
     assert row.hit_at_k == 0.0
     assert row.n_retrieved == 0
     assert row.used_bytes_end == 0

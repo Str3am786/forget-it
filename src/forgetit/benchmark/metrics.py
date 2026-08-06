@@ -121,7 +121,7 @@ def grid_raggedness(cells_by_identity: dict[str, set]) -> list[str]:
     return lines
 
 
-def censored_bounds_row(gold_ranks: list[int], n_gold: int, gold_survived: bool,
+def censored_bounds_row(gold_ranks: list[int], n_gold: int, gold_id_retained: bool,
                         introspectable: bool, depth: int = 10) -> dict[str, float]:
     """Interval bounds for LEGACY (depth-censored) rows.
 
@@ -133,7 +133,7 @@ def censored_bounds_row(gold_ranks: list[int], n_gold: int, gold_survived: bool,
     uncensored rows — their gold_rank_best is exact.
     """
     ranks = [r for r in (gold_ranks or []) if r <= depth]
-    if not (introspectable and gold_survived):
+    if not (introspectable and gold_id_retained):
         return {"legacy_censored": float("nan"),
                 "gold_rank_best_lo": float("nan"), "gold_rank_best_hi": float("nan")}
     if ranks:      # best rank observed within depth → exact
@@ -225,7 +225,7 @@ def recall_at(results: list[EvalResult], k: int) -> float:
 
 
 def hit_at_given_retained(results: list[EvalResult], k: int) -> float:
-    """Hit@k conditioned on the gold item still being resident (gold_survived).
+    """Hit@k conditioned on the gold item still being resident (gold_id_retained).
 
     This is the star metric: plain Hit@k conflates two failures — the policy
     evicted the gold, and the retriever missed gold that was still there.
@@ -234,7 +234,7 @@ def hit_at_given_retained(results: list[EvalResult], k: int) -> float:
     forgetting cost; the level of this one is the retriever's quality.
     NaN when nothing survived (can't measure retrieval over an empty kept set).
     """
-    retained = [r for r in results if r.introspectable and r.gold_survived]
+    retained = [r for r in results if r.introspectable and r.gold_id_retained]
     if not retained:
         return float("nan")
     return sum(_row_hit_at(r, k) for r in retained) / len(retained)
@@ -279,7 +279,7 @@ def gold_survival_rate(results: list[EvalResult]) -> float:
     introspectable = _introspectable(results)
     if not introspectable:
         return 0.0
-    return sum(1.0 for r in introspectable if r.gold_survived) / len(introspectable)
+    return sum(1.0 for r in introspectable if r.gold_id_retained) / len(introspectable)
 
 
 def useful_byte_fraction(results: list[EvalResult]) -> float:
@@ -305,7 +305,7 @@ def hit_at_k(results: list[EvalResult]) -> float:
 def hit_at_k_given_retained(results: list[EvalResult]) -> float:
     # Only meaningful for introspectable rows — for opaque stores we can't
     # tell whether the gold item is still resident.
-    retained = [r for r in results if r.introspectable and r.gold_survived]
+    retained = [r for r in results if r.introspectable and r.gold_id_retained]
     if not retained:
         return 0.0
     return sum(r.hit_at_k for r in retained) / len(retained)
@@ -527,7 +527,7 @@ def _row_rank_pct(r: EvalResult) -> float:
     """Per-row gold rank-percentile, conditioned on retention (NaN otherwise)."""
     ranks = _gold_ranks(r)
     n_res = getattr(r, "n_residents", 0) or 0
-    if not (getattr(r, "introspectable", False) and getattr(r, "gold_survived", False)
+    if not (getattr(r, "introspectable", False) and getattr(r, "gold_id_retained", False)
             and ranks and n_res > 0):
         return float("nan")
     return rank_percentile(min(ranks), n_res)

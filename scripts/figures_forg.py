@@ -12,7 +12,7 @@ Import and call from a notebook cell, or run as a script to dump PNGs:
 Figures:
   1. loss funnel              — retention / retrieval / reading / answered
   2. reading loss by qtype    — abstain-despite-retrieval per question type
-  3. policy comparison        — gold_survived & hit@k by policy (pressured rows only)
+  3. policy comparison        — gold_id_retained & hit@k by policy (pressured rows only)
   4. pressure diagnostic      — per-example evictions (and inserts if present); the
                                 HONEST per-example signal, not the cumulative odometer
   5. byte composition         — useful vs non-gold bytes by budget
@@ -73,7 +73,7 @@ def load_results(path: str | Path | None = None) -> pd.DataFrame:
                  Path("../artifacts/10-05-results/combined_results.csv")]
         path = next((p for p in cands if p.exists()), cands[0])
     df = pd.read_csv(path)
-    for col in ("gold_survived", "abstained"):
+    for col in ("gold_id_retained", "abstained"):
         if col in df.columns:
             df[col] = df[col].astype(bool)
     # unify the byte-cost column name (rename landed or not)
@@ -84,7 +84,7 @@ def load_results(path: str | Path | None = None) -> pd.DataFrame:
 
 def _masks(df: pd.DataFrame) -> dict:
     """Mirror the notebook (cells 11/13) exactly so figures match the tables."""
-    survived  = df["gold_survived"].astype(bool)
+    survived  = df["gold_id_retained"].astype(bool)
     retrieved = survived & (df["hit_at_k"] == 1.0)
     answered  = retrieved & ~df["abstained"].astype(bool)
     reading   = retrieved & df["abstained"].astype(bool)
@@ -178,14 +178,14 @@ def fig_policy_comparison(df: pd.DataFrame, ax=None):
         warnings.warn("fig_policy_comparison: multi-retriever frame without "
                       "policy_identity — name-level averages mix coupled "
                       "identities (run scripts/concat_results.py first).")
-    g = (P.groupby(key)[["gold_survived", "hit_at_k"]].mean()
-           .sort_values("gold_survived", ascending=False))
+    g = (P.groupby(key)[["gold_id_retained", "hit_at_k"]].mean()
+           .sort_values("gold_id_retained", ascending=False))
     if ax is None:
         _, ax = plt.subplots(figsize=(6.5, 3.6))
     x = np.arange(len(g)); w = 0.38
-    ax.bar(x - w / 2, g["gold_survived"], w, label="gold survived", color=C["a"])
+    ax.bar(x - w / 2, g["gold_id_retained"], w, label="gold survived", color=C["a"])
     ax.bar(x + w / 2, g["hit_at_k"], w, label="hit@k", color=C["b"])
-    for xi, (gs, hk) in enumerate(zip(g["gold_survived"], g["hit_at_k"])):
+    for xi, (gs, hk) in enumerate(zip(g["gold_id_retained"], g["hit_at_k"])):
         ax.text(xi - w / 2, gs + 0.01, f"{gs:.2f}", ha="center", fontsize=8)
         ax.text(xi + w / 2, hk + 0.01, f"{hk:.2f}", ha="center", fontsize=8)
     ax.set_xticks(x); ax.set_xticklabels(g.index)

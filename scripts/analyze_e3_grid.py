@@ -50,7 +50,7 @@ MIN_CLUSTERS_FOR_BCA = 8
 def conversation_survival(out_dir: Path, label: str) -> pd.Series:
     df = pd.read_csv(config_dir(out_dir, label) / "results.csv")
     conv = df["query_id"].str.split("::").str[0]
-    return df.assign(conv=conv).groupby("conv")["gold_survived"].mean()
+    return df.assign(conv=conv).groupby("conv")["gold_id_retained"].mean()
 
 
 def cluster_ci(values: np.ndarray, seed: int = 0) -> dict:

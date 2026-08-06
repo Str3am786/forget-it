@@ -13,7 +13,7 @@ def _row() -> EvalResult:
     return EvalResult(
         dataset="d", query_id="q", policy="p", budget_bytes=0,
         k=5, itemiser="i", retriever="r", reader="none", seed=0,
-        gold_survived=True, useful_byte_fraction=0.0, non_gold_byte_fraction=0.0,
+        gold_id_retained=True, useful_byte_fraction=0.0, non_gold_byte_fraction=0.0,
         evictions_total_at_query_time=0, compressions=0,
         hit_at_k=0.0, hit_at_k_given_retained=0.0, mrr=0.0,
         used_bytes_end=0, latency_sec=0.0, introspectable=True, store="s",

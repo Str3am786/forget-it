@@ -175,7 +175,7 @@ def check_independent_recount(config_dir: Path) -> dict:
             gold_by_query[e["query_id"]] = e["gold_ids"]
             survived_by_query[e["query_id"]] = any(g in resident for g in e["gold_ids"])
     merged = df[df["query_id"].isin(survived_by_query)]
-    mism = int((merged["gold_survived"].astype(bool)
+    mism = int((merged["gold_id_retained"].astype(bool)
                 != merged["query_id"].map(survived_by_query)).sum())
     return {"ok": mism == 0 and len(merged) == len(df),
             "rows": len(df), "rows_recounted": len(merged), "mismatches": mism}
@@ -183,7 +183,7 @@ def check_independent_recount(config_dir: Path) -> dict:
 
 def check_window_prediction(blind_history_dir: Path) -> dict:
     """Per query: gold ∈ trailing budget-byte window (FIFO replay of inserts +
-    budget alone) must equal the measured gold_survived."""
+    budget alone) must equal the measured gold_id_retained."""
     df = pd.read_csv(blind_history_dir / "results.csv")
     predictions: dict[str, bool] = {}
     for ex in split_examples(load_events(blind_history_dir)):
@@ -197,7 +197,7 @@ def check_window_prediction(blind_history_dir: Path) -> dict:
             if e.get("name") == "gold":
                 predictions[e["query_id"]] = any(g in resident for g in e["gold_ids"])
     merged = df[df["query_id"].isin(predictions)]
-    mism = int((merged["gold_survived"].astype(bool)
+    mism = int((merged["gold_id_retained"].astype(bool)
                 != merged["query_id"].map(predictions)).sum())
     return {"ok": mism == 0 and len(merged) == len(df),
             "rows": len(df), "mismatches": mism,

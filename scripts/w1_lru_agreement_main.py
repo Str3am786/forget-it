@@ -131,7 +131,7 @@ def pipeline_lru_survival(trace, *, k: int) -> tuple[float, int]:
         store.close()
     if not results:
         raise RuntimeError("pipeline produced no scored rows")
-    surv = sum(1 for r in results if r.gold_survived) / len(results)
+    surv = sum(1 for r in results if r.gold_id_retained) / len(results)
     n_res = int(getattr(results[-1], "n_residents", 0) or 0)
     return surv, n_res
 

@@ -108,7 +108,7 @@ class TestOracleThroughRunner:
         assert "gold" in set(store.iter_ids()), "oracle must keep the OLDEST item alive"
         assert store.policy.forced_gold_evictions == 0
         assert len(results) == 1
-        assert results[0].gold_survived is True
+        assert results[0].gold_id_retained is True
 
     def test_streaming_run_refuses_wants_gold_ids(self):
         class OneShotWorkload:

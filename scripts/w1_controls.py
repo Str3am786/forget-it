@@ -4,7 +4,7 @@ Emits the EXACT production event schema (WorkloadEvent insert/query streams,
 probe queries stamped ``meta={"probe": True}`` with ``::probe::`` ids, scored
 queries carrying gold labels) so the REAL pipeline (run_one_example →
 RetentionManager → retriever) replays them unmodified. Retention stage only:
-scored queries exist to read ``gold_survived`` — no reader.
+scored queries exist to read ``gold_id_retained`` — no reader.
 
 Design (all workloads): N items of EQUAL size (size-CV = 0, so size policies
 are inert and the history axis is isolated), inserted in order; access-only

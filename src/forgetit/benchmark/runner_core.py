@@ -60,7 +60,7 @@ class _StoreView:
     @property
     def introspectable(self) -> bool:
         """
-        True iff we can enumerate resident items.  Needed for gold_survived,
+        True iff we can enumerate resident items.  Needed for gold_id_retained,
         useful_byte_fraction, and non_gold_byte_fraction.  Opaque stores report False
         and the runner falls back to retrieval-only metrics.
         """
@@ -313,7 +313,7 @@ def _evaluate_scored_query(
     Compute retrieval metrics for one scored query.
 
     For introspectable stores we compute the full metric set including
-    gold_survived, useful_byte_fraction, non_gold_byte_fraction.  For opaque stores
+    gold_id_retained, useful_byte_fraction, non_gold_byte_fraction.  For opaque stores
     those are set to sentinel values and ``introspectable=False`` on the
     output row — don't average them across store types without filtering.
     """
@@ -323,7 +323,7 @@ def _evaluate_scored_query(
         retained = view.retained_ids()
         n_residents = len(retained)
         survived_gold = gold_ids & retained
-        gold_survived = len(survived_gold) > 0
+        gold_id_retained = len(survived_gold) > 0
 
         gold_bytes = 0
         for gid in survived_gold:
@@ -332,7 +332,7 @@ def _evaluate_scored_query(
                 gold_bytes += rec.bytes if rec.bytes > 0 else _safe_bytes(rec.text)
     else:
         # Opaque store: we can't tell what survived.  Set sentinels.
-        gold_survived = False   # "unknown unless measured"
+        gold_id_retained = False   # "unknown unless measured"
         gold_bytes = 0
         n_residents = 0         # sentinel: resident count unknown
 
@@ -372,11 +372,11 @@ def _evaluate_scored_query(
     # Back-compat scalars: hit at the configured k, MRR over the eval depth.
     hit = 1.0 if any(r <= k for r in gold_ranks) else 0.0
     # For opaque stores we can't condition on survival, so this collapses to hit.
-    hit_given_retained = hit if (gold_survived or not introspectable) else float('nan')
+    hit_given_retained = hit if (gold_id_retained or not introspectable) else float('nan')
     mrr = (1.0 / gold_ranks[0]) if gold_ranks else 0.0
 
     return QueryEval(
-        gold_survived=gold_survived,
+        gold_id_retained=gold_id_retained,
         useful_byte_fraction=ubf,
         non_gold_byte_fraction=non_gold,
         evictions_total_at_query_time=view.event_count("evict"),
@@ -451,7 +451,7 @@ def run_one_example(
       - Cumulative odometers (``evictions_total_at_query_time``, ``compressions``)
         are naturally per-example here because the store is fresh — which is the
         honest per-example number, not the run-wide odometer the serial path
-        reports. The retrieval metrics (gold_survived/hit_at_k/mrr/used_bytes_end)
+        reports. The retrieval metrics (gold_id_retained/hit_at_k/mrr/used_bytes_end)
         are identical to the serial path.
 
     Returns ``(results, context_rows, event_rows)``:
@@ -575,7 +575,7 @@ def run_one_example(
             retriever=retriever_name,
             reader=reader_name,
             seed=seed,
-            gold_survived=base.gold_survived,
+            gold_id_retained=base.gold_id_retained,
             useful_byte_fraction=base.useful_byte_fraction,
             non_gold_byte_fraction=base.non_gold_byte_fraction,
             evictions_total_at_query_time=base.evictions_total_at_query_time,
@@ -606,7 +606,7 @@ def run_one_example(
             store=store_label,
             introspectable=base.introspectable,
             **ranking_columns(base.gold_ranks, base.n_gold,
-                              base.introspectable, base.gold_survived,
+                              base.introspectable, base.gold_id_retained,
                               base.n_residents),
         )
         results.append(result)
@@ -802,7 +802,7 @@ def run(
 
         # For opaque stores, "SURVIVED/EVICTED" is just noise.  Show a hyphen.
         if base.introspectable:
-            survived_tag = "SURVIVED" if base.gold_survived else "EVICTED"
+            survived_tag = "SURVIVED" if base.gold_id_retained else "EVICTED"
         else:
             survived_tag = "OPAQUE  "
         hit_tag = "HIT" if base.hit_at_k > 0 else "MISS"
@@ -841,7 +841,7 @@ def run(
                 retriever=retriever_name,
                 reader=reader_name,
                 seed=seed,
-                gold_survived=base.gold_survived,
+                gold_id_retained=base.gold_id_retained,
                 useful_byte_fraction=base.useful_byte_fraction,
                 non_gold_byte_fraction=base.non_gold_byte_fraction,
                 evictions_total_at_query_time=base.evictions_total_at_query_time,
@@ -872,7 +872,7 @@ def run(
                 store=store_label,
                 introspectable=base.introspectable,
                 **ranking_columns(base.gold_ranks, base.n_gold,
-                                  base.introspectable, base.gold_survived,
+                                  base.introspectable, base.gold_id_retained,
                                   base.n_residents),
             )
         )
@@ -906,7 +906,7 @@ def run(
     if n > 0:
         avg_hit = sum(r.hit_at_k for r in results) / n
         avg_mrr = sum(r.mrr for r in results) / n
-        survival = sum(1 for r in results if r.gold_survived) / n
+        survival = sum(1 for r in results if r.gold_id_retained) / n
         log.info(
             "═══ Done ═══  store=%s  queries=%d (scored=%d, skipped=%d)  "
             "inserts=%d  gold_survival=%.1f%%  hit@%d=%.1f%%  mrr=%.3f  "

@@ -12,7 +12,7 @@ no LLM in the eviction path and are therefore deterministic:
 
   1. EXACT EQUIVALENCE  — serial run() vs the concurrent driver (example_workers=1
      and example_workers=N) must produce identical per-query
-     gold_survived / hit_at_k / mrr / used_bytes_end. Any diff is a refactor bug.
+     gold_id_retained / hit_at_k / mrr / used_bytes_end. Any diff is a refactor bug.
      (The cumulative odometer evictions_total_at_query_time legitimately differs:
      it's run-wide in the serial path and per-example — the honest number — in the
      concurrent path, so it is excluded from the equality check by design.)
@@ -48,7 +48,7 @@ _BUDGET_SENTINEL = 1 << 62
 
 # Fields that MUST match exactly between serial and concurrent (the science).
 # evictions_total_at_query_time is intentionally excluded — see module docstring.
-_EQ_FIELDS = ("gold_survived", "hit_at_k", "mrr", "used_bytes_end",
+_EQ_FIELDS = ("gold_id_retained", "hit_at_k", "mrr", "used_bytes_end",
               "useful_byte_fraction", "non_gold_byte_fraction")
 
 # STATELESS policies read recency/frequency/age straight off the records and hold

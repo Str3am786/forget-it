@@ -15,7 +15,7 @@ def _row(policy: str, retriever: str, hit: float) -> EvalResult:
     return EvalResult(
         dataset="synthetic", query_id=f"{policy}-{retriever}-{hit}",
         policy=policy, budget_bytes=100, itemiser="t", retriever=retriever,
-        reader="none", seed=0, k=5, gold_survived=True,
+        reader="none", seed=0, k=5, gold_id_retained=True,
         useful_byte_fraction=0.0, non_gold_byte_fraction=0.0,
         evictions_total_at_query_time=0, hit_at_k=hit,
         hit_at_k_given_retained=hit, mrr=hit, used_bytes_end=0,

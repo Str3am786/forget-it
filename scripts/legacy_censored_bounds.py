@@ -48,13 +48,9 @@ def main() -> int:
         return 2
 
     bounds = [
-        censored_bounds_row(
-            json.loads(row.get("gold_ranks", "[]") or "[]"),
-            int(row.get("n_gold", 0) or 0),
-            str(row.get("gold_survived", "")).lower() == "true",
-            str(row.get("introspectable", "")).lower() == "true",
-            depth=args.depth,
-        )
+        censored_bounds_row(json.loads(row.get("gold_ranks", "[]") or "[]"), int(row.get("n_gold", 0) or 0),
+                            str(row.get("gold_id_retained", "")).lower() == "true",
+                            str(row.get("introspectable", "")).lower() == "true", depth=args.depth)
         for _, row in df.iterrows()
     ]
     out_df = pd.concat([df, pd.DataFrame(bounds, index=df.index)], axis=1)

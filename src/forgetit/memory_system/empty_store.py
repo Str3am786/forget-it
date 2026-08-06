@@ -16,7 +16,7 @@ class EmptyStore:
 
     ``insert`` is a no-op (ingestion skipped for speed — nothing to index,
     no eviction path to simulate), and ``retrieve`` returns []. The store is
-    introspectable on purpose (iter_ids/get), so ``gold_survived=False`` and
+    introspectable on purpose (iter_ids/get), so ``gold_id_retained=False`` and
     the byte fractions are real zeros rather than opaque-store sentinels.
     """
 

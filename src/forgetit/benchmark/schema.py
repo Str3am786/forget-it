@@ -22,7 +22,7 @@ class WorkloadEvent:
 @dataclass
 class QueryEval:
     """Retrieval-layer evaluation for a single scored query."""
-    gold_survived: bool
+    gold_id_retained: bool
     useful_byte_fraction: float
     non_gold_byte_fraction: float
     evictions_total_at_query_time: int
@@ -93,7 +93,7 @@ class EvalResult:
     k: int
 
     # policy verdict
-    gold_survived: bool
+    gold_id_retained: bool
     useful_byte_fraction: float
     non_gold_byte_fraction: float          # 1 - useful_byte_fraction (non-gold share of used bytes)
     evictions_total_at_query_time: int     # cumulative over the whole run (odometer, not per-query)
@@ -212,7 +212,7 @@ class EvalResult:
     # "letta/qwen2.5".  Default "" keeps old analyses working.
     store: str = ""
 
-    # True if gold_survived / useful_byte_fraction / non_gold_byte_fraction /
+    # True if gold_id_retained / useful_byte_fraction / non_gold_byte_fraction /
     # evictions_total_at_query_time / compressions reflect real measurements.  False for
     # opaque stores where those fields carry sentinel values only.
     introspectable: bool = False

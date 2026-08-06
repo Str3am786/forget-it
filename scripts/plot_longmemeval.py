@@ -5,7 +5,7 @@ only so the two defects below stay on the record; it is NOT a plotting utility
 for any run in this repository.
 
 DEFECT 1 — SCHEMA MISMATCH. It reads columns the results CSV does not have:
-  * ``gold_retained``  — the schema field is ``gold_survived`` (schema.py:25).
+  * ``gold_retained``  — the schema field is ``gold_id_retained`` (schema.py:25).
     ``gold_retained`` appears nowhere in ``src/forgetit``.
   * ``question_id``    — the per-row id column is ``query_id`` (schema.py:86);
     ``question_id`` is a raw LongMemEval dataset key, never a results column.
@@ -40,7 +40,7 @@ import matplotlib.pyplot as plt
 _DEPRECATION_NOTICE = """\
 scripts/plot_longmemeval.py is DEPRECATED (R-4) and will not run.
   * it reads 'gold_retained' / 'question_id', which are not results columns
-    (the schema has 'gold_survived' / 'query_id')
+    (the schema has 'gold_id_retained' / 'query_id')
   * it pools over itemiser and retriever, which can reverse policy orderings
 Read the module docstring before doing anything with this file. Nothing here
 should be repaired — build the analysis-phase tables instead.
