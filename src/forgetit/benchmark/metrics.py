@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from collections import defaultdict
 from itertools import groupby
 
@@ -78,11 +79,42 @@ HISTORY_POLICIES = frozenset({
 })
 
 
-def coupled_identity(policy: str, retriever: str) -> str:
+_SEED_SUFFIX = re.compile(r"_s\d+$")
+
+
+def canonical_policy(policy: str) -> str:
+    """``random_s47`` -> ``random``. Seeds are REPLICATES OF ONE POLICY.
+
+    Left as distinct names the ten seeds of the stochastic control occupy ten
+    of the roster's twenty-three entries, so every pooled per-policy average,
+    mean rank and rank matrix gives the blind baseline ~43% of the weight and
+    drags the ranking toward it. No roster policy ends in ``_s<digits>``, so
+    the suffix is unambiguous.
+
+    NOT for existence claims. Each seed is a separate deterministic run, so a
+    bound violation by ANY seed is a real counterexample; averaging first turns
+    ten booleans into a fraction and either manufactures violations against a
+    boolean reference or hides them. Collapse for REPORTING, keep separate for
+    per-run assertions.
+    """
+    return _SEED_SUFFIX.sub("", (policy or "").strip())
+
+
+def coupled_identity(policy: str, retriever: str, *,
+                     collapse_seeds: bool = True) -> str:
     """Aggregation identity: ``policy×retriever`` for history policies (whose
     state is formed by the ingest retriever's probe hits), plain ``policy``
-    for retriever-independent ones (fifo/random/size/semantic/oracle)."""
+    for retriever-independent ones (fifo/random/size/semantic/oracle).
+
+    Seeded replicates collapse to their policy by default (see
+    :func:`canonical_policy`). Pass ``collapse_seeds=False`` where per-run
+    resolution is the point — the raggedness gate needs it, because a merge in
+    which one seed covers forty cells and another ninety-six is unequal support
+    that the collapsed view cannot see.
+    """
     p = (policy or "").strip()
+    if collapse_seeds:
+        p = canonical_policy(p)
     if p.lower() in HISTORY_POLICIES:
         return f"{p}×{(retriever or '').strip()}"
     return p

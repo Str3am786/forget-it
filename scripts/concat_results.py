@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Concatenate the per-config CSVs produced by a (possibly sharded) benchmark run.
 
@@ -72,9 +73,7 @@ def concat(root: Path, out_dir: Path) -> None:
 
     results = sorted(root.rglob("results.csv"))
     summaries = sorted(root.rglob("summary.csv"))
-    snapshots = sorted(root.rglob("gold_answer_snapshot.jsonl"))
-    print(f"found {len(results)} results.csv, {len(summaries)} summary.csv and "
-          f"{len(snapshots)} gold_answer_snapshot.jsonl under {root}")
+    print(f"found {len(results)} results.csv and {len(summaries)} summary.csv under {root}")
 
     if results:
         frames = [_add_policy_identity(pd.read_csv(p)) for p in results]
@@ -106,8 +105,12 @@ def concat(root: Path, out_dir: Path) -> None:
             cells_by_identity: dict[str, set] = {}
             sub = combined[combined["policy"].notna() & (combined["policy"] != "floor")]
             for _, row in sub.iterrows():
+                # collapse_seeds=False: the gate's job is unequal support,
+                # and a merge where one seed covers part of the grid is exactly
+                # that. The collapsed identity would hide it behind the union.
                 ident = coupled_identity(str(row["policy"]),
-                                         str(row.get("retriever", "") or ""))
+                                         str(row.get("retriever", "") or ""),
+                                         collapse_seeds=False)
                 cell = (row["dataset"], row["itemiser"],
                         str(row.get("budget_bytes", "") or ""))
                 cells_by_identity.setdefault(ident, set()).add(cell)
@@ -123,46 +126,6 @@ def concat(root: Path, out_dir: Path) -> None:
                 if not grp["config_dir"].astype(str).str.contains("floor/").any():
                     print(f"WARNING: INCOMPLETE grid — no floor row for "
                           f"dataset={ds} itemiser={it} (rerun with --include-floor)")
-
-    if snapshots:
-        _concat_gold_snapshots(snapshots, root, out_dir)
-
-
-def _concat_gold_snapshots(snapshots: list[Path], root: Path, out_dir: Path) -> None:
-    """Merge the per-config answer-survival snapshots into one table.
-
-    Snapshot rows carry (example_id, query_id, gold_id) and the O_g/R_g texts,
-    but NOT the config identity — that lives in the directory layout. Without
-    the path tags every config's rows look alike and `compression` cannot be
-    compared against an eviction-only policy, which is the whole point of the
-    artefact. Same tagging `summary.csv` already gets."""
-    rows = []
-    for p in snapshots:
-        df = pd.read_json(p, lines=True)
-        if df.empty:
-            continue
-        for key, val in _tag_from_path(p, root).items():
-            df[key] = val
-        rows.append(df)
-    if not rows:
-        return
-    combined = pd.concat(rows, ignore_index=True)
-    dest = out_dir / "combined_gold_snapshot.csv"
-    combined.to_csv(dest, index=False)
-    print(f"wrote {dest}  ({len(combined)} rows)")
-
-    # Capture check: policies that never rewrite text must return R_g == O_g on
-    # every non-evicted row. A mismatch there is a bug in the snapshot, not a
-    # finding about compression — so it invalidates the compression numbers too.
-    if {"policy", "was_evicted", "resident_text", "original_text"}.issubset(combined.columns):
-        evict_only = combined[(~combined["was_evicted"].astype(bool))
-                              & (combined["policy"] != "compression")]
-        bad = evict_only[evict_only["resident_text"] != evict_only["original_text"]]
-        if len(bad):
-            print(f"WARNING: {len(bad)} retained rows from non-compressing "
-                  f"policies have R_g != O_g — the snapshot capture is wrong, "
-                  f"do not trust preservation numbers "
-                  f"(policies: {sorted(bad['policy'].unique())})")
 
 
 def main() -> None:
