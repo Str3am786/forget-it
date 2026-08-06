@@ -428,6 +428,7 @@ def run_pipeline_concurrent(
     retriever_label: str = "",
     out_dir: str = "artifacts/benchmark",
     write_events: bool = False,
+    write_gold_snapshot: bool = False,
     grader_embedder=None,
     grade_sim_threshold: float = 0.83,
 ) -> tuple[list, dict[str, float]]:
@@ -486,7 +487,7 @@ def run_pipeline_concurrent(
                     budget_bytes_report=budget_bytes, budget_frac=budget_frac,
                     footprint=fp, seed=seed, itemiser=itemiser, reader_name=reader,
                     collect_reader_context=collect_ctx, collect_events=write_events,
-                    collect_gold_snapshot=write_events, example_id=example_id,
+                    collect_gold_snapshot=write_gold_snapshot, example_id=example_id,
                     answer_max_tokens=answer_max_tokens,
                 )
         finally:
@@ -513,6 +514,7 @@ def run_pipeline_concurrent(
         reader=reader, k=k, seed=seed, budget_bytes=budget_bytes,
         budget_frac=budget_frac, answer_max_tokens=answer_max_tokens,
         n_examples=len(indexed), write_events=write_events,
+        write_gold_snapshot=write_gold_snapshot,
     )
 
     # Skip-if-done: a crashed/re-submitted shard re-runs only its unfinished
@@ -554,6 +556,7 @@ def run_pipeline_concurrent(
         timings.append(timing)
         if write_events:
             event_groups.append(event_rows)
+        if write_gold_snapshot:
             gold_rows_all.extend(gold_rows)
 
     # ── Pass 2: concurrent reader over recorded contexts (store-free) ──
@@ -587,6 +590,7 @@ def run_pipeline_concurrent(
 
     if write_events:
         _write_events_jsonl(base / "events.jsonl", event_groups)
+    if write_gold_snapshot:
         _write_gold_snapshot_jsonl(base / "gold_answer_snapshot.jsonl", gold_rows_all)
 
     # Merge per-example phase timers; the reader ran in Pass 2 (separate threads),

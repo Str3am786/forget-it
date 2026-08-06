@@ -257,6 +257,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--event-log", action="store_true",
                    help="Stream a per-eviction event trace (events.jsonl) next to each "
                         "config's CSVs — enables the survival/regret/value-decay analysis.")
+    p.add_argument("--gold-snapshot", action="store_true",
+                   help="write gold_answer_snapshot.jsonl: original vs retained "
+                        "text per (query, gold id) at final store state. Needed "
+                        "to measure answer preservation under compression.")
     p.add_argument("--workers", type=int, default=1,
                    help="Replay this many EXAMPLES concurrently within a config (thread "
                         "pool). Each example gets its own fresh, isolated store, so the "
@@ -491,6 +495,7 @@ def main() -> None:
             reader_workers=args.reader_workers,
             out_dir=args.out_dir,
             write_events=args.event_log,
+            write_gold_snapshot=args.gold_snapshot,
             example_footprints=footprints.get(itemiser.name),
             **extras,
         )
