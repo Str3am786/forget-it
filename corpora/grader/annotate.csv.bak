@@ -1,0 +1,342 @@
+corpus_id,row_key,dataset,question_type,query_id,ref_answer,reader_answer,human_correct,human_note
+g0000,e35625c8755705f1,longmemeval,multi-session,09ba9854,$50,"The savings from taking the train instead of a taxi can vary significantly based on the airport and the specific train service you use. Here’s a breakdown:
+
+### From Narita Airport:
+- Taxi: Around ¥15,000 - ¥20,000 (around $140 - $180 USD)
+- Narita Express (N'EX) Train: ¥3,020 (around $28 USD) one way
+- Savings: ¥12,000 - ¥17,000 (around $112 - $152 USD)
+
+### From Haneda Airport:
+- Taxi: Around ¥6,000 - ¥10,000 (around $55 - $90 USD)
+- Tokyo Monorail + Subway: ¥500-600 (around $5 - $6 USD) for the monorail + ¥200-400 (around $2 - $4 USD) for the subway
+- Savings: ¥4,000 - ¥9,000 (around $36 - $84 USD)
+
+So, by taking",,
+g0001,e5076c728cf1252d,beam,multi_session_reasoning,20::q::13::multi_session_reasoning,"Your average article views increased by 3,100 from March to May.",IDK,,
+g0002,81c9b0b6daf5e13b,beam,knowledge_update,15::q::11::knowledge_update,"$2,900 to include additional decorations and a live band","The budget allocated for decorations and entertainment in the $2,900 budget is $1,000 for decorations and $600 for the live band, totaling $1,600 for both categories.",,
+g0003,1e9a87e78af64199,longmemeval,temporal-reasoning,gpt4_2f584639,the photo album for my mom,IDK,,
+g0004,0a34cbf3687995e6,longmemeval,single-session-user,3b6f954b,University of Melbourne in Australia,The University of Melbourne.,,
+g0005,63ba5ed0a709cddc,longmemeval,single-session-user,8a137a7f,Philips LED bulb,Philips LED bulb.,,
+g0006,15217987e90c81b7,longmemeval,knowledge-update,603deb26,10,"IDK
+Based on the provided memories, there is no information about how many times you have tried making a Negroni at home since Emma showed you. The memories do not contain any details about your attempts to make a Negroni or interactions with Emma regarding cocktails.",,
+g0007,c292fa60e49f52b0,longmemeval,single-session-preference,afdc33df,"The user would prefer responses that acknowledge and build upon their existing efforts to organize their kitchen, such as utilizing their new utensil holder to keep countertops clutter-free. They would also appreciate tips that address their concern for maintaining their granite surface, particularly around the sink area. Preferred responses would provide practical and actionable steps to maintain cleanliness, leveraging the user's current tools and setup. They might not prefer generic or vague suggestions that do not take into account their specific kitchen setup or concerns.","Certainly! Keeping your kitchen clean and organized can make meal preparation much more enjoyable. Here are some tips to help you maintain a tidy kitchen:
+
+1. Designate a Cleaning Schedule: Set aside specific days for deep cleaning tasks like washing dishes, cleaning appliances, and wiping down surfaces. Consistency is key.
+
+2. Implement a Dirty Dish Rule: Make it a rule to put dirty dishes in the dishwasher immediately after use. This prevents piles from forming and makes daily cleanup quicker.
+
+3. Use Drawer and Cabinet Dividers: Organize utensils, baking sheets, and other small items with dividers. This keeps everything in its place and makes it easier to find what you need.
+
+4. Keep Countertops Clear: Only keep essential items on your countertops. Store other items in cabinets or drawers. This reduces clutter and makes the space feel more open.
+
+5. Regularly Declutter: Periodically go through your kitchen and get rid of items you no longer use or need. Donate or sell items in good condition to free up space.
+
+6. Use a Microfiber Cloth: Keep a microfiber cloth handy for quick clean-ups. These cloths are great for wiping spills and smudges without leaving streaks.
+
+7. Store Frequently Used",,
+g0008,7f07bf302819264a,beam,information_extraction,19::q::7::information_extraction,On February 27.,"you mentioned negotiating a signing bonus as part of your promotion package on February 27. Specifically, the first memory discusses your experience negotiating a $3,000 signing bonus as part of your promotion.",,
+g0009,1f343a7224bfe894,locomo,single_hop,conv-42::q::88::single_hop,"""Eternal Sunshineof the Spotless Mind""","provided, Joanna recommends a romantic drama movie to Nate, which she considers one of her favorites. Therefore, one of Joanna's favorite movies is a romantic drama.",,
+g0010,5f3fd7aaac72ca30,beam,event_ordering,17::q::5::event_ordering,"You mentioned aspects of your self-care and anxiety management routines in this order: 1) Discussing your monthly meetings with a friend and uncertainty about sharing personal trauma, 2) Starting daily nature walks and questioning the best time for them, 3) Using a meditation app and completing initial sessions, 4) Noticing a reduction in panic attacks and seeking strategies to continue progress, 5) Adding weekly swimming sessions and exploring their impact on well-being, 6) Observing further anxiety episode reductions and asking how to maintain progress, 7) Completing a larger number of meditation sessions and looking for new mindfulness techniques, 8) Reporting additional anxiety reduction and requesting strategies to sustain it, 9) Maintaining yoga and swimming routines and wondering about combining them with emotional regulation techniques, 10) Trying to stay consistent with self-care during holidays and asking for budgeting tips, 11) Noting very low anxiety episodes and seeking ways to maintain this improvement.","here is the order in which the different aspects of self-care and anxiety management routines were discussed:
+
+1. Defining Clear Boundaries (work hours and non-work hours)
+2. Prioritizing Self-Care (daily routines, physical health)
+3. Structured Schedule (work blocks, flexible breaks)
+4. Effective Time Management (task prioritization, delegation)
+5. Regular Check-Ins (weekly reviews, feedback)
+6. Support Network (peer support, therapy sessions)
+7. Mindfulness and Reflection (daily reflection, gratitude practice)
+8. Professional Development (learning opportunities, mentorship)
+9. Using Descriptive Language (emotions, sensory details)
+10. Reflecting on Your Journey (insights, growth)
+11. Setting Boundaries (communicating limits, assertive communication)
+
+These items were mentioned in the context of strategies for managing anxiety and navigating potentially triggering conversations, as well as overall self-care and well-being.",,
+g0011,0229dd99b0065fd9,longmemeval,single-session-assistant,4baee567,The Chiefs played the Jaguars 12 times at Arrowhead Stadium.,The Chiefs played the Jaguars 12 times at Arrowhead Stadium.,,
+g0012,aa394a5b01965e78,longmemeval,single-session-preference,fca70973,"The user would prefer theme park suggestions that cater to their interest in both thrill rides and special events, utilizing their previous experiences at Disneyland, Knott's Berry Farm, Six Flags Magic Mountain, and Universal Studios Hollywood as a reference point. They would also appreciate recommendations that highlight unique food experiences and nighttime shows. The user might not prefer suggestions that focus solely on one aspect of theme parks, such as only thrill rides or only family-friendly attractions, and may not be interested in parks that lack special events or unique dining options.","Certainly! Here are some exciting theme park weekends you might consider:
+
+### 1. Disneyland and Disney California Adventure
+- Dates: Typically, weekends in March, June, July, August, and September are ideal due to pleasant weather.
+- Highlights: 
+  - Disneyland: Enjoy classic rides like Space Mountain, Pirates of the Caribbean, and the Haunted Mansion.
+  - Disney California Adventure: Explore new attractions like Soarin’ Around the World and the Guardians of the Galaxy Ride.
+  - Halloween Time: If visiting in October, experience the Halloween-themed events and parades.
+  - Christmas Celebrations: If visiting in December, enjoy the festive decorations and holiday-themed activities.
+
+### 2. Universal Studios Hollywood
+- Dates: Weekends in April, May, July, August, and September are great.
+- Highlights:
+  - Halloween Horror Nights: If visiting in October, enjoy the haunted mazes and scare zones.
+  - Universal CityWalk: Explore the shopping, dining, and entertainment options.
+  - Universal Studios Tour: Take a behind-the-scenes tour of movie sets and special effects.
+
+### 3. Knott's Berry Farm
+- Dates: Weekends",,
+g0013,a4c8c7774ac89c84,longmemeval,temporal-reasoning,gpt4_483dd43c,'Game of Thrones',"Based on the information provided, you started watching 'The Crown' first. You mentioned finishing the third season of ""The Crown"" and then asked for recommendations for similar shows, while the subsequent message was about recommending shows similar to ""Game of Thrones."" This order suggests that you began with ""The Crown"" before exploring other shows like ""Game of Thrones.",,
+g0014,40f0d65943e9ce80,longmemeval,multi-session,gpt4_e05b82a6,10 times,"Based on the information provided in your memory, you rode rollercoasters multiple times across different events:
+
+1. You rode the Mako, Kraken, and Manta rollercoasters all in one night at SeaWorld San Diego in July.
+2. You saw Shawn Mendes perform at the Allstate Arena, where he played guitar, but no mention of riding rollercoasters was made.
+
+So, you rode rollercoasters 3 times across the events from July to October.",,
+g0015,9788298bb9ca0689,locomo,multi_hop,conv-47::q::60::multi_hop,"CS:GO, Fortnite, Overwatch and Apex Legends","Based on the information provided, John and his friends organized a CS:GO tournament for charity. There is no mention of other specific games they played together at charity tournaments.",,
+g0016,ff1a23e14ee61ec8,locomo,multi_hop,conv-42::q::82::multi_hop,"coconut milk icecream, chocolate and vanilla swirl",Nate has made homemade coconut ice cream. No other recipes are mentioned.,,
+g0017,5036a383806d5ed7,locomo,multi_hop,conv-47::q::5::multi_hop,"John's favorite game is CS:GO, and James's is Apex Legends.","John and James' favorite games include:
+
+- John: He enjoys playing various genres but frequently plays shooters like CS:GO and has been playing different genres including strategy and RPG games.
+- James: He is into RPGs and strategy games like Civilization and Total War, and is excited about playing Cyberpunk 2077.",,
+g0018,8f1e6be765a481d5,longmemeval,single-session-user,21436231,12,"IDK - You didn't provide the number of largemouth bass caught during your fishing trip to Lake Michigan. If you have a specific number or additional details, please share them so I can provide an accurate answer.",,
+g0019,2e0bd29726f6f3a6,beam,event_ordering,7::q::4::event_ordering,"You mentioned different examples and explanations related to mathematical induction in this order: 1) The classic sum of the first n integers formula, 2) Proofs involving divisibility, 3) Inequality proofs with exponential and polynomial expressions, 4) Real-world applications connected to paramedic work and disease spread models, 5) More advanced summation formulas involving squares of integers, 6) Discussions about the necessity of the base case and inductive step, and 7) Error analysis and verification of base cases in proofs.","1. The logical reasoning behind assuming \(P(k)\) is true to prove \(P(k+1)\) in the principle of mathematical induction.
+2. An example of how induction can be applied to a real-life scenario, specifically related to paramedic work.
+3. A problem involving a rooted tree to prove the number of edges in such a tree.
+4. An example of a more complex sequence and how to apply the inductive hypothesis to prove its formula.",,
+g0020,57fc251bd98b6cb8,longmemeval,knowledge-update,b6019101,5,5,,
+g0021,0b2e6e6cf9332f5f,longmemeval,single-session-user,3f1e9474,Sarah,IDK,,
+g0022,6ec2688132c27ceb,beam,information_extraction,12::q::7::information_extraction,"You compared the three laptops by evaluating their performance, battery life, portability, and connectivity options relative to your budget, ultimately identifying which model balanced these factors best for your needs.","To narrow down your options and find the best fit within your spending limits, I considered the following key factors and made trade-offs based on your needs and preferences:
+
+1. Portability: I focused on lightweight and compact laptops like the ASUS ZenBook 13, Lenovo ThinkPad X1 Carbon, and Dell XPS 13, ensuring they meet your requirement for easy travel.
+
+2. Performance: I selected laptops with sufficient processing power and RAM (16GB DDR4) for writing, research, and multimedia consumption, such as the Intel Core i5-1135G7 or i7-1165G7 processors.
+
+3. Battery Life: I prioritized laptops with good battery life, such as the ASUS ZenBook 13 (up to 12 hours), Lenovo ThinkPad X1 Carbon (up to 18 hours), and Dell XPS 13 (up to 14 hours).
+
+4. Durability: I recommended laptops with robust build quality, including the Lenovo ThinkPad X1 Carbon, known for its durability and professional design.
+
+5. Security: I included laptops with fingerprint readers and facial recognition for added security, such as the Lenovo ThinkPad X1 Carbon and Dell X",,
+g0023,3d4675038fc28ed7,longmemeval,multi-session,a96c20ee,Harvard University,Harvard University,,
+g0024,fc616a28e7ddb545,beam,knowledge_update,30::q::10::knowledge_update,15 minutes,"The kneading time can vary depending on the type of dough and the desired gluten development. A general guideline is to knead for about 10-15 minutes for most bread doughs to achieve a strong gluten structure. Increasing your kneading time to 15 minutes, as you've done, should further enhance the gluten strength, leading to a better texture in your bread.",,
+g0025,87610d5362580d66,locomo,single_hop,conv-41::q::118::single_hop,Respect for the military and the desire to show support,John joined the marching event for veterans' rights because he has always had a great respect for the military and wanted to show his support. He also thought it was important to stand up for what he believes in.,,
+g0026,b51abbab4295a342,beam,multi_session_reasoning,2::q::13::multi_session_reasoning,You added 15 distinct education level patterns and implemented 4 main PDF parsing optimizations.,"You added 14 distinct education levels as custom entity patterns, and you implemented 3 main optimizations for PDF parsing:
+
+1. Adjusting the batch size based on the number of resumes.
+2. Using in-memory caching with Redis.
+3. Implementing message queue processing with RabbitMQ.
+
+So, you added 14 distinct education levels compared to implementing 3 parsing optimizations.",,
+g0027,df35ed5e257cf01f,longmemeval,single-session-user,21436231,12,You caught 12 largemouth bass on your fishing trip to Lake Michigan.,,
+g0028,eee96ec22a0c01cc,longmemeval,single-session-assistant,d596882b,By Chloe,"Certainly! The vegan eatery I recommended previously is叫做""植物元素""（Plant Based）的餐厅，它在纽约市有多家分店。这家餐厅提供各种美味的素食菜品，环境也很舒适。希望你在纽约的旅行中能享受美食！
+
+Translation: The vegan restaurant I recommended previously is called ""Plant Based."" It has multiple locations throughout the city. This restaurant offers a variety of delicious vegetarian dishes and has a comfortable atmosphere. I hope you enjoy the food during your trip to New York!
+If you need more specific information or addresses for the locations, feel free to ask!",,
+g0029,a27eee1f60dcde1d,locomo,single_hop,conv-49::q::123::single_hop,helping lost tourists,"An adventurous theme emerging in Evan's life, as mentioned by Sam, includes hiking. Evan mentions being motivated by a ""thirst for adventure on interesting hikes.",,
+g0030,eebaa0eb7fae3c33,longmemeval,knowledge-update,031748ae,"When you just started your new role as Senior Software Engineer, you led 4 engineers. Now, you lead 5 engineers","Based on the information provided in the memories, I don't have specific details about the number of engineers you lead in your current role. The memories don't contain any information about your current position or the team structure. Therefore, I cannot provide a specific number of engineers you lead. If you could provide more context or details about your current role, I would be happy to help you determine the number of engineers you lead.",,
+g0031,0a6a14dc5c0fd6c8,locomo,single_hop,conv-43::q::137::single_hop,Story based on experiences in the UK didn't go as planned,IDK. The memory does not provide a specific date for the setback Tim faced in his writing project.,,
+g0032,b9be839838b864dc,beam,temporal_reasoning,10::q::18::temporal_reasoning,"I found the slope at x=3 and immediately used it to write the tangent line equation in the same session, so no time elapsed between these steps.","provided, after finding the slope of the tangent line to \( f(x) = x^2 - 4x + 3 \) at \( x = 3 \) (which was 2), you then used this slope to write the equation of the tangent line. Specifically, you found the point \( (3, 0) \) and used the point-slope form to get the equation \( y = 2x - 6 \). So, you used the slope immediately after finding it to write the tangent line equation.",,
+g0033,ccfc53da0e4a2f24,locomo,multi_hop,conv-26::q::4::multi_hop,Transgender woman,"Caroline is identifying as part of the LGBTQ+ community, specifically mentioning her involvement with a LGBTQ support group and her interest in counseling or working in mental health to support individuals with similar issues. She is also pursuing adoption to give a loving home to children in need, particularly noting her interest in adoption agencies that support LGBTQ+ folks.",,
+g0034,705f33f0a67748ae,beam,information_extraction,10::q::6::information_extraction,You first mentioned the function 5x^3 when you said you were practicing the rule.,IDK,,
+g0035,727b8602a7820536,locomo,single_hop,conv-43::q::102::single_hop,"It's got so much to check out - the culture, food - you won't regret it.","John said that NYC is amazing with lots to check out like culture and food, and that it's an adventure you'll never forget, which enticed Tim to visit.",,
+g0036,c55dc524b759f0a8,beam,information_extraction,27::q::6::information_extraction,"You are currently paying $2,100 monthly rent.","The monthly rent you mentioned is $1,800, which includes both the base rent of $1,650 and the HOA fees of $150.",,
+g0037,6c32d35d0ffaee05,locomo,temporal,conv-26::q::41::temporal,The Tuesday before 20 July 2023,IDK,,
+g0038,0fd3b3435ef2548b,beam,multi_session_reasoning,1::q::12::multi_session_reasoning,"You should use short-lived access tokens with a lifespan shorter than your initial 1-hour setting, implement refresh tokens for seamless renewal, avoid ignoring expiration during verification but allow a small clock tolerance to handle skew, enforce secure transmission via HTTPS and HTTP-only cookies, maintain a token blacklist to revoke compromised tokens, and enhance error handling to detect expired or invalid tokens promptly. This balance reduces the window for misuse, tolerates minor clock differences without compromising security, and mitigates interception risks through layered protections.","To optimally balance token lifespan, verification tolerance, and security measures while minimizing unauthorized access risks, consider the following strategies:
+
+1. Optimal Token Lifespan:
+   - Shorter Lifespans: Use shorter-lived tokens (e.g., 15 minutes) to reduce the window of opportunity for unauthorized access if a token is compromised.
+   - Refresh Tokens: Implement refresh tokens to allow clients to obtain new access tokens without requiring the user to re-authenticate. This reduces the risk of session hijacking.
+
+2. Verification Tolerance:
+   - Leeway Time: Introduce a small leeway time (e.g., 5 minutes) in your token verification process to account for clock skew between the client and server.
+   - Strict Verification: Ensure strict verification rules, such as verifying the token signature, expiration time, and issuer.
+
+3. Security Measures:
+   - Secure Token Storage: Store tokens securely on the client-side using mechanisms like browser cookies with the `HttpOnly` and `Secure` flags.
+   - Token Blacklisting: Implement a token blacklisting mechanism to invalidate tokens if they are suspected to be compromised.
+   - Rate Limiting: Apply rate limiting to prevent brute-force attacks on the",,
+g0039,aab563b2e3065834,longmemeval,temporal-reasoning,gpt4_d6585ce8,"The order of the concerts I attended is: 1. Billie Eilish concert at the Wells Fargo Center in Philly, 2. Free outdoor concert series in the park, 3. Music festival in Brooklyn, 4. Jazz night at a local bar, 5. Queen + Adam Lambert concert at the Prudential Center in Newark, NJ.","Based on the information provided, the order of the concerts and musical events you attended in the past two months, starting from the earliest, is as follows:
+
+1. A free outdoor concert series in the park (specific date not provided, but mentioned as recent).
+2. A jazz night at a local bar (specific date not provided, but mentioned as recent).
+3. A Billie Eilish show in Philly (specific date not provided, but mentioned as recent).
+
+Without specific dates, we can only arrange these events based on the recency of your mention. If you provide the exact dates, I can give a more precise order.",,
+g0040,6d76a73ff4cfa02e,longmemeval,single-session-assistant,d596882b,By Chloe,"IDK, the previous recommendations were for coffee shops, not vegan eateries. However, some popular vegan restaurants in New York City include By Chloe, Plant Based Kitchen, and Peacefood Cafe, which you might want to check out.",,
+g0041,a8dc52cd8f70181c,longmemeval,knowledge-update,f685340e,"Previously, you play tennis with your friends at the local park every week (on Sunday). Currently, you play tennis every other week (on Sunday).","IDK - The memories provided do not contain information about how often you played tennis with your friends at the local park previously or how often you play now. To answer this question accurately, more specific information about your past and current tennis playing habits would be needed.",,
+g0042,3c47a789c8f36a18,beam,information_extraction,5::q::7::information_extraction,You mentioned using Facebook SDK version 3.1.0 in your code example.,You mentioned using Facebook SDK version 3.1.0 in your code example.,,
+g0043,cac23320ef422e74,locomo,commonsense,conv-49::q::46::commonsense,"Evan and Sam use creative activities, like painting and writing, as therapeutic tools to express themselves and cope with stress.","Evan uses painting as a creative outlet to cope with life's challenges, finding it helps him relieve stress and express feelings. Sam does not mention a specific creative outlet but appreciates small things in life, which might serve as a form of coping.",,
+g0044,b6b11265d394c6d4,locomo,single_hop,conv-43::q::89::single_hop,Winning a championship,"Based on the conversations, John's number one goal in his basketball career is to improve his shooting percentage.",,
+g0045,5a86fc407dffc4d9,beam,multi_session_reasoning,21::q::12::multi_session_reasoning,"$9,800","Based on the information provided, you have invested a total of $5,200 in ETFs following Raymond's suggestions across your portfolio:
+
+1. $2,000 in Schwab's Intelligent Portfolios (February 28)
+2. $1,300 in SCZ (iShares MSCI EAFE Small-Cap ETF) (February 10)
+3. $1,200 in VWO (Vanguard FTSE Emerging Markets ETF) (September 15)
+4. $2,000 in XLK (iShares Semiconductor ETF) (current)
+
+Adding these amounts together:
+
+\[
+\$2,000 + \$1,300 + \$1,200 + \$2,000 = \$5,200
+\]
+
+So, you have invested a total of $5,200 in ETFs following Raymond's suggestions.",,
+g0046,f7a04d34d7680eff,beam,knowledge_update,8::q::10::knowledge_update,You studied for 6 hours and scored 90% on the proof writing quiz.,"You extended your study sessions to 7 hours this week and improved your score to 93% on the mock exam. However, there is no mention of a proof writing quiz score in the provided memories.",,
+g0047,0e1704d3cfd3ba39,locomo,multi_hop,conv-48::q::8::multi_hop,"yoga, old photos, the roses and dahlias in a flower garden, nature",Yoga helped Deborah find peace when grieving the deaths of her loved ones. She found that yoga provided her with a way to cope and share that peace with others through teaching yoga and supporting her community.,,
+g0048,34c59704eacb25c9,beam,knowledge_update,7::q::11::knowledge_update,98%,98%,,
+g0049,d7d41f0e307cf581,longmemeval,single-session-user,8550ddae,lavender gin fizz,"You tried making a Lavender Gin Fizz last weekend, but it didn't turn out well. The recipe you followed called for lavender syrup and gin, as you didn't have lavender syrup available.",,
+g0050,ab05f3a4c666910c,longmemeval,single-session-preference,07b6f563,"The user would prefer suggestions of accessories that are compatible with an iPhone 13 Pro, such as high-quality screen protectors, durable cases, portable power banks, or phone wallet cases. They may not prefer suggestions of accessories that are not compatible with Apple products or do not enhance the functionality or protection of their phone.",IDK,,
+g0051,247ba109eb102136,beam,temporal_reasoning,20::q::18::temporal_reasoning,The new deadline is 7 days later than the original mid-December deadline.,"A week is 7 days, so your new deadline is 7 days later than the original mid-December deadline.",,
+g0052,bdd8bb83019742ef,beam,contradiction_resolution,19::q::2::contradiction_resolution,"I notice you've mentioned contradictory information about this. In some parts, you said you've met your mother Christina and that she has been your primary career advisor, but elsewhere you mentioned never having met her or received any career advice from her. Could you clarify which is correct?","Yes, you have met your mother Christina and received career advice from her. She provided guidance during a dinner at The Green Spoon, which helped you refine your interview answers and approach salary negotiations.",,
+g0053,9c6bdb0f0c7d837c,longmemeval,temporal-reasoning,gpt4_5dcc0aab,white Adidas sneakers,White Adidas sneakers,,
+g0054,5fc4ea4fb0f5988a,beam,multi_session_reasoning,35::q::12::multi_session_reasoning,"You have paid a total of $2,060 for the USCIS filing fees and the medical exam combined.","To calculate the total amount paid for the USCIS filing fees and the medical exam combined, we need to sum the following:
+
+- USCIS Filing Fees:
+  - Form I-130: $535
+  - Form I-485: $1,140
+  - Biometric Services: $85
+
+  Total USCIS Filing Fees: $535 + $1,140 + $85 = $1,760
+
+- Medical Exam Costs: $300
+
+Adding these together:
+
+$1,760 (USCIS Filing Fees) + $300 (Medical Exam Costs) = $2,060
+
+So, you have paid a total of $2,060 for the USCIS filing fees and the medical exam combined.",,
+g0055,54fcdd3289b6c55e,beam,knowledge_update,21::q::10::knowledge_update,$750,"Based on the information provided, you have been increasing your monthly investment contributions to accelerate portfolio growth. Specifically, you mentioned increasing your contributions to $2,700 starting December 1, and previously to $2,000 starting May 1. 
+
+To summarize, your monthly investment budget to accelerate portfolio growth is currently set at $2,700.",,
+g0056,d4ed1814d0246929,longmemeval,multi-session,aae3761f,15 hours for getting to the three destinations (or 30 hours for the round trip),"Based on the information provided in the conversation, you drove the following distances to your road trip destinations:
+
+1. From the Outer Banks to Chincoteague Island, Virginia: ~4-5 hours
+2. From the Outer Banks to Tybee Island, Georgia: ~5-6 hours
+3. From the Outer Banks to Cannon Beach, Oregon: ~24-26 hours
+
+Adding these up:
+
+4-5 hours + 5-6 hours + 24-26 hours = 14-31 hours
+
+So, you spent a total of 14-31 hours driving to your three road trip destinations combined.",,
+g0057,7fe629dd77a258fd,longmemeval,knowledge-update,cc5ded98,about two hours,I dedicate about two hours each day to coding exercises. It's a consistent routine that helps me make steady progress in improving my coding skills.,,
+g0058,5fe5f420bd1d8350,locomo,multi_hop,conv-43::q::36::multi_hop,LeBron James,LeBron James.,,
+g0059,6a359e8e7a372c4c,locomo,single_hop,conv-47::q::105::single_hop,July 20,July 20,,
+g0060,58c4893fae29a17b,beam,contradiction_resolution,18::q::2::contradiction_resolution,"I notice you've mentioned contradictory information about this. You said you started sessions with Dr. Farah, but you also mentioned never attending any therapy sessions with her. Could you clarify which is correct?","Yes, you had a therapy session with Dr. Farah on May 3 to discuss coping strategies for your trauma triggers.",,
+g0061,55386b963eca9beb,longmemeval,single-session-user,b86304ba,The painting is worth triple what I paid for it.,"Based on the information provided, the painting of a sunset you found at the flea market is actually worth triple what you paid for it. So if you paid $X for it, its current value is approximately $3X.",,
+g0062,cc48af984c2c9ba9,beam,event_ordering,21::q::4::event_ordering,"Your discussions about investment strategies and portfolio adjustments progressed as follows: 1) Initial meeting and understanding of ETF strategies, 2) Deciding between different investment options and advisors, 3) Opening and funding a managed portfolio account, 4) Increasing monthly contributions and setting up automatic transfers, 5) Adding international ETFs based on advice, 6) Diversifying into REITs and emerging markets ETFs, 7) Considering municipal bond funds, 8) Expanding into international small-cap ETFs, 9) Exploring sector-specific ETFs like healthcare, 10) Focusing on technology sector ETFs and evaluating continued investment in them.","here is a summary of the discussions about investment strategies and portfolio adjustments in chronological order:
+
+1. Freelance Writing and Investment Balance: Discussed balancing freelance writing and investment growth, considering an extension to November 20 for a deadline.
+2. Portfolio Review and Rebalancing: Reviewed the current portfolio, considering adjustments to technology and international dividend exposures.
+3. Investment Calendar: Discussed the importance of an updated investment calendar for managing investments efficiently.
+4. Increased Monthly Contributions: Discussed increasing monthly investment contributions to $2,400 starting August 21 and its impact on portfolio growth.
+5. Book Club Meeting: Considered attending an investment book club meeting from November 27 to December 15 to align with current investment strategy.
+6. Portfolio Overview and Composition: Summarized the current portfolio overview and composition, including recent changes and adjustments.
+7. Time Management for Freelance Writing and Investments: Discussed strategies for balancing freelance writing and investment management, including fixed routines and batch processing.
+8. Quarterly Reviews and Strategic Planning: Scheduled quarterly reviews and strategic planning sessions with Jessica to discuss portfolio performance and adjustments.
+9. Dollar-Cost Averaging and Cons",,
+g0063,f3c8d601ca45003d,locomo,single_hop,conv-48::q::179::single_hop,a card game about cats,"Jolene recently played a game on an Xbox console that she gifted to her partner. She mentioned it in a message to Deborah, describing it as fun and something her partner could play.",,
+g0064,c1d35ad6172538ee,beam,knowledge_update,4::q::11::knowledge_update,180ms,"IDK
+Based on the provided memories, there is no specific information about the average API response time under 1,000 concurrent users or details of any recent performance tuning results. To answer this question accurately, we would need performance monitoring data or logs that track API response times under varying load conditions.",,
+g0065,d4f65af44f3280b2,longmemeval,temporal-reasoning,gpt4_98f46fc6,I participated in the charity bake sale first.,"Based on the information provided, you participated in the charity bake sale last month, and you are currently planning to participate in a charity event for Purim. There is no mention of a charity gala in the given context, so I cannot determine if you participated in a charity gala first. The only charity event explicitly mentioned is the bake sale, which occurred last month.",,
+g0066,4432586c15d2dfc8,locomo,single_hop,conv-26::q::88::single_hop,creating a family for kids who need one,"Caroline is excited about making a family for kids who need one, despite the challenges of being a single parent. She views the adoption process as a way to give back and provide love and acceptance to children who haven't had that before.",,
+g0067,40e65051d1dddb99,locomo,multi_hop,conv-42::q::52::multi_hop,two,"Based on the conversations, Joanna mentioned that three of her contributions to movie scripts have been shown on the big screen. Specifically, she said:
+
+1. A screenplay she sent in to a film festival.
+2. Another movie script she contributed to, which was shown last Sunday.
+3. She previously mentioned a third instance where her contribution was shown on the big screen.
+
+So, Joanna's writing has made it to the big screen three times.",,
+g0068,90e716ce15a2d53b,longmemeval,single-session-assistant,4baee567,The Chiefs played the Jaguars 12 times at Arrowhead Stadium.,"Based on the information provided in our previous chat, the record shows that the Kansas City Chiefs played the Jacksonville Jaguars at Arrowhead Stadium 10 times.",,
+g0069,b8976c478cbbc8df,beam,contradiction_resolution,14::q::3::contradiction_resolution,"I notice you've mentioned contradictory information about this. You said you have never apologized for missing any rehearsals, but you also mentioned taking responsibility and apologizing for a missed rehearsal. Could you clarify which is correct?","Yes, you mentioned apologizing for missing a rehearsal on October 31, 2024, and you also expressed regret for missing rehearsals leading up to a music recital on July 20, 2024.",,
+g0070,535f6dea203d7a68,locomo,temporal,conv-49::q::52::temporal,painting,"Evan and Sam plan a painting session together next Saturday. Since the specific date isn't provided, we can infer it's planned for September 2023 based on the context of their discussions about hobbies and plans.",,
+g0071,345f30b0aa4a9adb,beam,information_extraction,31::q::6::information_extraction,You said it cost $8.99 for a 22 oz package.,IDK,,
+g0072,12d7c0246f6bf5c9,longmemeval,multi-session,5025383b,photography and cooking,"Based on the information provided, the two hobbies that led you to join online communities are cooking and photography. These hobbies are evident from your previous interactions regarding recipe techniques, cooking blogs, camera lenses, and photography blogs.",,
+g0073,9028905d46096750,longmemeval,temporal-reasoning,gpt4_61e13b3c,3 weeks,"IDK
+
+Based on the information provided, there is no mention of when the last time you sold homemade baked goods at the Farmers' Market was, nor is there a specific date for the Spring Fling Market. Without these details, it's impossible to calculate the number of weeks between the two events.",,
+g0074,4128484b0baec64f,locomo,single_hop,conv-48::q::177::single_hop,experiencing a new level of joy and happiness,Jolene felt a significant boost in confidence and a strong sense of peace and thankfulness due to her practice of yoga and mindfulness. She also found it helpful for managing stress.,,
+g0075,edb32b5e2e63d171,locomo,commonsense,conv-42::q::84::commonsense,No; because both of them faced setbacks in their career,"No.
+
+Based on the provided memories, neither Nate nor Joanna mentioned any significant career-related events or achievements in September 2022. The closest reference is Joanna's mention of submitting scripts in the previous weeks, but there's no specific indication of any major career developments in the first half of September 2022.",,
+g0076,42068bd2ededc136,longmemeval,multi-session,5a7937c8,3 days.,IDK,,
+g0077,b1ae2000228f80d4,beam,event_ordering,27::q::4::event_ordering,"Your discussions about support and coordination evolved in this sequence: 1) Preparing for and scheduling viewings, 2) Reviewing lease terms and consulting resources, 3) Planning and organizing a farewell event, 4) Arranging childcare and safety preparations during the move, 5) Negotiating rent and handling related fees, 6) Applying skills from a retreat to improve work, 7) Acknowledging ongoing help with packing and organizing, 8) Expressing gratitude for assistance with children’s rooms, 9) Collaborating on a project with a friend, 10) Adjusting budget after a job change.",IDK,,
+g0078,9d92dbc83ece38e2,locomo,temporal,conv-41::q::54::temporal,"August 4, 2023","Based on the information provided, Maria mentioned that she took up some community work with her church friends ""Yesterday.",,
+g0079,954535fac9261691,locomo,commonsense,conv-44::q::44::commonsense,Voyageurs National Park,IDK,,
+g0080,d62cdd64968b4a27,longmemeval,single-session-preference,75832dbd,"The user would prefer suggestions related to recent research papers, articles, or conferences that focus on artificial intelligence in healthcare, particularly those that involve deep learning for medical image analysis. They would not be interested in general AI topics or those unrelated to healthcare.","Certainly! To provide you with the most relevant recommendations, could you please specify your field of interest or the general area you're exploring? For example, are you interested in technology, science, humanities, business, or a specific academic discipline? Additionally, mentioning any particular region or language preference would be helpful.",,
+g0081,1dc63613a03cda9f,locomo,commonsense,conv-49::q::5::commonsense,Canada,Canada,,
+g0082,55c4a57f6bb7909c,locomo,multi_hop,conv-30::q::18::multi_hop,Yes,"Yes, Jon and Gina are starting businesses related to what they love—dance. Jon is working on a dance studio, while Gina has been noticed by fashion editors and is navigating the pressures of success in the fashion industry.",,
+g0083,131a0298693f6fa3,beam,knowledge_update,11::q::10::knowledge_update,$750,You have set a budget ceiling of $1079 for purchasing the Galaxy S23 Ultra after a potential 10% discount during the July 4 sales.,,
+g0084,3bcf1ae13275991c,locomo,single_hop,conv-30::q::54::single_hop,The store is doing great.,Gina's store is doing great and she is enjoying it despite it being a lot of work. She is keeping up with fashion trends to offer the best pieces to her customers.,,
+g0085,a9dc1482555b3677,locomo,multi_hop,conv-47::q::8::multi_hop,Three dogs.,"James has three pets. He mentioned he already has three dogs at home before adopting Ned, and later referred to Max and Daisy as his dogs.",,
+g0086,768af944677ebb15,longmemeval,knowledge-update,852ce960,"$400,000",IDK,,
+g0087,b7d055ab9cebf10b,longmemeval,single-session-assistant,e8a79c70,2-3 eggs,IDK,,
+g0088,7abe4df364bb273e,locomo,multi_hop,conv-49::q::48::multi_hop,"Healthy eating, exercise routine, running, hiking",Sam adopted a healthier diet as a lifestyle change over time.,,
+g0089,4934b35d4a6d5329,beam,contradiction_resolution,5::q::3::contradiction_resolution,"I notice you've mentioned contradictory information about this. You said you have developed a hashtag generator using spaCy v3.5.0, but you also mentioned that you have never developed any hashtag generation tools using spaCy or any NLP library. Could you clarify which is correct?",IDK,,
+g0090,adddf614809e8a2b,longmemeval,multi-session,gpt4_d84a3211,$185,"IDK
+Based on the information provided in the memories, there is no specific mention of the total amount spent on bike-related expenses since the start of the year. The conversation focused on preparing for a bike trip, choosing a bike rack, and the cost of bike lights, but no cumulative expense was mentioned.",,
+g0091,205e40d2585667c0,locomo,single_hop,conv-49::q::111::single_hop,Swimming,Evan has been doing swimming to stay active while dealing with the knee injury.,,
+g0092,75c7035b2b506c17,longmemeval,single-session-assistant,a40e080f,Patagonia and Southwest Airlines.,"Two companies that prioritize employee safety and well-being, similar to Triumvirate, are:
+
+1. Patagonia - Known for its commitment to environmental conservation, Patagonia also prioritizes the well-being of its employees. They offer flexible work arrangements, generous maternity and paternity leave, and invest in employee education and wellness programs. In 2020, Patagonia was named one of the world's most ethical companies by the Ethisphere Institute for the tenth time.
+
+2. Southwest Airlines - This popular airline focuses on its employees, whom they call ""Warriors."" Southwest offers comprehensive training, generous benefits packages, and a positive work environment. The company's emphasis on employee well-being has led to an enthusiastic team that prioritizes safety, customer service, and company success. Southwest has consistently been recognized for its focus on employee well-being, including being named one of the best places to work by Glassdoor.",,
+g0093,8e29d90244951055,locomo,single_hop,conv-48::q::107::single_hop,amulet,IDK,,
+g0094,3297acbcd9918006,locomo,temporal,conv-26::q::10::temporal,4 years,4 years,,
+g0095,d1451e3783e79725,locomo,single_hop,conv-48::q::15::single_hop,snakes,"provided, Jolene has a snake and a person laying in bed with a dog watching TV, indicating she also has at least one dog.",,
+g0096,3d6ddf3a8cf32521,locomo,commonsense,conv-50::q::37::commonsense,yes,"Yes, Calvin loves music tours. He describes the tour as incredible and energizing, and he is excited about upcoming performances.",,
+g0097,d86d99d25856fa68,locomo,commonsense,conv-49::q::31::commonsense,"Their experiences likely lead them to view challenges as opportunities for growth and change. They both have embraced healthier lifestyles, indicating a proactive approach to managing stress and challenges.","Evan's experience with health challenges and his focus on dietary changes and exercise might influence his approach to stress and challenges by fostering resilience and a proactive attitude towards well-being. This could make him better equipped to handle stress through maintaining a healthy lifestyle. Sam, while acknowledging the importance of health, continues with habits that might not be optimal, which could affect his ability to cope with stress and challenges effectively. However, Sam's openness to discussing health changes suggests he might be open to making improvements. Their differing approaches might lead them to support each other in different ways—Evan providing encouragement based on his experiences, and Sam potentially learning from Evan's journey.",,
+g0098,454ef7e3084561e1,beam,multi_session_reasoning,35::q::12::multi_session_reasoning,"You have paid a total of $2,060 for the USCIS filing fees and the medical exam combined.","To provide an accurate answer, I would need the specific amounts you have paid for the USCIS filing fees and the medical exam. However, based on typical costs, here are the approximate fees:
+
+1. USCIS Filing Fees:
+   - Form I-130 (Petition for Alien Relative): $535
+   - Form I-485 (Application to Register Permanent Residence or Adjust Status): $1,140
+   - Form DS-260 (Immigrant Visa and Alien Registration Application): $265
+   - Affidavit of Support (Form I-864): $425
+
+2. Medical Exam Fee:
+   - The cost of the medical exam varies depending on the civil surgeon, but it is typically around $200 to $300.
+
+Without the exact amounts you have paid, I cannot provide a precise total. If you have receipts or payment records, you can sum up the amounts to get the total.
+
+If you need a breakdown or specific calculations, please provide the exact amounts you have paid for each item.",,
+g0099,02cd38892a3793ca,locomo,multi_hop,conv-26::q::39::multi_hop,"Joining activist group, going to pride parades, participating in an art show, mentoring program","Caroline is participating in the LGBTQ community by attending a support group, a transgender conference, and organizing an LGBTQ art show featuring her own paintings.",,
+g0100,05d1a08d2628e690,beam,temporal_reasoning,22::q::18::temporal_reasoning,"Approximately 30 months passed between my portfolio value of $152,000 in March 2024 and my goal to reach $200,000 by December 2026.",IDK,,
+g0101,9d31bd968d375b2b,locomo,temporal,conv-42::q::16::temporal,dyed his hair purple,"In April 2022, Nate underwent a physical transformation by dyeing his hair purple.",,
+g0102,dd0c69a20491f60a,longmemeval,single-session-assistant,ceb54acb,"I suggested 'sexual fixations', 'problematic sexual behaviors', 'sexual impulsivity', and 'compulsive sexuality'.","Certainly! In our previous discussion, I mentioned the term ""sexual compulsions"" as an alternative to certain behaviors. Along with that, I suggested the following four options:
+
+1. Sexual addiction
+2. Compulsive sexual behavior
+3. Hypersexuality
+4. Impulse control disorder related to sex
+
+These terms are used to describe behaviors characterized by recurrent and intense sexually focused urges, impulses, or behaviors that cause significant distress or impairment in functioning. Each term has slightly different connotations and is used in various contexts, but they generally refer to problematic sexual behaviors.",,
+g0103,2a500a2d98ba74e7,beam,temporal_reasoning,12::q::18::temporal_reasoning,"The total duration is 11 days, starting from April 5 (the first day of the research trip) through April 15 (the last day mentioned for working from cafes).","Based on the information provided, you are planning to start your research trip in Jamestown on May 20 and you haven't specified the end date. To determine the number of days you will be in Jamestown, we would need the last day of your planned work there. Without that information, I cannot calculate the exact number of days. Could you please provide the last day of your planned work in Jamestown?",,
+g0104,49137166d8f93b88,locomo,single_hop,conv-43::q::142::single_hop,made him think again about following dreams and searching for personal legends,"The Alchemist"" helped motivate John to chase his dreams and trust the process, similar to how it impacted Tim.",,
+g0105,5c87d4fd8ed4bdfc,locomo,single_hop,conv-49::q::130::single_hop,As a chance to explore other ways of staying active and traveling,Sam suggested that Evan view the setback with his broken Prius as potentially leading to new opportunities.,,
+g0106,5b77b7102e001678,beam,information_extraction,9::q::6::information_extraction,You said the first term is 3 and the common ratio is 2.,"In the geometric series example, you provided the following values:
+- First term (\(a_1\)): 1
+- Common ratio (\(r\)): 2",,
+g0107,2db1764972ef1526,locomo,single_hop,conv-42::q::111::single_hop,"Coconut milk, vanilla extract, sugar, salt",The main ingredients of the ice cream recipe shared by Nate include coconut and sprinkles.,,
+g0108,f4c2a734dc5db09b,beam,temporal_reasoning,17::q::18::temporal_reasoning,"The therapy session was originally planned for March 10 and was rescheduled to March 15, so it was moved 5 days later.","IDK
+The provided memories do not contain specific information about the original date of the first therapy session or its rescheduling. Without those details, it's not possible to calculate the number of days between the original plan and the rescheduled date.",,
+g0109,66e5d286e518637b,beam,event_ordering,1::q::5::event_ordering,"You mentioned these aspects in this order: 1) Setting up the basic real-time chat app with Node.js, Express, and Socket.io, including initial server code and error handling, 2) Troubleshooting connection errors and client-side Socket.io issues, 3) Discussing handling multiple users and message broadcasting optimizations, 4) Exploring scaling strategies like load balancing and message queues with MongoDB and Mongoose integration, 5) Introducing Redis for caching user sessions and presence data, 6) Implementing and debugging room-based messaging with socket event handlers, 7) Addressing performance bottlenecks with large numbers of concurrent users and suggesting data structure improvements, 8) Handling error and retry logic in Redis pub/sub with advanced reliability strategies, 9) Refactoring message broadcast logic to reduce event loop blocking and considering worker threads and data structures for further optimization.","1. Added an animated loading spinner during message fetch with a max display time of 2 seconds.
+2. Discussed final testing, including cross-device testing and performance testing using tools like Lighthouse, WebPageTest, and Chrome DevTools.
+3. Mentioned setting a milestone for Redis integration completion and load testing by March 30, 2024.
+4. Suggested monitoring setup with tools like Google Analytics, New Relic, or Datadog, and configuring alerts.
+5. Proposed A/B testing using tools like Google Optimize or VWO.
+6. Advised on a gradual rollout starting with a small percentage of users and increasing based on performance and feedback.
+7. Discussed collecting user feedback through surveys, feedback forms, or in-app mechanisms.
+8. Emphasized preparing documentation and conducting training for the development and operations teams.
+9. Suggested implementing fallback mechanisms for critical assets to ensure the application remains functional.",,
+g0110,f445dfccac62b9ce,locomo,commonsense,conv-43::q::67::commonsense,Writing a travel blog.,"Based on Tim's interest in travel and his love for fantasy literature, a good hobby related to his travel dreams could be learning a foreign language, such as Italian, to enhance his travel experiences. Alternatively, he could start a travel journal or blog to document his future trips, combining his love for writing with his passion for travel.",,
+g0111,5e76f2bc17e04c4f,locomo,multi_hop,conv-43::q::30::multi_hop,"Seattle, Chicago, New York, and Paris.","Based on the information provided, John mentioned taking a trip to a new place but did not specify the city. He also talked about planning a trip to Universal Studios but did not mention visiting it. Therefore, we only know that John has been to a new place, but the specific city is not identified.",,
+g0112,2dddf4ab1803ecac,locomo,temporal,conv-42::q::18::temporal,Whispering Falls waterfall,Whispering Falls. Joanna visited this beautiful location in May and took a photo of a waterfall there.,,
+g0113,be021694ae6b3125,locomo,multi_hop,conv-41::q::40::multi_hop,"Kyle, Sara",IDK,,
+g0114,b14ee0b625d21933,beam,multi_session_reasoning,17::q::12::multi_session_reasoning,140%,140%,,
+g0115,4002279471b77b7e,locomo,single_hop,conv-41::q::136::single_hop,Teaching them to respect and appreciate those who served,"John believes it is important to show children how to respect and appreciate those who served in the military, as he thinks teaching kids about veterans and what they did for the country is crucial.",,
+g0116,01f27b1ba9679eb9,beam,multi_session_reasoning,33::q::13::multi_session_reasoning,"I agreed to limit late-night games to twice a week and gym sessions to three times a week, totaling five sessions per week.","Based on the information provided in the memories, you agreed to limit your gym sessions to 3 per week and to limit work-related travel during holidays for Jessica. There is no specific mention of limiting basketball-related activities directly. However, the general principle of limiting activities aligns with Jessica's requests. Therefore, you agreed to limit your basketball-related activities (which could include late-night games and gym sessions) to a maximum of 3 times per week, as part of the broader compromise to balance your commitments with Jessica's concerns.",,
+g0117,cdc94cc3013d6cf6,beam,temporal_reasoning,6::q::19::temporal_reasoning,"There are about two months between my goal to master the distance, midpoint, and slope formulas by February 1, 2024, and my plan to solve problems on parallel and perpendicular lines by April 1, 2024.","Based on your timeline, you planned to master the distance, midpoint, and slope formulas by February 1, 2024, and you mentioned that you plan to solve problems on parallel and perpendicular lines by February 5, 2024. 
+
+The time difference between these two dates is:
+
+February 5, 2024 - February 1, 2024 = 4 days
+
+So, you have 4 days between when you plan to master the formulas and when you plan to solve problems on parallel and perpendicular lines.",,
+g0118,a58ee2159090ef05,beam,knowledge_update,24::q::11::knowledge_update,9:15 PM,IDK,,
+g0119,670028a6135514ba,locomo,single_hop,conv-49::q::113::single_hop,Painting,Evan suggested that Sam try PT (likely physical therapy) as a calming hobby.,,
+g0120,,locomo,adversarial,conv-48::q::237::adversarial,,IDK,,
+g0121,,locomo,adversarial,conv-43::q::232::adversarial,,IDK,,
+g0122,,locomo,adversarial,conv-48::q::221::adversarial,,IDK,,
+g0123,,locomo,adversarial,conv-48::q::199::adversarial,,IDK,,
+g0124,,locomo,adversarial,conv-42::q::247::adversarial,,IDK,,
+g0125,,locomo,adversarial,conv-42::q::214::adversarial,,IDK,,
+g0126,,locomo,adversarial,conv-50::q::184::adversarial,,IDK,,
+g0127,,locomo,adversarial,conv-47::q::152::adversarial,,"John was inspired to create the game character by a stranger he saw on a walk with his dogs two weeks prior. He described her eyes and appearance as amazing, saying it seemed like he fell in love at first sight, though he didn't approach her.",,
+g0128,,locomo,adversarial,conv-41::q::167::adversarial,,IDK,,
+g0129,,locomo,adversarial,conv-41::q::181::adversarial,,IDK,,

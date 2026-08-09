@@ -1,0 +1,1 @@
+LABEL RULE: human_correct=true iff a reasonable reader would accept the answer as answering the question, regardless of wording. An abstention ('I don't know' etc.) is true only if the question is genuinely unanswerable. A partial answer to a multi-part question is false — note 'partial'. Judge the ANSWER against the QUESTION and REFERENCE only; do not reward confident wrongness.

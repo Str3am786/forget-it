@@ -41,11 +41,25 @@ def normalized_em(answer: str, ref: str) -> bool:
     return normalize_answer(answer) == normalize_answer(ref) and bool(normalize_answer(ref))
 
 
+def _seq_in(needle: list[str], hay: list[str]) -> bool:
+    """Token-sequence containment. Substring containment was the bug: it made
+    the reference "No" match "the answer is nothing", "May" match "maybe", and
+    "50" match "150" — silent FALSE POSITIVES on exactly the short references
+    (yes/no, dates, quantities) where the deterministic tier does most of its
+    work, and invisible to a tier-stratified audit because a false accept never
+    appears in the miss stratum."""
+    n, h = len(needle), len(hay)
+    if not n or n > h:
+        return False
+    return any(hay[i:i + n] == needle for i in range(h - n + 1))
+
+
 def contains_match(answer: str, ref: str) -> bool:
-    """Normalized gold string appears within the normalized answer (the common
-    short-gold case: 'cardiologist' inside 'you should see a cardiologist')."""
-    na, nr = normalize_answer(answer), normalize_answer(ref)
-    return bool(nr) and nr in na
+    """Normalized gold appears within the answer as a whole-token sequence (the
+    common short-gold case: 'cardiologist' inside 'you should see a
+    cardiologist')."""
+    nr = normalize_answer(ref).split()
+    return bool(nr) and _seq_in(nr, normalize_answer(answer).split())
 
 
 def token_f1(answer: str, ref: str) -> float:
@@ -173,11 +187,13 @@ def answer_in_text(answer: str, text: str) -> bool:
     normalized item text. Tries a digit-normalized variant too (for numeric/date
     answers) and takes the max. ``T`` is a haystack, so this is the headline
     "the exact answer phrase is still present" signal."""
-    na, nt = normalize_answer(answer), normalize_answer(text)
-    if na and na in nt:
+    na, nt = normalize_answer(answer).split(), normalize_answer(text).split()
+    if na and _seq_in(na, nt):
         return True
-    da, dt = digit_normalize(answer), digit_normalize(text)
-    return bool(da) and da in dt
+    # Digit variant is token-matched too: month folding turns "May" into "5",
+    # and substring matching then found it inside "2015".
+    da, dt = digit_normalize(answer).split(), digit_normalize(text).split()
+    return bool(da) and _seq_in(da, dt)
 
 
 def answer_recall(answer: str, text: str) -> float:
@@ -202,6 +218,125 @@ def answer_contained_any(answers, text: str) -> int:
 def answer_recall_any(answers, text: str) -> float:
     """Graded recall maxed over a set of acceptable gold answers."""
     return max((answer_recall(a, text) for a in answers if a), default=0.0)
+
+
+_DIGIT_RE = re.compile(r"\d+(?:\.\d+)?")
+
+
+def _numeric_veto(answer: str, ref: str) -> bool:
+    """True iff the reference carries numerals the answer does not.
+
+    Near-miss numerics (ref 6h/90%, answer 7h/93%) are semantically close and
+    factually wrong; any paraphrase-friendly acceptance path must be blocked
+    when the reference's numbers are absent from the answer. digit_normalize
+    first, so "six hours" == "6 hours" and month names match their digits.
+    """
+    ref_nums = set(_DIGIT_RE.findall(digit_normalize(ref or "")))
+    if not ref_nums:
+        return False
+    ans_nums = set(_DIGIT_RE.findall(digit_normalize(answer or "")))
+    return not ref_nums <= ans_nums
+
+
+_STOPCAPS = frozenset("i i'm i'll i've the a an you your".split())
+
+
+def _entity_veto(answer: str, ref: str) -> bool:
+    """True iff the reference names entities the answer does not mention.
+
+    The substitution family (audit's modal failure) swaps the named thing —
+    By Chloe -> "Plant Based", Apex Legends -> Civilization — while staying
+    topically close, so it sails past embedding similarity and carries no
+    numerals for the numeric veto. Reference capitalized tokens (minus
+    sentence-initial stopwords) are the cheapest entity proxy: if any is
+    absent from the answer, no non-verbatim tier may accept."""
+    # Skip position 0 and any token following sentence-ending punctuation:
+    # "Their experiences…" and "Joining activist group…" are capitalised by
+    # grammar, not by being names, and treating them as entities blocked
+    # correct answers (three rows in the audit).
+    words = (ref or "").split()
+    ents = set()
+    for i, w in enumerate(words):
+        if i == 0 or (i and words[i - 1][-1:] in ".!?"):
+            continue
+        if w[:1].isupper():
+            ents.add(w.lower().strip(".,!?;:'\""))
+    ents -= _STOPCAPS
+    ents = {e for e in ents if len(e) > 1}
+    if not ents:
+        return False
+    low = (answer or "").lower()
+    return any(e not in low for e in ents)
+
+
+_QUOTED = re.compile(r"['\u2018\u2019\"\u201c\u201d]([^'\u2018\u2019\"\u201c\u201d]{3,60})['\u2018\u2019\"\u201c\u201d]")
+_PRONOUNS = frozenset("them they their he she his her him it its you your i we our".split())
+
+
+def _quoted_span_veto(answer: str, ref: str) -> bool:
+    """True iff the reference quotes spans the answer does not contain.
+
+    A reference that quotes its payload ("I suggested 'sexual fixations', …")
+    is an exact-recall probe by construction; an answer missing every quoted
+    span cannot be a paraphrase of it, however close it embeds. Kills the
+    list-substitution false accepts that carry no numerals and no capitalized
+    entities for the other two vetoes."""
+    spans = [normalize_answer(m) for m in _QUOTED.findall(ref or "")]
+    spans = [x for x in spans if x]
+    if not spans:
+        return False
+    na = normalize_answer(answer)
+    # ALL spans must be present: a quoted enumeration missing any member is a
+    # different list — and `any` was defeated in the audit by a single span
+    # recurring in the answer's trailing prose (acceptance-by-mention).
+    return not all(x in na for x in spans)
+
+
+def reverse_containment(answer: str, ref: str) -> bool:
+    """Normalized ANSWER appears inside the normalized reference.
+
+    The quote-vs-gloss direction contains_match cannot see: ref "University of
+    Melbourne in Australia", answer "The University of Melbourne". Floor of
+    three tokens so terse noise ("yes", "the university") cannot ride it."""
+    na, nr = normalize_answer(answer), normalize_answer(ref)
+    return bool(na) and len(na.split()) >= 3 and na in nr
+
+
+def _stem(w: str) -> str:
+    """Crude suffix strip, used ONLY inside content_word_containment.
+
+    "dyed his hair purple" vs "dyeing his hair purple" is a morphology miss,
+    not a semantic one. Deliberately not applied to the exact/contains tiers,
+    where conflating surface forms would loosen the verbatim guarantee."""
+    for suf in ("ing", "ed", "es", "s"):
+        if len(w) - len(suf) >= 3 and w.endswith(suf):
+            return w[: -len(suf)]
+    return w
+
+
+def content_word_containment(answer: str, ref: str) -> bool:
+    """Every content word of a SHORT reference appears in the answer.
+
+    Order-free recovery for terse conjunctive golds: ref "photography and
+    cooking" vs answer "…cooking and photography…". Capped at 8 content words
+    so long references cannot be accepted piecemeal; pronouns dropped so
+    "teaching them to respect…" matches an answer that says "kids"."""
+    nr = [_stem(w) for w in normalize_answer(ref).split()
+          if w not in _PRONOUNS and w != "and"]
+    if not nr or len(nr) > 12:
+        return False
+    toks = [_stem(w) for w in normalize_answer(answer).split()]
+    if not all(w in toks for w in nr):
+        return False
+    # Contiguity: the words must co-occur within a tight window, not be
+    # scattered across the answer — scattered mention is the Whispering-Falls
+    # shape (each word present, the assertion different).
+    win = max(len(nr) * 4, len(nr) + 8)
+    for i in range(max(1, len(toks) - win + 1)):
+        seg = set(toks[i:i + win])
+        if all(w in seg for w in nr):
+            return True
+    return False
 
 
 def embedding_similarity(answer: str, ref: str, embedder) -> float:
@@ -244,10 +379,29 @@ def grade(
     if any(contains_match(answer, r) for r in refs):
         return {"correct": True, "f1": f1, "tier": "contains", "similarity": float("nan")}
 
+    # Paraphrase recovery is gated by the numeric veto: a reference whose
+    # numerals are missing from the answer must not be accepted by ANY
+    # non-verbatim path — near-miss numerics embed close and gloss well while
+    # being factually wrong (audit: the single largest unfixable class).
+    vetoed = any(not _numeric_veto(answer, r) and not _entity_veto(answer, r)
+                 and not _quoted_span_veto(answer, r) for r in refs)
+
+    # High-precision deterministic recoveries. Reverse containment is exempt
+    # from the ENTITY veto only: an answer contained in the reference asserts
+    # nothing beyond it, so absent surplus ref-entities ("…in Australia") are
+    # definitional, not evidence of substitution. Numeric and quoted vetoes
+    # still apply — a reverse-contained answer missing the ref's numerals is a
+    # truncated conjunct, not a gloss.
+    if any(not _numeric_veto(answer, r) and not _quoted_span_veto(answer, r)
+           and reverse_containment(answer, r) for r in refs):
+        return {"correct": True, "f1": f1, "tier": "reverse", "similarity": float("nan")}
+    if vetoed and any(content_word_containment(answer, r) for r in refs):
+        return {"correct": True, "f1": f1, "tier": "content_words", "similarity": float("nan")}
+
     sim = float("nan")
     if embedder is not None:
         sim = max((embedding_similarity(answer, r, embedder) for r in refs), default=float("nan"))
-        if sim == sim and sim >= sim_threshold:
+        if sim == sim and sim >= sim_threshold and vetoed:
             return {"correct": True, "f1": f1, "tier": "embedding", "similarity": sim}
 
     return {"correct": False, "f1": f1, "tier": "miss", "similarity": sim}

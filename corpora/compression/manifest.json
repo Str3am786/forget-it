@@ -1,0 +1,33 @@
+{
+  "root": "artifacts/smoke6",
+  "seed": 42,
+  "n_requested": 150,
+  "n_sampled": 150,
+  "frame_size": 1102,
+  "bands": [
+    [
+      0.0,
+      0.15,
+      "hard"
+    ],
+    [
+      0.15,
+      0.35,
+      "medium"
+    ],
+    [
+      0.35,
+      1.01,
+      "light"
+    ]
+  ],
+  "stats": {
+    "rejected_unreachable": 1134,
+    "snapshot_rows": 6726,
+    "not_compressed": 3607,
+    "kept": 1102,
+    "dropped_unanswerable": 1302,
+    "dedup_across_budgets": 685,
+    "evicted_unrecovered": 30
+  }
+}

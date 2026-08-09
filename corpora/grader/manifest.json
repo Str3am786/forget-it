@@ -1,0 +1,15 @@
+{
+  "source": "/home/arroyo/Desktop/results_lumi/benchmark_reader_v2/combined_results.csv",
+  "seed": 42,
+  "n": 130,
+  "sim_threshold": 0.83,
+  "boundary": 0.06,
+  "embed": true,
+  "unanswerable_rows": 10,
+  "ungradeable_no_reference": 227429,
+  "ungradeable_by_qtype": {
+    "beam/instruction_following": 75809,
+    "beam/preference_following": 75810,
+    "beam/summarization": 75810
+  }
+}
