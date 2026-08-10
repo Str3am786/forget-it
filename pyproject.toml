@@ -20,8 +20,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+[project.optional-dependencies]
+figures = [
+    "matplotlib>=3.8",
+    "scipy>=1.11",
+    "numpy>=1.26",
+    "pandas>=2.0",
+]
 test = ["pytest>=8.0"]
-dev  = ["pytest>=8.0", "ruff", "mypy"]
+dev  = ["pytest>=8.0", "ruff", "mypy", "forgetit[figures]"]
 
 [tool.setuptools]
 package-dir = { "" = "src" }
