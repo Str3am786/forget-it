@@ -226,3 +226,6 @@ grep
 # trail stays out of the branch; the branch carries shippable code and tests.
 verification/
 report2/
+response.txt
+report/
+artifacts/

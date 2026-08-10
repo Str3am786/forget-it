@@ -1,0 +1,24 @@
+You are grading whether a summary preserves the information needed to answer a question. Judge only what the texts say. Do not use outside knowledge.
+
+QUESTION:
+{question}
+
+REFERENCE ANSWER:
+{answer}
+
+TEXT A (the original):
+{original}
+
+TEXT B (a summary of TEXT A):
+{compressed}
+
+Answer three questions with true or false.
+
+1. answer_in_original: Reading TEXT A alone, could someone give the reference answer? True only if TEXT A states or directly implies it. If the reference answer depends on a date, a fact, or a detail that TEXT A never mentions, answer false.
+
+2. answer_in_compressed: Reading TEXT B alone, could someone give the reference answer? Apply the same standard.
+
+3. unsupported_claim: Does TEXT B state anything that TEXT A does not support? Rewording and omission are fine; only assertions absent from TEXT A count.
+
+Reply with JSON only, no other text:
+{{"answer_in_original": true, "answer_in_compressed": false, "unsupported_claim": false, "note": "<12 words max>"}}
