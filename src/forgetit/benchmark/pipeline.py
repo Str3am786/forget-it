@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from forgetit.benchmark.metrics import summarize, summarize_by_question_type
+from forgetit.benchmark.probe_split import PROBE_SCHEME_LEAKY
 from forgetit.benchmark.runner_core import run, run_one_example, _run_reader, _StoreView
 from forgetit.benchmark.workloads.base import Workload
 from forgetit.memory_system.base import MemorySystem
@@ -83,6 +84,47 @@ def _config_hash(**fields) -> str:
     count), excludes throughput knobs (workers)."""
     blob = json.dumps(fields, sort_keys=True, default=str)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+
+
+def _probe_identity(workload, base: Path) -> dict:
+    """Probe-scheme identity for the config hash, derived FROM THE WORKLOAD.
+
+    R8: probe texts must be disjoint from scored texts. Two runs that differ
+    only in probe scheme, partition seed, or partition membership are
+    DIFFERENT EXPERIMENTS, so all three enter the config hash — otherwise a
+    corrected config collides with a leaky ``DONE.json`` and the runner skips
+    the work it was launched to redo.
+
+    Derived here rather than passed by the caller on purpose: a forgotten
+    argument in one run script would silently reintroduce exactly that
+    collision. Workloads that predate the split (synthetic) report
+    ``probe_scheme=None`` and hash as before.
+
+    Side effect (deliberate, idempotent): writes the partition manifest into
+    the config's own artefact directory, so the shipped partition always
+    travels with the results it produced.
+    """
+    scheme = getattr(workload, "probe_scheme", None)
+    ident: dict = {
+        "probe_scheme": scheme,
+        "probe_every": getattr(workload, "probe_every", None),
+    }
+    if scheme is None:
+        return ident
+
+    writer = getattr(workload, "write_partition_manifest", None)
+    if callable(writer) and scheme != PROBE_SCHEME_LEAKY:
+        try:
+            base.mkdir(parents=True, exist_ok=True)
+            ident["partition_hash"] = writer(base / "probe_partition.json")
+        except Exception as e:
+            # A partition we cannot write is a partition we cannot ship or
+            # verify — fail loudly rather than hash a run as if it had one.
+            raise RuntimeError(
+                f"probe partition manifest failed for dataset workload "
+                f"{getattr(workload, 'name', workload)!r}: {e}"
+            ) from e
+    return ident
 
 
 def _stamp_provenance(results, *, config_hash: str, reader_impl, store_probe) -> None:
@@ -328,6 +370,7 @@ def run_pipeline(
         reader=reader, k=k, seed=seed, budget_bytes=budget_bytes,
         budget_frac=budget_frac, answer_max_tokens=answer_max_tokens,
         n_examples=None, write_events=write_events,
+        **_probe_identity(workload, base),
     )
     _stamp_provenance(results, config_hash=cfg_hash,
                       reader_impl=reader_impl, store_probe=store)
@@ -515,6 +558,9 @@ def run_pipeline_concurrent(
         budget_frac=budget_frac, answer_max_tokens=answer_max_tokens,
         n_examples=len(indexed), write_events=write_events,
         write_gold_snapshot=write_gold_snapshot,
+        # R8 probe identity — computed BEFORE the skip-if-done check so a
+        # leaky-arm DONE.json can never satisfy a corrected config.
+        **_probe_identity(workload, base),
     )
 
     # Skip-if-done: a crashed/re-submitted shard re-runs only its unfinished
@@ -587,7 +633,10 @@ def run_pipeline_concurrent(
             result.qa_f1 = qa.qa_f1
             result.reader_evidence_delivered = qa.reader_evidence_delivered
             result.reader_evidence_truncated = qa.reader_evidence_truncated
-
+            result.reader_errored = qa.reader_errored
+            result.reader_cap_hit = qa.reader_cap_hit
+            result.reader_item_ids = qa.reader_item_ids
+            
     if write_events:
         _write_events_jsonl(base / "events.jsonl", event_groups)
     if write_gold_snapshot:

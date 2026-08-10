@@ -74,7 +74,9 @@ class QAFields:
     # result, not a retrieval one.
     reader_evidence_delivered: int = 0     # items that reached the prompt
     reader_evidence_truncated: bool = False  # a delivered item was cut mid-text
-
+    reader_errored: bool = False
+    reader_cap_hit: bool | None = None
+    reader_item_ids: str = "[]"
 
 # ── final per-query output ─────────────────────────────────────────
 
@@ -200,6 +202,11 @@ class EvalResult:
     # hard-cut to 300 chars, and truncated is not tracked → False.)
     reader_evidence_delivered: int = 0
     reader_evidence_truncated: bool = False
+
+    reader_errored: bool = False
+    reader_cap_hit: bool | None = None
+
+    reader_item_ids: str = "[]"
 
     # reference data
     ref_answer: str = ""

@@ -67,5 +67,6 @@ class AnswerResult:
     abstained: bool
     latency_sec: float
     meta: Dict[str, Any] = field(default_factory=dict)
+    errored: bool = False
 
 

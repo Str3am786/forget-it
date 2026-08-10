@@ -16,6 +16,15 @@ class SyntheticWorkload:
     - Later filler -> creates budget pressure.
     - Final labeled queries -> evaluate policy survival + retrieval quality.
 
+    R8 CONSTRAINT (see benchmark/probe_split.py): the mid-stream access queries
+    must NOT reuse the scored query strings. They target the same items by
+    content overlap, phrased differently, so LRU/LFU receive a usage signal
+    without receiving a copy of the answer key. Before this was fixed, access_1
+    and access_2 were byte-identical to q1 and q2, which meant part of this
+    fixture's ability to separate policies came from the leak rather than from
+    the policies. Keep any new access query lexically distinct from every
+    scored query below.
+
     This is not meant to prove the thesis by itself.
     It is meant to prove that the benchmark pipeline can detect known
     policy differences under controlled conditions.
@@ -197,14 +206,20 @@ class SyntheticWorkload:
 
         # ------------------------------------------------------------------
         # Mid-stream access-only queries.
-        # These create access signal for LRU/LFU but are not scored.
+        # These create access signal for LRU/LFU but are not scored. Phrased to
+        # overlap the target items lexically WITHOUT reusing any scored query
+        # string (R8 — see the class docstring).
         #
         # Intended effect:
-        # - gold_3 gets hit twice
-        # - gold_2 gets hit once
+        # - gold_3 gets hit twice (access_1, access_3)
+        # - gold_2 gets hit once  (access_2)
         # ------------------------------------------------------------------
         t = tick()
-        q_access_1 = self._make_query("access_1", "What is Bob allergic to?", t)
+        q_access_1 = self._make_query(
+            "access_1",
+            "notes about the epinephrine injector and peanut sensitivity",
+            t,
+        )
         yield WorkloadEvent(
             type="query",
             timestamp=t,
@@ -216,7 +231,7 @@ class SyntheticWorkload:
         t = tick()
         q_access_2 = self._make_query(
             "access_2",
-            "What is the cabin router recovery code?",
+            "pine forest code taped to the cabin Wi-Fi router",
             t,
         )
         yield WorkloadEvent(
@@ -230,7 +245,7 @@ class SyntheticWorkload:
         t = tick()
         q_access_3 = self._make_query(
             "access_3",
-            "Remind me of Bob's allergy again.",
+            "which injector does Bob carry for his peanut reaction",
             t,
         )
         yield WorkloadEvent(

@@ -215,7 +215,8 @@ class LLMCompressionPolicy(EvictionPolicy):
                 action="compress",
                 outcome="empty_output" if not compressed else "low_saving",
                 orig_bytes=original_text_bytes, out_bytes=compressed_bytes,
-                raw_bytes=len(raw.encode("utf-8")))
+                raw_bytes=len(raw.encode("utf-8")),
+                cache_key=self.last_llm_cache_key)
             return Evict(id=victim_id)
 
         log.info("[compress] %s APPLY %dB→%dB text saving=%.0f%% (kept, marked compressed)",
@@ -226,5 +227,6 @@ class LLMCompressionPolicy(EvictionPolicy):
         self._annotate_decision(action="compress", outcome="applied",
                                 orig_bytes=original_text_bytes,
                                 out_bytes=compressed_bytes,
-                                raw_bytes=len(raw.encode("utf-8")))
+                                raw_bytes=len(raw.encode("utf-8")),
+                                cache_key=self.last_llm_cache_key)
         return Compress(id=victim_id, new_text=compressed)

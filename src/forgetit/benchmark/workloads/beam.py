@@ -8,6 +8,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator, Sequence
 
+from forgetit.benchmark.probe_split import (
+    ProbePartition, write_manifest,
+    PROBE_SCHEME_SPLIT, PROBE_SCHEME_LEAKY,
+)
 from forgetit.benchmark.schema import WorkloadEvent
 from forgetit.benchmark.workloads.base import Itemiser
 from forgetit.core.schema import MemRecord, Query
@@ -579,6 +583,7 @@ class BeamWorkload:
         conversation_ids: Sequence[str] | None = None,
         base_timestamp: float = 1_700_000_000.0,
         probe_every: int = 1,
+        probe_scheme: str = PROBE_SCHEME_SPLIT,
         clear_between_examples: bool = True,
         limit: int | None = None,
     ):
@@ -602,11 +607,58 @@ class BeamWorkload:
         self._allow: set[str] | None = (
             {str(c) for c in conversation_ids} if conversation_ids is not None else None
         )
+        if probe_scheme not in (PROBE_SCHEME_SPLIT, PROBE_SCHEME_LEAKY):
+            raise ValueError(
+                f"BEAM probe_scheme must be {PROBE_SCHEME_SPLIT!r} or "
+                f"{PROBE_SCHEME_LEAKY!r} (archived ablation arm), got {probe_scheme!r}"
+            )
+        if probe_scheme == PROBE_SCHEME_LEAKY:
+            log.warning(
+                "BEAM running the ARCHIVED leaky_v0 probe scheme: probes recite "
+                "the scored questions (R8 violation) — leak-ablation arm ONLY."
+            )
         self._base_ts = base_timestamp
         self.probe_every = probe_every
+        self.probe_scheme = probe_scheme
         self.clear_between_examples = clear_between_examples
         self.limit = limit
         self._conv_cache: list[_BeamConversation] | None = None  # parsed once, shared read-only
+        # conversation_id -> ProbePartition (lazy in iter_examples, eager in
+        # write_partition_manifest; deterministic either way).
+        self._partitions: dict[str, ProbePartition] = {}
+
+    # ---- probe partition (R8) ----
+
+    def _partition_for(self, conv) -> ProbePartition:
+        part = self._partitions.get(conv.conversation_id)
+        if part is None:
+            q_ids = [f"{conv.conversation_id}::q::{i}::{pq.ability}"
+                     for i, pq in enumerate(conv.probing_questions)]
+            part = ProbePartition.build(
+                dataset="beam",
+                example_id=conv.conversation_id,
+                questions=[(qid, pq.ability)
+                           for qid, pq in zip(q_ids, conv.probing_questions)],
+            )
+            self._partitions[conv.conversation_id] = part
+        return part
+
+    def write_partition_manifest(self, path) -> str:
+        """Eagerly build every conversation's partition and write the manifest
+        that ships with the artefact. Returns the content hash — the value
+        that MUST enter the config hash. Honours ``limit`` exactly as
+        ``iter_examples`` does."""
+        if self.probe_scheme == PROBE_SCHEME_LEAKY:
+            raise ValueError("leaky_v0 has no partition manifest (ablation arm).")
+        n = 0
+        for conv in self._iter_conversations():
+            if self.limit is not None and n >= self.limit:
+                break
+            n += 1
+            self._partition_for(conv)
+        return write_manifest(sorted(self._partitions.values(),
+                                     key=lambda p: p.example_id),
+                              path, probe_scheme=self.probe_scheme)
 
 
     # ---- public introspection ----
@@ -671,9 +723,22 @@ class BeamWorkload:
             if items:
                 ts = items[-1].created_at + 1.0
 
-            # Access-only probes cycle through this conversation's questions so
-            # the items they retrieve gain recency/frequency before eviction.
-            probe_texts = [pq.question for pq in conv.probing_questions if pq.question]
+            # R8 fix (disjoint_split_v1): probes recite ONLY the probe half
+            # of a deterministic, stratified partition of this conversation's
+            # questions; the scored loop below emits ONLY the scored half.
+            # Under the archived leaky_v0 scheme (leak-ablation arm) probes
+            # cycle ALL questions — the defect sec:bm:leak measures.
+            text_by_qid = {
+                f"{conv.conversation_id}::q::{i}::{pq.ability}": pq.question
+                for i, pq in enumerate(conv.probing_questions)
+            }
+            if self.probe_scheme == PROBE_SCHEME_LEAKY:
+                partition = None
+                probe_texts = [pq.question for pq in conv.probing_questions if pq.question]
+            else:
+                partition = self._partition_for(conv)
+                probe_texts = [text_by_qid[qid] for qid in partition.probe_order
+                               if text_by_qid[qid]]
             probe_i = 0
 
             for n, rec in enumerate(items, start=1):
@@ -698,13 +763,18 @@ class BeamWorkload:
                             embedding=None,
                             meta={"dataset": "beam",
                                   "conversation_id": conv.conversation_id,
-                                  "probe": True},
+                                  "probe": True,
+                                  "probe_scheme": self.probe_scheme},
                         ),
                         gold_item_ids=[],   # access-only — not scored
                     ))
 
+            # Probe-half questions are SKIPPED here (access signal only);
+            # analysed counts shrink accordingly (documented in the chapter).
             for q_idx, pq in enumerate(conv.probing_questions):
                 q_id = f"{conv.conversation_id}::q::{q_idx}::{pq.ability}"
+                if partition is not None and q_id not in partition.scored_ids:
+                    continue
                 q_ts = ts
                 ts += 1.0
 

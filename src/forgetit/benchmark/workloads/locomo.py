@@ -38,6 +38,10 @@ from pathlib import Path
 from typing import Any, Iterator, Sequence
 
 from forgetit.benchmark.grading import grade, is_answerable
+from forgetit.benchmark.probe_split import (
+    ProbePartition, write_manifest,
+    PROBE_SCHEME_SPLIT, PROBE_SCHEME_LEAKY,
+)
 from forgetit.benchmark.schema import WorkloadEvent
 from forgetit.benchmark.workloads.base import Itemiser
 from forgetit.core.schema import MemRecord, Query
@@ -566,19 +570,63 @@ class LocomoWorkload:
         itemiser: Itemiser,
         *,
         probe_every: int = 1,
+        probe_scheme: str = PROBE_SCHEME_SPLIT,
         clear_between_examples: bool = True,
         skip_image_turns: bool = False,
         limit: int | None = None,
         base_timestamp: float = 1_700_000_000.0,
     ):
+        if probe_scheme not in (PROBE_SCHEME_SPLIT, PROBE_SCHEME_LEAKY):
+            raise ValueError(
+                f"LoCoMo probe_scheme must be {PROBE_SCHEME_SPLIT!r} or "
+                f"{PROBE_SCHEME_LEAKY!r} (archived ablation arm), got {probe_scheme!r}"
+            )
+        if probe_scheme == PROBE_SCHEME_LEAKY:
+            log.warning(
+                "LoCoMo running the ARCHIVED leaky_v0 probe scheme: probes recite "
+                "the scored questions (R8 violation) — leak-ablation arm ONLY."
+            )
         self.path = Path(path)
         self.itemiser = itemiser
         self.probe_every = probe_every
+        self.probe_scheme = probe_scheme
         self.clear_between_examples = clear_between_examples
         self.skip_image_turns = skip_image_turns
         self.limit = limit
         self._base_ts = base_timestamp
         self._conv_cache: list[_LocomoConversation] | None = None   # parsed once, shared read-only
+        # conversation_id -> ProbePartition, built lazily (iter_examples) or
+        # eagerly (write_partition_manifest); deterministic either way, so both
+        # construction orders yield byte-identical partitions.
+        self._partitions: dict[str, ProbePartition] = {}
+
+    # ---- probe partition (R8) ----
+
+    def _partition_for(self, conv: _LocomoConversation) -> ProbePartition:
+        part = self._partitions.get(conv.conversation_id)
+        if part is None:
+            q_ids = [f"{conv.conversation_id}::q::{i}::{qa.category_name}"
+                     for i, qa in enumerate(conv.qa)]
+            part = ProbePartition.build(
+                dataset="locomo",
+                example_id=conv.conversation_id,
+                questions=[(qid, qa.category_name)
+                           for qid, qa in zip(q_ids, conv.qa)],
+            )
+            self._partitions[conv.conversation_id] = part
+        return part
+
+    def write_partition_manifest(self, path: str | Path) -> str:
+        """Eagerly build every conversation's partition and write the manifest
+        that ships with the artefact (part of the experimental definition).
+        Returns the content hash — the value that MUST enter the config hash."""
+        if self.probe_scheme == PROBE_SCHEME_LEAKY:
+            raise ValueError("leaky_v0 has no partition manifest (ablation arm).")
+        for conv in self._iter_conversations():
+            self._partition_for(conv)
+        return write_manifest(sorted(self._partitions.values(),
+                                     key=lambda p: p.example_id),
+                              path, probe_scheme=self.probe_scheme)
 
     # ---- public introspection ----
 
@@ -630,9 +678,24 @@ class LocomoWorkload:
             if items:
                 ts = items[-1].created_at + 1.0
 
-            # Per-session probes cycle through this conversation's questions so
-            # the items they retrieve gain recency/frequency before eviction.
-            probe_texts = [qa.question for qa in conv.qa if qa.question]
+            # R8 fix (disjoint_split_v1): probes recite ONLY the probe half of
+            # a deterministic, stratified partition of this conversation's
+            # questions; the scored loop below emits ONLY the scored half — the
+            # two sets never intersect, so the access counters carry usage
+            # signal without a soft answer label. Under the archived leaky_v0
+            # scheme (leak-ablation arm) probes cycle ALL questions, scored
+            # ones included — the exact defect sec:bm:leak measures.
+            text_by_qid = {
+                f"{conv.conversation_id}::q::{i}::{qa.category_name}": qa.question
+                for i, qa in enumerate(conv.qa)
+            }
+            if self.probe_scheme == PROBE_SCHEME_LEAKY:
+                partition = None
+                probe_texts = [qa.question for qa in conv.qa if qa.question]
+            else:
+                partition = self._partition_for(conv)
+                probe_texts = [text_by_qid[qid] for qid in partition.probe_order
+                               if text_by_qid[qid]]
             probe_i = 0
 
             # Emit inserts session-by-session; fire a probe after each session's
@@ -667,14 +730,19 @@ class LocomoWorkload:
                                 embedding=None,
                                 meta={"dataset": "locomo",
                                       "conversation_id": conv.conversation_id,
-                                      "probe": True},
+                                      "probe": True,
+                                      "probe_scheme": self.probe_scheme},
                             ),
                             gold_item_ids=[],     # access-only — not scored
                         ))
 
-            # Scored QA queries — after the final insert.
+            # Scored QA queries — after the final insert. Probe-half questions
+            # are SKIPPED (they exist only as access signal); the analysed
+            # counts shrink accordingly, as documented in the methods chapter.
             for q_idx, qa in enumerate(conv.qa):
                 q_id = f"{conv.conversation_id}::q::{q_idx}::{qa.category_name}"
+                if partition is not None and q_id not in partition.scored_ids:
+                    continue
                 q_ts = ts
                 ts += 1.0
 

@@ -155,6 +155,30 @@ class RetentionManager(MemorySystem):
     def get(self, item_id: str) -> Optional[MemRecord]:
         return self.backend.get(item_id)
 
+    def counter_state_hash(self) -> str:
+        """Deterministic fingerprint of every signal a policy may consume.
+
+        Covers (id, access_count, last_access, bytes) for every resident, the
+        global tick, and the insert ordinal. The read-only guarantee of
+        ``search`` is DEFINED as: this hash is identical before and after a
+        scored query. The unit test asserts it, and the runner can assert it
+        per scored query under FORGETIT_ASSERT_READONLY_EVAL=1 (smoke runs).
+
+        The hash is intentionally over policy-visible state only; it must NOT
+        include anything ``search`` legitimately touches (nothing, today).
+        """
+        import hashlib
+        h = hashlib.blake2b(digest_size=16)
+        for item_id in sorted(self.backend.iter_ids()):
+            rec = self.backend.get(item_id)
+            if rec is None:
+                continue
+            h.update(
+                f"{item_id}|{rec.access_count}|{rec.last_access!r}|{rec.bytes}\n".encode()
+            )
+        h.update(f"tick={self._tick}|n={self._n_inserts}".encode())
+        return h.hexdigest()
+
     def get_used_bytes(self) -> int:
         # Protocol conformance — mirrors the attribute.  Keeping both because
         # internal code (and callers who already pattern-match RetentionManager)
@@ -306,11 +330,29 @@ class RetentionManager(MemorySystem):
             with phase("evict_select"):
                 action = self.policy.select_action(self)
             t1 = time.perf_counter()
+
+            # B3: capture the VICTIM's policy-visible signals AT DECISION TIME,
+            # before execution mutates or removes the record. Joined offline
+            # against the per-query "gold" events, this is what makes the
+            # access-count-as-gold-classifier AUC computable on the corrected
+            # run — the leak verdict becomes a measurement, not an argument.
+            victim = {}
+            victim_id = getattr(action, "id", None)
+            if victim_id is not None:
+                vrec = self.backend.get(victim_id)
+                if vrec is not None:
+                    victim = {
+                        "victim_access_count": vrec.access_count,
+                        "victim_last_access": vrec.last_access,
+                        "victim_bytes": vrec.bytes,
+                    }
+
             with phase("evict_exec"):
                 self._execute_action(action=action)
             t2 = time.perf_counter()
 
             self.logger.event("decision", {
+                **victim,
                 "action": type(action).__name__,
                 "id": getattr(action, "id", None),
                 "n_resident": before_count,        # store occupancy at decision time

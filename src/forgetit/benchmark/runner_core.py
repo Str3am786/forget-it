@@ -17,6 +17,11 @@ from forgetit.llm import Reader
 
 log = logging.getLogger(__name__)
 
+# Smoke-run guard: when set, every scored query asserts the read-only
+# invariant against the store's counter_state_hash (see custom_manager).
+import os
+_ASSERT_READONLY_EVAL = os.environ.get("FORGETIT_ASSERT_READONLY_EVAL", "") == "1"
+
 # Eval depth: introspectable stores are ranked at FULL depth (every resident,
 # no truncation), so gold_ranks is uncensored — rank 11 and rank 300 are
 # distinguishable, and rank-percentile / k∝N / rank-depth distributions become
@@ -194,6 +199,21 @@ def _run_reader(
         retrieved,
         max_tokens=answer_max_tokens,
     )
+    meta = answer_result.meta or {}
+
+    if getattr(answer_result, "errored", False):
+        # No answer to grade. Grading it would score an infrastructure failure
+        # as a content verdict.
+        return QAFields(
+            reader_answer="", abstained=False, reader_errored=True,
+            qa_latency_sec=answer_result.latency_sec,
+            ref_answer=ref_answer, question_text=query.text,
+            question_type=question_type,
+            reader_evidence_delivered=int(meta.get("evidence_delivered", 0) or 0),
+            reader_evidence_truncated=bool(meta.get("evidence_truncated") or False),
+            reader_cap_hit=meta.get("cap_hit"),
+            reader_item_ids=json.dumps(meta.get("item_ids", [])),
+        )
 
     # Deterministic headline grade (reproducible, no models). The paraphrase
     # (embedding) tier is OPT-IN via grader_embedder — threshold stays a
@@ -217,6 +237,9 @@ def _run_reader(
         # Absent on an LLM-error result, and on readers that don't report it.
         reader_evidence_delivered=int(meta.get("evidence_delivered", 0) or 0),
         reader_evidence_truncated=bool(meta.get("evidence_truncated") or False),
+        reader_errored=False,
+        reader_cap_hit=meta.get("cap_hit"),
+        reader_item_ids=json.dumps(meta.get("item_ids", [])),
     )
 
 
@@ -359,9 +382,24 @@ def _evaluate_scored_query(
     # question, which is why the read-only path landed first.
     eval_k = n_residents if n_residents > 0 else max(k, RETRIEVAL_EVAL_DEPTH)
     eval_k = max(eval_k, k)
+
+    # R8 runtime enforcement (smoke runs): a scored query must leave every
+    # policy-visible counter untouched. O(n) per query, so opt-in via env —
+    # turn it ON for the pre-launch smoke, OFF for the campaign; the unit
+    # test carries the invariant permanently either way.
+    _assert_ro = _ASSERT_READONLY_EVAL and callable(
+        getattr(view.store, "counter_state_hash", None))
+    pre_hash = view.store.counter_state_hash() if _assert_ro else None
+
     t0 = time.perf_counter()
     with phase("retrieve"):
         retrieved_full = view.search(query, eval_k)
+
+    if _assert_ro and view.store.counter_state_hash() != pre_hash:
+        raise RuntimeError(
+            f"R8 violation: scored query {query.id!r} mutated policy-visible "
+            "state through the eval path. search() must be read-only."
+        )
     latency = time.perf_counter() - t0
 
     retrieved_ids = [r.id for r in retrieved_full]
@@ -600,6 +638,9 @@ def run_one_example(
             qa_f1=qa.qa_f1,
             reader_evidence_delivered=qa.reader_evidence_delivered,
             reader_evidence_truncated=qa.reader_evidence_truncated,
+            reader_errored=qa.reader_errored,
+            reader_cap_hit=qa.reader_cap_hit,
+            reader_item_ids=qa.reader_item_ids,
             ref_answer=qa.ref_answer,
             question_text=qa.question_text,
             question_type=qa.question_type,
@@ -866,6 +907,9 @@ def run(
                 qa_f1=qa.qa_f1,
                 reader_evidence_delivered=qa.reader_evidence_delivered,
                 reader_evidence_truncated=qa.reader_evidence_truncated,
+                reader_errored=qa.reader_errored,
+                reader_cap_hit=qa.reader_cap_hit,
+                reader_item_ids=qa.reader_item_ids,
                 ref_answer=qa.ref_answer,
                 question_text=qa.question_text,
                 question_type=qa.question_type,
@@ -898,6 +942,9 @@ def run(
                 r.qa_f1 = qa2.qa_f1
                 r.reader_evidence_delivered = qa2.reader_evidence_delivered
                 r.reader_evidence_truncated = qa2.reader_evidence_truncated
+                r.reader_errored = qa2.reader_errored
+                r.reader_cap_hit = qa2.reader_cap_hit
+                r.reader_item_ids = qa2.reader_item_ids
 
     elapsed = time.perf_counter() - t_run_start
 

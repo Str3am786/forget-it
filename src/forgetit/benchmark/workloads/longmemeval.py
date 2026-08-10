@@ -6,6 +6,10 @@ import datetime as dt
 from pathlib import Path
 from typing import Any, Iterator
 
+from forgetit.benchmark.probe_split import (
+    self_probe_index, SELF_PROBE_MAX_CHARS,
+    PROBE_SCHEME_SELF, PROBE_SCHEME_LEAKY,
+)
 from forgetit.benchmark.schema import WorkloadEvent
 from forgetit.benchmark.workloads.base import Itemiser
 from forgetit.core.schema import MemRecord, Query
@@ -133,6 +137,7 @@ class LongMemEvalWorkload:
         itemiser: Itemiser,
         *,
         probe_every: int = 1,
+        probe_scheme: str = PROBE_SCHEME_SELF,
         clear_between_examples: bool = True,
         limit: int | None = None,
     ):
@@ -144,10 +149,19 @@ class LongMemEvalWorkload:
             quick smoke runs on a cluster before launching the full sweep.
         probe_every
             Emit an access-only query probe after every N session inserts
-            within an example.  The probe uses the example's question text so
-            that retrieved items that are truly relevant gain a recency/frequency
-            bump *before* later inserts can trigger their eviction.  Set 0 to
-            disable probing (preserves old FIFO-equivalent behaviour for ablations).
+            within an example, giving the access-consuming policies a usage
+            signal before later inserts trigger eviction. Set 0 to disable
+            (collapses LRU/LFU toward FIFO — ablation only).
+        probe_scheme
+            ``resident_self_query_v1`` (default, R8-compliant): the probe
+            recites the text (first SELF_PROBE_MAX_CHARS chars) of an
+            already-inserted item, chosen deterministically per
+            (example, insert ordinal) — generic rehearsal, blind to the
+            question. ``leaky_v0`` (ARCHIVED, leak-ablation arm only):
+            the probe recites the example's scored question, handing every
+            access-consuming policy a soft answer label — LongMemEval has ONE
+            question per example, so probe and scored question coincide
+            exactly; this is the worst case sec:bm:leak measures.
         clear_between_examples
             When True, emit a ``reset`` event between examples so the store is
             wiped at each example boundary.  This isolates evaluation: gold
@@ -157,9 +171,21 @@ class LongMemEvalWorkload:
             all examples (original behaviour — useful for studying long-horizon
             memory but conflates examples during eval).
         """
+        if probe_scheme not in (PROBE_SCHEME_SELF, PROBE_SCHEME_LEAKY):
+            raise ValueError(
+                f"LongMemEval probe_scheme must be {PROBE_SCHEME_SELF!r} or "
+                f"{PROBE_SCHEME_LEAKY!r} (archived ablation arm), got {probe_scheme!r}"
+            )
+        if probe_scheme == PROBE_SCHEME_LEAKY:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "LongMemEval running the ARCHIVED leaky_v0 probe scheme: the "
+                "probe IS the scored question (R8 violation) — ablation arm ONLY."
+            )
         self.path = Path(path)
         self.itemiser = itemiser
         self.probe_every = probe_every
+        self.probe_scheme = probe_scheme
         self.clear_between_examples = clear_between_examples
         self.limit = limit
         self._cache: list[dict[str, Any]] | None = None   # parsed once, shared read-only
@@ -238,6 +264,7 @@ class LongMemEvalWorkload:
             question_text = str(example["question"])
 
             sessions_inserted = 0
+            inserted_texts: list[str] = []   # self-query probe pool (in insert order)
             for session_id, date, turns in zip(session_ids, dates, sessions):
                 sid = str(session_id)
                 items = self.itemiser.itemise(sid, date, turns)
@@ -251,32 +278,53 @@ class LongMemEvalWorkload:
                         query=None,
                         gold_item_ids=[],
                     ))
+                    inserted_texts.append(item.text)
 
                 sessions_inserted += 1
 
-                # Periodically fire an access-only probe using the example's
-                # question so that items relevant to the query gain a
-                # recency/frequency bump before later inserts can evict them.
-                # gold_item_ids=[] marks this as unscored (runner skips eval).
+                # Access-only probe (gold_item_ids=[] -> runner skips eval).
+                # R8 fix (resident_self_query_v1): the probe recites an
+                # already-inserted item's text, chosen deterministically —
+                # generic rehearsal with NO sight of the question. The archived
+                # leaky_v0 scheme recites the scored question itself (LongMemEval
+                # has one question per example, so probe == scored question):
+                # the soft answer label the leak subsection measures.
                 if self.probe_every > 0 and sessions_inserted % self.probe_every == 0:
-                    probe_query = Query(
-                        id=f"{qid}::probe::{sessions_inserted}",
-                        text=question_text,
-                        timestamp=q_ts,
-                        embedding=None,
-                        meta={
+                    if self.probe_scheme == PROBE_SCHEME_LEAKY:
+                        probe_text = question_text
+                        probe_meta = {
                             "dataset": "longmemeval",
                             "question_type": question_type,
                             "probe": True,
-                        },
-                    )
-                    evs.append(WorkloadEvent(
-                        type="query",
-                        timestamp=q_ts,
-                        item=None,
-                        query=probe_query,
-                        gold_item_ids=[],   # access-only — not scored
-                    ))
+                            "probe_scheme": self.probe_scheme,
+                        }
+                    else:
+                        src_idx = self_probe_index(
+                            "longmemeval", qid,
+                            sessions_inserted, len(inserted_texts),
+                        )
+                        probe_text = inserted_texts[src_idx][:SELF_PROBE_MAX_CHARS]
+                        probe_meta = {
+                            "dataset": "longmemeval",
+                            "probe": True,
+                            "probe_scheme": self.probe_scheme,
+                            "probe_source_index": src_idx,
+                        }
+                    if probe_text.strip():
+                        probe_query = Query(
+                            id=f"{qid}::probe::{sessions_inserted}",
+                            text=probe_text,
+                            timestamp=q_ts,
+                            embedding=None,
+                            meta=probe_meta,
+                        )
+                        evs.append(WorkloadEvent(
+                            type="query",
+                            timestamp=q_ts,
+                            item=None,
+                            query=probe_query,
+                            gold_item_ids=[],   # access-only — not scored
+                        ))
 
             query = Query(
                 id=qid,

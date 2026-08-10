@@ -174,3 +174,18 @@ class TestDecisionProvenance:
                     and e.payload.get("outcome")]
         assert outcomes, "no decision carried an outcome into the event log"
         assert "applied" in outcomes
+
+    def test_rejected_compression_carries_its_cache_key(self):
+        p, a = _decide(BIG[: int(len(BIG) * 0.8)])
+        assert p.last_decision["outcome"] == "low_saving"
+        assert p.last_decision["cache_key"], (
+            "without the key the model's output is unreachable, and rejected "
+            "compressions are the compressor's failure cases")
+
+    def test_no_key_when_no_call_was_made(self):
+        p = LLMCompressionPolicy(llm=StubLLM("unused"), selector=LFUPolicy(),
+                                 min_compress_bytes=200)
+        s = _store(p)
+        _add(s, "x", "tiny")
+        p.select_action(s)
+        assert "cache_key" not in p.last_decision
