@@ -341,6 +341,8 @@ run_dataset () {
                        --budgets $BUDGETS \
                        --seeds $SEEDS \
                        --no-reader --include-floor \
+                       --gold-snapshot --dump-retrieval \
+                       --compress-context-tokens 32000 \
                        --dense --event-log --workers $workers" \
             > "$LOGS/${dataset}-${SLURM_JOB_ID}-${i}.log" 2>&1 &
         pids+=($!)
