@@ -18,7 +18,7 @@ from pathlib import Path
 import logging
 from typing import Callable, Iterator
 
-from forgetit.benchmark.pipeline import run_pipeline_concurrent
+from forgetit.benchmark.pipeline import RetrievalDump, run_pipeline_concurrent
 from forgetit.benchmark.budget import example_footprints, DEFAULT_BUDGET_FRACTIONS
 from forgetit.benchmark.workloads.beam import (
     BeamWorkload,
@@ -39,18 +39,11 @@ from forgetit.policies import (
     SalienceDecayPolicy, GDSFPolicy, OraclePolicy,
 )
 from forgetit.llm import get_llm
-from forgetit.llm.readers import (
-    ANSWER_MAX_TOKENS_HELP,
-    PlainTextReader,
-    READER_ABSTENTION_HELP,
-    READER_CLEAN_HELP,
-    READER_PROMPT_HELP,
-    READER_TOKEN_BUDGET_HELP,
-    log_answer_max_tokens,
-    log_reader_abstention,
-    log_reader_clean,
-    log_reader_context,
-    log_reader_prompt,
+from forgetit.llm.readers import build_reader, prompt_sha
+from forgetit.experiments._reader_cli import (
+    add_reader_args,
+    reader_config_from_args,
+    validate_reader_args,
 )
 from forgetit.settings import LETTA_BASE_URL, LETTA_API_KEY
 
@@ -260,44 +253,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--reader-workers", type=int, default=1,
                    help="Within each config, run the QA reader as a concurrent second pass "
                         "(store-free, pure I/O).")
-    p.add_argument("--reader-token-budget", type=int, default=None, metavar="N",
-                   help=READER_TOKEN_BUDGET_HELP)
-    p.add_argument("--reader-prompt", "--reader-prompt-version",
-                   choices=["v1", "v2"], default="v1", metavar="{v1,v2}",
-                   help=READER_PROMPT_HELP)
-    p.add_argument("--reader-clean", "--clean-mode",
-                   choices=["firstline", "full"], default="firstline",
-                   metavar="{firstline,full}", help=READER_CLEAN_HELP)
-    p.add_argument("--reader-abstention", "--abstention-match",
-                   choices=["loose", "exact"], default="loose",
-                   metavar="{loose,exact}", help=READER_ABSTENTION_HELP)
-    p.add_argument("--answer-max-tokens", type=int, default=128, metavar="N",
-                   help=ANSWER_MAX_TOKENS_HELP)
+    add_reader_args(p)
     args = p.parse_args()
     if args.num_shards < 1:
         p.error("--num-shards must be >= 1")
     if not (0 <= args.shard < args.num_shards):
         p.error(f"--shard must be in [0, {args.num_shards})")
-    if args.reader_token_budget is not None:
-        if args.reader_token_budget <= 0:
-            p.error("--reader-token-budget must be > 0")
-        if args.no_reader:
-            p.error("--reader-token-budget sizes the reader's evidence window, but "
-                    "--no-reader turns the reader off — pass one or the other")
-    if args.reader_prompt != "v1" and args.no_reader:
-        p.error("--reader-prompt selects the reader's instruction wrapper, but "
-                "--no-reader turns the reader off — pass one or the other")
-    if args.reader_clean != "firstline" and args.no_reader:
-        p.error("--reader-clean post-processes the reader's answers, but "
-                "--no-reader turns the reader off — pass one or the other")
-    if args.reader_abstention != "loose" and args.no_reader:
-        p.error("--reader-abstention judges the reader's answers, but "
-                "--no-reader turns the reader off — pass one or the other")
-    if args.answer_max_tokens <= 0:
-        p.error("--answer-max-tokens must be > 0")
-    if args.answer_max_tokens != 128 and args.no_reader:
-        p.error("--answer-max-tokens caps the reader's generation, but "
-                "--no-reader turns the reader off — pass one or the other")
+    validate_reader_args(p, args)
     return args
 
 
@@ -318,22 +280,28 @@ def main() -> None:
 
     seed = 42
 
+    # Built UNCONDITIONALLY: --dump-retrieval records the evidence budget and
+    # prompt template a reader WOULD have used, so the config is needed even
+    # when no reader runs. Only build_reader() stays behind --no-reader.
+    reader_cfg = reader_config_from_args(args)
+    retrieval_dump = (
+        RetrievalDump(shard=args.shard,
+                      token_budget=reader_cfg.token_budget,
+                      prompt_sha=prompt_sha(reader_cfg.prompt))
+        if args.dump_retrieval else None
+    )
+
     if args.no_reader:
         llm = None
         reader_impl = None
         reader_name = "none"
     else:
         llm = get_llm()
-        reader_impl = PlainTextReader(llm, token_budget=args.reader_token_budget,
-                                      prompt_version=args.reader_prompt,
-                                      clean_mode=args.reader_clean,
-                                      abstention_match=args.reader_abstention)
+        try:
+            reader_impl = build_reader(llm, reader_cfg)
+        except ValueError as exc:
+            raise SystemExit(f"--reader-prompt: {exc}")
         reader_name = getattr(reader_impl, "name", type(reader_impl).__name__)
-        log_reader_context(log, args.reader_token_budget)
-        log_reader_prompt(log, args.reader_prompt)
-        log_reader_clean(log, args.reader_clean)
-        log_reader_abstention(log, args.reader_abstention)
-        log_answer_max_tokens(log, args.answer_max_tokens)
 
     # LLM-driven POLICIES (compression/memorybank) are gated on an endpoint, not
     # on the reader: --no-reader turns off the ANSWER stage only. When such a
@@ -474,12 +442,12 @@ def main() -> None:
             itemiser=itemiser.name,
             reader=reader_name,
             reader_impl=reader_impl,
-            answer_max_tokens=args.answer_max_tokens,
             example_workers=args.workers,
             reader_workers=args.reader_workers,
             out_dir=args.out_dir,
             write_events=args.event_log,
             write_gold_snapshot=args.gold_snapshot,
+            retrieval_dump=retrieval_dump,
             example_footprints=footprints.get(itemiser.name),
             **extras,
         )

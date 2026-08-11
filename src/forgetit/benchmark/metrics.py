@@ -289,6 +289,28 @@ def _has_reader(results: list[EvalResult]) -> bool:
     return any(r.reader and r.reader != "none" for r in results)
 
 
+def _errored(r) -> bool:
+    """Did the reader call itself fail on this row?
+
+    Accepts dataclass rows and CSV-derived dicts: ``getattr`` on a dict returns
+    the default unconditionally, which would silently count every dict row as
+    never-errored. Rows predating the column read as False.
+    """
+    v = r.get("reader_errored") if isinstance(r, dict) else getattr(r, "reader_errored", False)
+    return bool(v)
+
+
+def _scored(results):
+    """Rows whose answer is a real answer.
+
+    An infrastructure failure is not a wrong answer and not a refusal. Leaving
+    errored rows in the denominator lets a flaky endpoint depress accuracy, and
+    leaving them in the numerator once scored a timeout on an unanswerable
+    question as a correct refusal.
+    """
+    return [r for r in results if not _errored(r)]
+
+
 def evidence_delivery_rate(results: list[EvalResult]) -> float:
     """Fraction of the RETRIEVED items that actually reached the reader.
 
@@ -363,9 +385,18 @@ def mean_qa_latency(results: list[EvalResult]) -> float:
 
 
 def abstention_rate(results: list[EvalResult]) -> float:
+    scored = _scored(results)
+    if not scored:
+        return 0.0
+    return sum(1.0 for r in scored if r.abstained) / len(scored)
+
+
+def reader_error_rate(results: list[EvalResult]) -> float:
+    """Fraction of rows whose reader call failed outright. Denominator is every
+    row — this is the rate the other reader metrics are conditioned on."""
     if not results:
         return 0.0
-    return sum(1.0 for r in results if r.abstained) / len(results)
+    return sum(1.0 for r in results if _errored(r)) / len(results)
 
 
 def accuracy_given_gold_retrieved(results: list[EvalResult]) -> float:
@@ -374,7 +405,7 @@ def accuracy_given_gold_retrieved(results: list[EvalResult]) -> float:
     it isolates pure reader quality from upstream forgetting/retrieval — given
     the answer was actually in front of the reader, did it get it right? The most
     important reader metric in this harness. NaN if gold never reached context."""
-    ctx = [r for r in results if r.introspectable and r.hit_at_k > 0]
+    ctx = [r for r in _scored(results) if r.introspectable and r.hit_at_k > 0]
     if not ctx:
         return float("nan")
     return sum(1.0 for r in ctx if r.qa_correct) / len(ctx)
@@ -383,9 +414,10 @@ def accuracy_given_gold_retrieved(results: list[EvalResult]) -> float:
 def hallucination_rate(results: list[EvalResult]) -> float:
     """Fraction of queries answered (not abstained) but WRONG — confidently wrong.
     The failure mode that lowering abstention hides."""
-    if not results:
+    scored = _scored(results)
+    if not scored:
         return float("nan")
-    return sum(1.0 for r in results if (not r.abstained) and (not r.qa_correct)) / len(results)
+    return sum(1.0 for r in scored if (not r.abstained) and (not r.qa_correct)) / len(scored)
 
 
 def abstention_answerable_rate(results: list[EvalResult]) -> float:
@@ -393,7 +425,7 @@ def abstention_answerable_rate(results: list[EvalResult]) -> float:
     retrieved into context). High == the reader is declining on present answers
     (missed answers); low == abstaining mostly when the answer wasn't there
     (honest 'I don't know'). NaN if there were no abstentions."""
-    ab = [r for r in results if r.abstained]
+    ab = [r for r in _scored(results) if r.abstained]
     if not ab:
         return float("nan")
     return sum(1.0 for r in ab if r.hit_at_k > 0) / len(ab)
@@ -469,6 +501,12 @@ def summarize(results: list[EvalResult]) -> dict[str, float]:
     n = len(results)
     n_multigold = sum(1 for r in results if (getattr(r, "n_gold", 0) or 0) > 1)
     mean = lambda f: (sum(f(r) for r in results) / n) if n else 0.0
+    # Separate closure, deliberately NOT repointing `mean`: only the grades of
+    # the reader's answers exclude errored rows. Retrieval and eviction metrics
+    # are unaffected by a failed generation and keep the full denominator.
+    scored = _scored(results)
+    n_scored = len(scored)
+    mean_scored = lambda f: (sum(f(r) for r in scored) / n_scored) if n_scored else 0.0
     out = {
         "n_queries": float(n),
         "n_introspectable": float(len(intro)),
@@ -491,10 +529,14 @@ def summarize(results: list[EvalResult]) -> dict[str, float]:
         # Reader correctness — deterministic headline (normalized EM/containment).
         # Conservative lower bound: abstentions count as wrong; paraphrase/judge
         # tiers (offline) measure how much it under-counts. NaN when no reader ran.
-        "qa_accuracy": (mean(lambda r: 1.0 if r.qa_correct else 0.0)
+        "qa_accuracy": (mean_scored(lambda r: 1.0 if r.qa_correct else 0.0)
                         if _has_reader(results) else float("nan")),
-        "mean_qa_f1": (mean(lambda r: r.qa_f1)
+        "mean_qa_f1": (mean_scored(lambda r: r.qa_f1)
                        if _has_reader(results) else float("nan")),
+        # The denominator the two above are conditioned on: rows whose reader
+        # call failed outright, excluded from every grade but reported here.
+        "reader_error_rate": reader_error_rate(results),
+        "n_scored": float(n_scored),
         # Reader-vs-memory separation + abstention axis (NaN unless a reader ran).
         # accuracy_given_gold_retrieved is the reader's hit_at_k_given_retained:
         # pure reader quality once the answer is in context.

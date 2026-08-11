@@ -1,193 +1,344 @@
-"""Reader probe bench — THE A/B instrument for every reader/prompt change (D4).
+"""Reader probe — what does the campaign's accuracy owe to the memory system?
 
-Provenance: versioned from the 2026-07-08 session-scratchpad probe that
-produced docs/reader_investigation_2026-07-08.md (same design: one BEAM
-conversation, budget 1.0 so eviction plays no role, turn_pair × bm25, k=5,
-17 scored queries × 4 context conditions = 68 real reader calls). This copy is
-parametrized over the D4 fix flags so an A/B is two invocations:
+An OFFLINE pass over a finished run's artefacts. No store, no policy, no
+eviction, no retrieval is replayed: it reads the gold snapshot and results.csv
+that a run already wrote and asks one reader three questions per query.
 
-    python scripts/reader_probe.py --label B0_baseline --model qwen2.5:7b-instruct-q5km-16k
-    python scripts/reader_probe.py --label A4_pv2 --prompt-version v2 --model qwen2.5:7b-instruct-q5km-16k
+    parametric  no evidence AND no memories wrapper — the model asked directly.
+                What it already knew before the memory system existed.
+    empty       the memories wrapper with no evidence. Not a knowledge
+                measurement: it measures whether the model obeys "say IDK when
+                the memories are absent".
+    retrieved   what this policy actually delivered at this budget, rebuilt
+                from a --dump-retrieval artefact (needs --retrieval).
+    gold        the gold items' ORIGINAL (pre-compression) text as evidence.
+                The ceiling — what the reader scores when forgetting is not a
+                factor at all.
 
-Outputs per run: report/probe_runs/<label>.jsonl (row-level: evidence stats,
-raw/cleaned answers, grades) + <label>.summary.json + a printed summary.
+The deltas are the point:
 
-Bench metrics (per condition):
-  idk               — abstention count / 17
-  correct           — deterministic qa_correct count (legacy grade; the July-08
-                      baseline is 0/68 across all conditions)
-  f1_cleaned/f1_raw — mean token-F1 of cleaned vs raw output
-  false_refusal     — IDK on VISIBLE rows (answer_recall(ref, shown) ≥ 0.7):
-                      the reader refusing answers it was shown
-  answered_absent   — non-IDK on ABSENT rows (recall < 0.3): hallucination proxy
-  sent_boundary_prose — answered PROSE-type rows whose RAW output ends at a
-                      sentence boundary (fix-iii acceptance: ≥ 0.95 on prose).
-                      Author ruling (sprint 2): the boundary heuristic applies
-                      to prose types ONLY; list abilities (LIST_ANSWER_TYPES)
-                      are graded by enumeration COMPLETENESS instead, which
-                      the corpus a004 class measures — a list answer cut
-                      mid-item fails contain_all there. Per-row
-                      ``ends_sentence`` is still recorded for every row.
+    gold - parametric   what the memory system actually contributes.
+    gold - retrieved    what this policy lost against perfect retrieval.
+    parametric - empty  how much real knowledge the IDK instruction suppresses.
 
-NOTE: the July-08 numbers were measured on the 4096-ctx tag (before the
-front-truncation discovery); this bench defaults to the 16k tag, so absolute
-baselines may differ from that report — A/Bs are valid only within one tag.
+A campaign reporting gold accuracy without the parametric arm cannot tell a
+memory system that works from a model that already knew the answers.
+
+Model choice comes from the environment (LLM_MODEL, LLM_BASE_URL), so sweeping
+readers means re-running this under different env — no policies replayed, and
+the disk cache makes a repeat pass free:
+
+    LLM_MODEL=qwen2.5:14b python scripts/reader_probe.py artifacts/benchmark/... --limit 50
+
+Rows append to <out>/<reader-name>.jsonl and are skipped if already present, so
+an interrupted sweep resumes where it stopped.
 """
 from __future__ import annotations
 
 import argparse
+import csv
 import json
-import re
-import time
+import sys
+from collections import defaultdict
 from pathlib import Path
 
-from forgetit.benchmark.grading import grade, answer_recall
-from forgetit.benchmark.workloads.beam import BeamWorkload, BeamTurnPairItemiser
-from forgetit.backend.in_memory import InMemoryBackend
-from forgetit.core.logging import BenchmarkLogger
-from forgetit.core.schema import Question
-from forgetit.llm.openai_llm import OpenAiLLM
-from forgetit.llm.readers import PlainTextReader
-from forgetit.memory_system import RetentionManager
-from forgetit.policies import LRUPolicy
-from forgetit.retrieval import BM25Retriever
-from forgetit.settings import LLM_API_KEY, LLM_BASE_URL
-
 REPO = Path(__file__).resolve().parents[1]
-BEAM = REPO / "data" / "beam_500K.jsonl"
-OUT_DIR = REPO / "report" / "probe_runs"
-K = 5
-CONDITIONS = {"legacy": None, "rtok375": 375, "rtok1500": 1500, "rtok3000": 3000}
+sys.path.insert(0, str(REPO / "src"))
 
-VISIBLE = 0.7      # answer_recall(ref, shown evidence) at/above → answer was shown
-ABSENT = 0.3       # below → answer was (essentially) not shown
-_SENT_END = re.compile(r'[.!?]["\')\]]?\s*$')
+from forgetit.benchmark.grading import answer_in_text, grade          # noqa: E402
+from forgetit.core.schema import MemRecord, Question                  # noqa: E402
+from forgetit.llm import get_llm                                      # noqa: E402
+from forgetit.llm.readers import (                                    # noqa: E402
+    ReaderConfig, build_context, build_parametric_context, build_reader,
+)
 
-
-def evidence_of(reader: PlainTextReader, records) -> str:
-    """The evidence block exactly as this reader's prompt builder renders it."""
-    from forgetit.llm.readers.text_reader import (
-        _build_prompt, _build_prompt_budgeted, PROMPT_BUILDERS)
-    q = Question(id="x", text="Q", timestamp=0.0, meta={})
-    wrap = PROMPT_BUILDERS[reader.prompt_version]
-    if reader.token_budget is None:
-        prompt = _build_prompt(q, records[:5], wrap=wrap)
-    else:
-        prompt, _ = _build_prompt_budgeted(q, records, reader.token_budget, wrap=wrap)
-    return prompt.split("Memories:\n", 1)[1].rsplit("\n\nQuestion:", 1)[0]
+# Order is the reading order of the report: what the model knows alone, what
+# the instruction suppresses, what this policy delivered, what perfect
+# retrieval would have delivered.
+ARMS = ("parametric", "empty", "retrieved", "gold")
+GOLD_SNAPSHOT = "gold_answer_snapshot.jsonl"
+RETRIEVED_INDEX = "retrieved_index.jsonl"
+EVIDENCE_GLOB = "evidence_items*.jsonl"
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--label", required=True, help="run label → output file names")
-    ap.add_argument("--model", default="qwen2.5:7b-instruct-q5km-16k")
-    ap.add_argument("--conditions", default=",".join(CONDITIONS),
-                    help=f"comma list from {list(CONDITIONS)}")
-    ap.add_argument("--prompt-version", choices=["v1", "v2"], default="v1")
-    ap.add_argument("--abstention-match", choices=["loose", "exact"], default="loose")
-    ap.add_argument("--clean-mode", choices=["firstline", "full"], default="firstline")
-    ap.add_argument("--max-tokens", type=int, default=128)
-    ap.add_argument("--max-tokens-list", type=int, default=0,
-                    help="raised cap for event_ordering/summarization rows (0=off)")
+def find_run_dirs(root: Path) -> list[Path]:
+    """Config directories holding both a results.csv and a gold snapshot."""
+    if (root / GOLD_SNAPSHOT).is_file() and (root / "results.csv").is_file():
+        return [root]
+    return sorted({p.parent for p in root.rglob(GOLD_SNAPSHOT)
+                   if (p.parent / "results.csv").is_file()})
+
+
+def load_questions(run_dir: Path, dataset_filter: str | None) -> list[dict]:
+    """Join the gold snapshot (evidence) to results.csv (question metadata).
+
+    The snapshot carries one row per (query_id, gold_id) and no question text;
+    results.csv carries the question but repeats it once per config. Group the
+    first, take the first row of the second.
+    """
+    meta: dict[str, dict] = {}
+    with (run_dir / "results.csv").open(newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            qid = row.get("query_id") or ""
+            if qid and qid not in meta:
+                meta[qid] = row
+
+    gold: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    ref: dict[str, str] = {}
+    with (run_dir / GOLD_SNAPSHOT).open(encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            r = json.loads(line)
+            qid = r.get("query_id", "")
+            if not qid:
+                continue
+            # original_text is O_g — the item as first inserted, before any
+            # compression. Using resident_text would measure the policy, not
+            # the ceiling.
+            gold[qid].append((r.get("gold_id", ""), r.get("original_text", "")))
+            ref.setdefault(qid, r.get("answer", ""))
+
+    out = []
+    for qid in sorted(gold):
+        m = meta.get(qid, {})
+        dataset = m.get("dataset", "")
+        if dataset_filter and dataset_filter not in dataset:
+            continue
+        out.append({
+            "query_id": qid,
+            "dataset": dataset,
+            "question_text": m.get("question_text", ""),
+            "question_type": m.get("question_type", ""),
+            "ref_answer": m.get("ref_answer") or ref.get(qid, ""),
+            "gold": [(gid, text) for gid, text in gold[qid] if text],
+        })
+    return out
+
+
+def load_retrieval(path: Path) -> tuple[dict[str, str], dict[str, dict]]:
+    """Load a --dump-retrieval artefact pair into ({key: text}, {qid: index_row}).
+
+    The item table is sharded — the launchers run one process per shard against
+    a shared out-dir — so every ``evidence_items*.jsonl`` is globbed and merged.
+    Keys are content hashes, so a cross-shard duplicate is the same text and
+    collapses to one entry.
+    """
+    root = path if path.is_dir() else path.parent
+    index_files = ([path] if path.is_file() and path.name == RETRIEVED_INDEX
+                   else sorted(root.rglob(RETRIEVED_INDEX)))
+
+    # The item table lives at the out-dir ROOT, which may be several levels
+    # above a config dir — walk up until a shard file appears.
+    items: dict[str, str] = {}
+    probe = root
+    for _ in range(8):
+        for f in sorted(probe.glob(EVIDENCE_GLOB)):
+            with f.open(encoding="utf-8") as fh:
+                for line in fh:
+                    if line.strip():
+                        r = json.loads(line)
+                        items[r["key"]] = r.get("text", "")
+        if items or probe.parent == probe:
+            break
+        probe = probe.parent
+
+    index: dict[str, dict] = {}
+    for f in index_files:
+        with f.open(encoding="utf-8") as fh:
+            for line in fh:
+                if line.strip():
+                    r = json.loads(line)
+                    index.setdefault(r["query_id"], r)
+    return items, index
+
+
+def records_from_index(row: dict, items: dict[str, str]) -> list[MemRecord]:
+    """Rebuild what retrieval handed the reader, in rank order.
+
+    Sorted by the stored ``rank`` rather than trusting list order — that is the
+    whole reason rank is written explicitly.
+    """
+    return [MemRecord(id=r["id"], text=items.get(r["key"], ""))
+            for r in sorted(row["retrieved"], key=lambda r: r["rank"])]
+
+
+def contexts_for(q: dict, cfg: ReaderConfig,
+                 index: dict[str, dict] | None = None,
+                 items: dict[str, str] | None = None):
+    """The arms, built with the public reader API only.
+
+    ``retrieved`` uses the PROBE's budget and template, which may differ from
+    the run's — that is the point of storing retrieval output rather than a
+    rendered prompt. A bigger model can be given more evidence than the budget
+    the original run happened to use.
+    """
+    question = Question(id=q["query_id"], text=q["question_text"])
+    gold_records = [MemRecord(id=gid, text=text) for gid, text in q["gold"]]
+    out = {
+        "parametric": build_parametric_context(question),
+        "empty": build_context(question, [], token_budget=cfg.token_budget,
+                               prompt=cfg.prompt),
+        "gold": build_context(question, gold_records,
+                              token_budget=cfg.token_budget, prompt=cfg.prompt),
+    }
+    if index is not None and q["query_id"] in index:
+        row = index[q["query_id"]]
+        out["retrieved"] = build_context(
+            question, records_from_index(row, items or {}),
+            token_budget=cfg.token_budget, prompt=cfg.prompt)
+    return out
+
+
+def already_done(path: Path) -> set[tuple[str, str]]:
+    if not path.is_file():
+        return set()
+    seen = set()
+    with path.open(encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            try:
+                r = json.loads(line)
+            except json.JSONDecodeError:
+                continue                       # partial trailing write → redo it
+            seen.add((r.get("query_id", ""), r.get("arm", "")))
+    return seen
+
+
+def report(rows: list[dict]) -> None:
+    by_arm = {a: [r for r in rows if r["arm"] == a] for a in ARMS}
+    acc = {}
+    print(f"\n{'arm':<12}{'n':>6}{'accuracy':>11}{'abstain':>10}{'error':>9}"
+          f"{'contains':>10}")
+    for arm in ARMS:
+        rs = by_arm[arm]
+        if not rs:
+            print(f"{arm:<12}{0:>6}{'—':>11}{'—':>10}{'—':>9}{'—':>10}")
+            continue
+        # Errors are neither right nor wrong: they leave both the numerator and
+        # the denominator, exactly as metrics.summarize now does.
+        scored = [r for r in rs if not r["errored"]]
+        n = len(scored)
+        acc[arm] = sum(r["correct"] for r in scored) / n if n else float("nan")
+        print(f"{arm:<12}{len(rs):>6}{acc[arm]:>11.4f}"
+              f"{sum(r['abstained'] for r in scored) / n if n else 0:>10.4f}"
+              f"{sum(r['errored'] for r in rs) / len(rs):>9.4f}"
+              f"{sum(r['contains'] for r in scored) / n if n else 0:>10.4f}")
+
+    if {"gold", "parametric"} <= acc.keys():
+        print(f"\n  gold - parametric  = {acc['gold'] - acc['parametric']:+.4f}"
+              "   what the memory system contributes")
+    if {"gold", "retrieved"} <= acc.keys():
+        print(f"  gold - retrieved   = {acc['gold'] - acc['retrieved']:+.4f}"
+              "   what this policy lost against perfect retrieval")
+    if {"parametric", "empty"} <= acc.keys():
+        print(f"  parametric - empty = {acc['parametric'] - acc['empty']:+.4f}"
+              "   knowledge the IDK instruction suppresses")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description="Offline gold/empty/parametric reader probe over a finished run.")
+    ap.add_argument("run_dir", type=Path,
+                    help="a config dir with results.csv + gold_answer_snapshot.jsonl, "
+                         "or any tree containing them")
+    ap.add_argument("--limit", type=int, default=0, help="probe only the first N questions")
+    ap.add_argument("--dataset", default=None, help="substring filter on the dataset column")
+    ap.add_argument("--out", type=Path, default=REPO / "artifacts" / "reader_probe")
+    ap.add_argument("--token-budget", type=int, default=None,
+                    help="evidence budget (default: the reader's own). May "
+                         "differ from the run's — a larger model can be given "
+                         "more evidence than the run's budget allowed.")
+    ap.add_argument("--retrieval", type=Path, default=None, metavar="PATH",
+                    help="a --dump-retrieval run dir or retrieved_index.jsonl; "
+                         "adds the 'retrieved' arm (what this policy actually "
+                         "delivered) beside the gold ceiling")
     args = ap.parse_args()
 
-    conds = {c: CONDITIONS[c] for c in args.conditions.split(",")}
-    llm = OpenAiLLM(base_url=LLM_BASE_URL, api_key=LLM_API_KEY, model=args.model)
-    readers = {name: PlainTextReader(llm, token_budget=tb,
-                                     prompt_version=args.prompt_version,
-                                     abstention_match=args.abstention_match,
-                                     clean_mode=args.clean_mode)
-               for name, tb in conds.items()}
+    run_dirs = find_run_dirs(args.run_dir)
+    if not run_dirs:
+        print(f"no results.csv + {GOLD_SNAPSHOT} pair under {args.run_dir} "
+              f"(was the run made with --gold-snapshot?)", file=sys.stderr)
+        return 2
 
-    wl = BeamWorkload(BEAM, itemiser=BeamTurnPairItemiser(), probe_every=0,
-                      clear_between_examples=True, limit=1)
-    (example_id, events), = list(wl.iter_examples())
+    questions = [q for d in run_dirs for q in load_questions(d, args.dataset)]
+    if args.limit:
+        questions = questions[:args.limit]
+    if not questions:
+        print("no questions matched", file=sys.stderr)
+        return 2
 
-    class _L:
-        def event(self, *a, **k): pass
-    store = RetentionManager(budget_bytes=1 << 62,
-                             backend=InMemoryBackend(retriever=BM25Retriever()),
-                             policy=LRUPolicy(), logger=_L())
-    store.connect()
-    for e in events:
-        if e.type == "insert":
-            store.insert(e.item)
+    items: dict[str, str] = {}
+    index: dict[str, dict] | None = None
+    if args.retrieval is not None:
+        items, index = load_retrieval(args.retrieval)
+        if not index:
+            print(f"no {RETRIEVED_INDEX} under {args.retrieval} "
+                  f"(was the run made with --dump-retrieval?)", file=sys.stderr)
+            return 2
+        dangling = sum(1 for row in index.values() for r in row["retrieved"]
+                       if r["key"] not in items)
+        print(f"retrieval: {len(index)} indexed queries, {len(items)} evidence "
+              f"items, {dangling} dangling keys")
+        if dangling:
+            print("  WARNING: dangling keys mean an incomplete item table — "
+                  "those items replay as empty text", file=sys.stderr)
 
-    from forgetit.llm.readers.text_reader import LIST_ANSWER_TYPES
-    scored = [e for e in events if e.type == "query" and e.gold_item_ids]
-    print(f"example={example_id} scored_queries={len(scored)} "
-          f"items={store.backend.count()} model={args.model} label={args.label}")
+    cfg = ReaderConfig(token_budget=args.token_budget) if args.token_budget \
+        else ReaderConfig()
+    reader = build_reader(get_llm(), cfg)
 
-    rows = []
-    t0 = time.time()
-    for e in scored:
-        retrieved = store.retrieve(e.query, k=K)
-        q = Question(id=e.query.id, text=e.query.text, timestamp=0.0, meta={})
-        max_tok = args.max_tokens
-        if args.max_tokens_list > 0 and e.question_type in LIST_ANSWER_TYPES:
-            max_tok = args.max_tokens_list
-        row = dict(query_id=e.query.id, qtype=e.question_type, ref=e.ref_answer,
-                   n_gold=len(e.gold_item_ids),
-                   gold_in_top5=sum(1 for g in e.gold_item_ids
-                                    if g in [r.id for r in retrieved]),
-                   max_tokens=max_tok, conds={})
-        for name, reader in readers.items():
-            ev = evidence_of(reader, retrieved)
-            res = reader.answer(q, retrieved, max_tokens=max_tok)
-            raw = str(res.meta.get("raw_output", ""))
-            g = grade(res.answer, e.ref_answer, abstained=res.abstained)
-            g_raw = grade(raw, e.ref_answer, abstained=res.abstained)
-            row["conds"][name] = dict(
-                shown_chars=len(ev),
-                recall_ref_in_shown=round(answer_recall(e.ref_answer, ev), 4),
-                answer=res.answer, raw=raw[:600], abstained=res.abstained,
-                f1=round(g["f1"], 4), correct=g["correct"],
-                f1_raw=round(g_raw["f1"], 4), correct_raw=g_raw["correct"],
-                ends_sentence=bool(_SENT_END.search(raw.strip())) if raw.strip() else False,
-            )
-        rows.append(row)
-        print(f"  {e.query.id[:44]:44s} done", flush=True)
+    args.out.mkdir(parents=True, exist_ok=True)
+    path = args.out / f"{reader.name}.jsonl"
+    seen = already_done(path)
+    print(f"{len(questions)} questions x {len(ARMS)} arms -> {path}"
+          f"{f' ({len(seen)} already done)' if seen else ''}")
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    (OUT_DIR / f"{args.label}.jsonl").write_text(
-        "\n".join(json.dumps(r) for r in rows))
+    rows: list[dict] = []
+    with path.open("a", encoding="utf-8") as sink:
+        for i, q in enumerate(questions, 1):
+            idx_row = (index or {}).get(q["query_id"], {})
+            for arm, ctx in contexts_for(q, cfg, index, items).items():
+                if (q["query_id"], arm) in seen:
+                    continue
+                res = reader.answer_from_context(ctx)
+                g = grade(res.answer, q["ref_answer"], abstained=res.abstained)
+                row = {
+                    "query_id": q["query_id"], "arm": arm,
+                    "dataset": q["dataset"], "question_type": q["question_type"],
+                    "question": q["question_text"], "ref_answer": q["ref_answer"],
+                    "answer": res.answer,
+                    "abstained": res.abstained, "errored": res.errored,
+                    "correct": g["correct"], "f1": round(g["f1"], 4),
+                    "tier": g["tier"],
+                    # Secondary signal: is the reference present in the answer
+                    # at all? Catches answers the exact grader calls wrong.
+                    "contains": answer_in_text(q["ref_answer"], res.answer),
+                    "n_delivered": ctx.n_delivered, "n_offered": ctx.n_offered,
+                    "truncated": ctx.truncated,
+                    # BOTH sides recorded, never one: the replay may legitimately
+                    # use a different budget or wording from the run, and a row
+                    # that named only one of them could not say which.
+                    "replay_token_budget": cfg.token_budget,
+                    "replay_prompt_sha": ctx.prompt_sha,
+                    "run_token_budget": idx_row.get("run_token_budget"),
+                    "run_prompt_sha": idx_row.get("run_prompt_sha"),
+                    "cap_hit": res.meta.get("cap_hit"),
+                    "reader": reader.name, "model": getattr(reader.llm, "model", ""),
+                }
+                sink.write(json.dumps(row, ensure_ascii=False) + "\n")
+                sink.flush()          # resumable: a kill loses at most one row
+                rows.append(row)
+            print(f"  [{i}/{len(questions)}] {q['query_id'][:48]}", flush=True)
 
-    summary = {"label": args.label, "model": args.model,
-               "prompt_version": args.prompt_version,
-               "abstention_match": args.abstention_match,
-               "clean_mode": args.clean_mode, "max_tokens": args.max_tokens,
-               "max_tokens_list": args.max_tokens_list,
-               "elapsed_s": round(time.time() - t0, 1), "conditions": {}}
-    from forgetit.llm.readers.text_reader import LIST_ANSWER_TYPES as _LIST
-    for name in readers:
-        cs = [r["conds"][name] for r in rows]
-        vis = [c for c in cs if c["recall_ref_in_shown"] >= VISIBLE]
-        absent = [c for c in cs if c["recall_ref_in_shown"] < ABSENT]
-        answered = [c for c in cs if not c["abstained"]]
-        # per-type boundary ruling: prose rows only enter the boundary metric
-        answered_prose = [r["conds"][name] for r in rows
-                          if not r["conds"][name]["abstained"]
-                          and r["qtype"] not in _LIST]
-        summary["conditions"][name] = {
-            "n": len(cs),
-            "idk": sum(c["abstained"] for c in cs),
-            "correct": sum(c["correct"] for c in cs),
-            "f1_cleaned": round(sum(c["f1"] for c in cs) / len(cs), 4),
-            "f1_raw": round(sum(c["f1_raw"] for c in cs) / len(cs), 4),
-            "n_visible": len(vis),
-            "false_refusal": (round(sum(c["abstained"] for c in vis) / len(vis), 4)
-                              if vis else None),
-            "n_absent": len(absent),
-            "answered_absent": (round(sum(not c["abstained"] for c in absent) / len(absent), 4)
-                                if absent else None),
-            "sent_boundary_prose": (round(sum(c["ends_sentence"] for c in answered_prose)
-                                          / len(answered_prose), 4)
-                                    if answered_prose else None),
-        }
-    (OUT_DIR / f"{args.label}.summary.json").write_text(json.dumps(summary, indent=1))
-    print(json.dumps(summary["conditions"], indent=1))
-    print(f"wrote {OUT_DIR}/{args.label}.jsonl + .summary.json")
+    # Report over the whole file, so a resumed run summarises everything.
+    with path.open(encoding="utf-8") as f:
+        allrows = [json.loads(l) for l in f if l.strip()]
+    report(allrows)
+    print(f"\nwrote {path} ({len(allrows)} rows, {len(rows)} new)")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

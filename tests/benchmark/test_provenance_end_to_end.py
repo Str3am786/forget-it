@@ -29,8 +29,7 @@ from forgetit.benchmark.pipeline import (
 from forgetit.benchmark.schema import WorkloadEvent
 from forgetit.core.logging import BenchmarkLogger
 from forgetit.core.schema import MemRecord, Query
-from forgetit.llm.readers import PlainTextReader
-from forgetit.llm.readers import text_reader
+from forgetit.llm.readers import DEFAULT_PROMPT, PlainTextReader, prompt_sha
 from forgetit.memory_system.custom_manager import RetentionManager
 from forgetit.policies import LLMCompressionPolicy
 from forgetit.policies.baselines import LFUPolicy
@@ -112,7 +111,7 @@ def _store():
 
 
 def _reader():
-    return PlainTextReader(StubLLM())          # legacy evidence, prompt v1
+    return PlainTextReader(StubLLM())          # default budget, default wording
 
 
 CFG = dict(dataset="provsmoke", store_label="retention/llm_compression/lexical/budget_300",
@@ -128,11 +127,8 @@ def _expected_git_commit() -> str:
 
 
 def _expected_reader_sha() -> str:
-    # legacy evidence (token_budget None) + prompt_version v1 → the bare
-    # evidence-builder source, exactly as historical rows recorded it.
-    return hashlib.sha256(
-        inspect.getsource(text_reader._build_prompt).encode("utf-8")
-    ).hexdigest()[:12]
+    # The template's own content hash — the wording IS the identity.
+    return prompt_sha(DEFAULT_PROMPT)
 
 
 def _rows_from_disk(tmp_path, reader_name):
@@ -176,8 +172,8 @@ def test_concurrent_pipeline_stamps_every_row(tmp_path):
         dataset=CFG["dataset"], itemiser=CFG["itemiser"],
         store_label=CFG["store_label"], reader=reader.name, k=CFG["k"],
         seed=CFG["seed"], budget_bytes=CFG["budget_bytes"], budget_frac=0.0,
-        answer_max_tokens=128, n_examples=2, write_events=False,
-        write_gold_snapshot=False,
+        n_examples=2, write_events=False,
+        write_gold_snapshot=False, dump_retrieval=False,
         probe_scheme=None, probe_every=None)
     _assert_provenance(rows, expected_hash)
 
@@ -197,7 +193,7 @@ def test_serial_pipeline_stamps_every_row(tmp_path):
         dataset=CFG["dataset"], itemiser=CFG["itemiser"],
         store_label=CFG["store_label"], reader=reader.name, k=CFG["k"],
         seed=CFG["seed"], budget_bytes=CFG["budget_bytes"], budget_frac=0.0,
-        answer_max_tokens=128, n_examples=None, write_events=False,probe_scheme=None, probe_every=None)
+        n_examples=None, write_events=False,probe_scheme=None, probe_every=None)
     _assert_provenance(rows, expected_hash)
 
 

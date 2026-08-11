@@ -130,7 +130,7 @@ class TestGraderEmbeddingTier:
         from forgetit.core.schema import Query
         return _run_reader(reader_impl=self._fake_reader(answer),
                            query=Query(text="q?"), retrieved=[],
-                           answer_max_tokens=64, ref_answer=ref,
+                           ref_answer=ref,
                            question_type="t", grader_embedder=embedder)
 
     def test_default_stays_deterministic_only(self):

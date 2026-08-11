@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import csv
 import hashlib
-import inspect
 import json
 import logging
 import os
 import subprocess
 import time
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Callable
 
@@ -17,6 +16,7 @@ from forgetit.benchmark.probe_split import PROBE_SCHEME_LEAKY
 from forgetit.benchmark.runner_core import run, run_one_example, _run_reader, _StoreView
 from forgetit.benchmark.workloads.base import Workload
 from forgetit.memory_system.base import MemorySystem
+from forgetit.llm.readers import DEFAULT_TOKEN_BUDGET
 from forgetit.llm.readers.base import Reader
 from forgetit.core.timing import (
     PhaseTimer, use_timer, merge_dicts, COARSE_PHASES, SUB_PHASES,
@@ -137,31 +137,11 @@ def _stamp_provenance(results, *, config_hash: str, reader_impl, store_probe) ->
     prompt_reader_sha = ""
     if reader_impl is not None:
         llm_model = str(getattr(getattr(reader_impl, "llm", None), "model", "") or "")
-        try:
-            from forgetit.llm.readers import text_reader
-            # Hash the evidence builder the reader ACTUALLY uses: legacy
-            # (per-item 300-char cut) and budgeted (one total token budget) turn
-            # the same retrieval into different prompts, so one sha for both
-            # would claim two different runs used the same reader context. The
-            # legacy branch stays byte-identical to historical rows.
-            budget = getattr(reader_impl, "token_budget", None)
-            if budget is None:
-                blob = inspect.getsource(text_reader._build_prompt)
-            else:
-                blob = (inspect.getsource(text_reader._build_evidence_budgeted)
-                        + f"\n# token_budget={budget}")
-            # ...and the instruction WRAPPER it wraps that evidence in (D4 fix
-            # iv). v1 vs v2 changes what the model is allowed to do with the
-            # same evidence — different prompt, so different sha. Appended only
-            # for non-v1 so every v1 row keeps its historical hash exactly.
-            version = getattr(reader_impl, "prompt_version", "v1")
-            if version != "v1":
-                wrapper = text_reader.PROMPT_BUILDERS[version]
-                blob += (f"\n# prompt_version={version}\n"
-                         + inspect.getsource(wrapper))
-            prompt_reader_sha = hashlib.sha256(blob.encode("utf-8")).hexdigest()[:12]
-        except Exception:
-            pass
+        # The template's own content hash IS the identity of the wording.
+        # Hashing the renderer's source was only ever a proxy for this, and a
+        # silent one: when the renderer was renamed the whole computation threw
+        # and every row was stamped blank.
+        prompt_reader_sha = getattr(reader_impl, "prompt_sha", "")
 
     embed_model = str(getattr(getattr(store_probe, "embedder", None), "model", "") or "")
 
@@ -270,7 +250,6 @@ def run_pipeline(
     itemiser: str = "",
     reader: str = "",
     reader_impl: Reader | None = None,
-    answer_max_tokens: int = 128,
     reader_workers: int = 1,
     budget_bytes: int = 0,
     budget_frac: float = 0.0,
@@ -340,7 +319,6 @@ def run_pipeline(
                 itemiser=itemiser,
                 reader_name=reader,
                 reader_impl=reader_impl,
-                answer_max_tokens=answer_max_tokens,
                 reader_workers=reader_workers,
             )
     finally:
@@ -368,7 +346,7 @@ def run_pipeline(
     cfg_hash = _config_hash(
         dataset=dataset, itemiser=itemiser, store_label=store_label,
         reader=reader, k=k, seed=seed, budget_bytes=budget_bytes,
-        budget_frac=budget_frac, answer_max_tokens=answer_max_tokens,
+        budget_frac=budget_frac,
         n_examples=None, write_events=write_events,
         **_probe_identity(workload, base),
     )
@@ -422,6 +400,93 @@ def _write_gold_snapshot_jsonl(path: Path, rows: list[dict]) -> None:
             f.write(json.dumps(row) + "\n")
 
 
+# ── --dump-retrieval: one policy run, many readers ──────────────────
+
+
+@dataclass(frozen=True)
+class RetrievalDump:
+    """Artefact-side config for --dump-retrieval.
+
+    Separate from ReaderConfig on purpose: this changes what is WRITTEN, never
+    what the reader does, so it must not reach the reader name or prompt_sha.
+
+    ``token_budget``/``prompt_sha`` are PROVENANCE — what this run's own reader
+    used — never a constraint on a replay. They are recorded even under
+    --no-reader, where they say what a reader *would* have used.
+    """
+    shard: int = 0
+    token_budget: int = DEFAULT_TOKEN_BUDGET
+    prompt_sha: str = ""
+
+
+def _item_key(text: str) -> str:
+    """Content hash of an evidence item's TEXT.
+
+    Keyed on text, never on id: a compression policy rewrites an item's text
+    under the same id, so (id, text) pairs are what must stay distinct. A
+    rewritten item is simply another key — no override logic, no base table.
+
+    Deliberately NOT prompt_sha: that hashes a prompt TEMPLATE and answers a
+    different question. Sharing one function would couple two unrelated
+    identities.
+    """
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
+
+
+def _write_retrieved_index_jsonl(path: Path, rows: list[dict]) -> None:
+    """Per-config index of what each scored query retrieved, in rank order.
+
+    Same lifecycle as the gold snapshot: workers accumulate, the driver writes
+    once at the end. No locks, no streaming handles, no per-thread files.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        for row in rows:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+# Per-process, per-file record of which item keys are already on disk. The item
+# table is shared across every config this process runs, so dedup has to outlive
+# a single run_pipeline_concurrent call.
+_evidence_keys_written: dict[Path, set[str]] = {}
+
+
+def _append_evidence_items(path: Path, items: dict[str, dict]) -> int:
+    """Append items not already in this shard's table. Returns how many.
+
+    Seeded from the file on first touch, so a resumed shard appends only
+    genuinely new keys instead of duplicating everything it wrote before the
+    crash. One file per shard because the launchers run NUM_SHARDS processes
+    against the same out-dir, and a shared filename would interleave appends —
+    POSIX only guarantees atomicity below PIPE_BUF, which a session item or a
+    compression summary exceeds.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    seen = _evidence_keys_written.get(path)
+    if seen is None:
+        seen = set()
+        if path.exists():
+            with path.open(encoding="utf-8") as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    try:
+                        seen.add(json.loads(line)["key"])
+                    except Exception:
+                        continue          # torn trailing write → rewrite it
+        _evidence_keys_written[path] = seen
+
+    fresh = [it for key, it in items.items() if key not in seen]
+    if not fresh:
+        return 0
+    with path.open("a", encoding="utf-8") as f:
+        for it in fresh:
+            f.write(json.dumps(it, ensure_ascii=False) + "\n")
+            seen.add(it["key"])
+    return len(fresh)
+
+
 def _flatten_timing(timing: dict, wall_s: float | None = None) -> dict[str, float]:
     """Flat ``time_<phase>_s`` + ``n_<phase>`` columns for summary.csv. Coarse
     phases sum to ``time_total_work_s`` (work-seconds, summed over concurrent
@@ -461,7 +526,6 @@ def run_pipeline_concurrent(
     itemiser: str = "",
     reader: str = "",
     reader_impl: Reader | None = None,
-    answer_max_tokens: int = 128,
     example_workers: int = 1,
     reader_workers: int = 1,
     budget_bytes: int = 0,
@@ -472,6 +536,7 @@ def run_pipeline_concurrent(
     out_dir: str = "artifacts/benchmark",
     write_events: bool = False,
     write_gold_snapshot: bool = False,
+    retrieval_dump: RetrievalDump | None = None,
     grader_embedder=None,
     grade_sim_threshold: float = 0.83,
 ) -> tuple[list, dict[str, float]]:
@@ -509,7 +574,11 @@ def run_pipeline_concurrent(
     )
 
     footprints = example_footprints or []
-    collect_ctx = reader_impl is not None
+    # The dump serialises the SAME structure the reader pass consumes, so it
+    # needs the contexts collected even when no reader will read them. Without
+    # the second clause a --no-reader dump writes an empty file and says nothing
+    # about it.
+    collect_ctx = reader_impl is not None or retrieval_dump is not None
 
     wall_t0 = time.perf_counter()
 
@@ -531,7 +600,6 @@ def run_pipeline_concurrent(
                     footprint=fp, seed=seed, itemiser=itemiser, reader_name=reader,
                     collect_reader_context=collect_ctx, collect_events=write_events,
                     collect_gold_snapshot=write_gold_snapshot, example_id=example_id,
-                    answer_max_tokens=answer_max_tokens,
                 )
         finally:
             # Dispose the per-example store (frees memory; isolation already
@@ -555,9 +623,14 @@ def run_pipeline_concurrent(
     cfg_hash = _config_hash(
         dataset=dataset, itemiser=itemiser, store_label=store_label,
         reader=reader, k=k, seed=seed, budget_bytes=budget_bytes,
-        budget_frac=budget_frac, answer_max_tokens=answer_max_tokens,
+        budget_frac=budget_frac,
         n_examples=len(indexed), write_events=write_events,
         write_gold_snapshot=write_gold_snapshot,
+        # Artefact flags are in the hash for SKIP-IF-DONE, not because they
+        # change the science: without this, re-running a finished config with
+        # --dump-retrieval matches its DONE.json, skips, and silently produces
+        # no artefact. Asking for a new artefact has to re-run the config.
+        dump_retrieval=retrieval_dump is not None,
         # R8 probe identity — computed BEFORE the skip-if-done check so a
         # leaky-arm DONE.json can never satisfy a corrected config.
         **_probe_identity(workload, base),
@@ -593,7 +666,14 @@ def run_pipeline_concurrent(
     event_groups: list[list[dict]] = []
     gold_rows_all: list[dict] = []
     timings: list[dict] = []
-    for item in collected:
+    index_rows: list[dict] = []
+    evidence_items: dict[str, dict] = {}
+    # idx is 0..n-1 from enumerate(), so it indexes `collected` directly. The
+    # raw events are the ground truth for gold ids; the context tuple does not
+    # carry them, and deriving them from gold_ranks would be lossy (ranks exist
+    # only for gold that MADE the ranked list — evicted gold has none).
+    by_idx = {idx: (eid, evs) for idx, eid, evs in indexed}
+    for idx, item in enumerate(collected):
         if item is None:
             continue
         results, ctx, event_rows, gold_rows, timing = item
@@ -604,16 +684,54 @@ def run_pipeline_concurrent(
             event_groups.append(event_rows)
         if write_gold_snapshot:
             gold_rows_all.extend(gold_rows)
+        if retrieval_dump is not None:
+            example_id, evs = by_idx.get(idx, ("", []))
+            # Scoped to THIS example, so a query id repeated across examples
+            # cannot collide.
+            gold_by_qid = {
+                e.query.id: list(e.gold_item_ids or [])
+                for e in evs
+                if e.type == "query" and e.query is not None and e.gold_item_ids
+            }
+            for _result, query, retrieved, ref_answer, qtype in ctx:
+                retrieved_rows = []
+                for rank, rec in enumerate(retrieved, 1):
+                    key = _item_key(rec.text or "")
+                    # rank is stored, never implied by list order: a JSON round
+                    # trip must not be able to reorder the evidence.
+                    retrieved_rows.append({"rank": rank, "id": rec.id, "key": key})
+                    evidence_items.setdefault(
+                        key, {"key": key, "id": rec.id, "text": rec.text or ""})
+                index_rows.append({
+                    "query_id": query.id,
+                    "example_id": example_id,
+                    "dataset": dataset,
+                    "itemiser": itemiser,
+                    "policy": policy_label,
+                    "retriever": retriever_label,
+                    "budget_frac": budget_frac,
+                    "seed": seed,
+                    "question_text": query.text,
+                    "ref_answer": ref_answer,
+                    "question_type": qtype,
+                    "gold_item_ids": gold_by_qid.get(query.id, []),
+                    "retrieved": retrieved_rows,
+                    "run_token_budget": retrieval_dump.token_budget,
+                    "run_prompt_sha": retrieval_dump.prompt_sha,
+                })
 
     # ── Pass 2: concurrent reader over recorded contexts (store-free) ──
-    if all_ctx:
+    # Gated on the reader, not just on all_ctx: --dump-retrieval collects
+    # contexts with no reader to read them, and without this the driver would
+    # make one no-op call per query and log them as reader calls.
+    if all_ctx and reader_impl is not None:
         log.info("  [%s] Pass 2: %d reader calls across %d workers",
                  store_label, len(all_ctx), reader_workers)
 
         def _answer(task):
             result, query, retrieved, ref, qtype = task
             qa = _run_reader(reader_impl=reader_impl, query=query, retrieved=retrieved,
-                             answer_max_tokens=answer_max_tokens, ref_answer=ref,
+                             ref_answer=ref,
                              question_type=qtype, grader_embedder=grader_embedder,
                              grade_sim_threshold=grade_sim_threshold)
             return result, qa
@@ -641,6 +759,13 @@ def run_pipeline_concurrent(
         _write_events_jsonl(base / "events.jsonl", event_groups)
     if write_gold_snapshot:
         _write_gold_snapshot_jsonl(base / "gold_answer_snapshot.jsonl", gold_rows_all)
+    if retrieval_dump is not None:
+        _write_retrieved_index_jsonl(base / "retrieved_index.jsonl", index_rows)
+        n_new = _append_evidence_items(
+            Path(out_dir) / f"evidence_items.shard{retrieval_dump.shard}.jsonl",
+            evidence_items)
+        log.info("  [%s] dump: %d queries indexed, %d/%d evidence items new",
+                 store_label, len(index_rows), n_new, len(evidence_items))
 
     # Merge per-example phase timers; the reader ran in Pass 2 (separate threads),
     # so add it from the per-query qa_latency we already measured.

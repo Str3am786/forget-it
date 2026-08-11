@@ -33,6 +33,61 @@ class StubLLM:
         yield self.generate(prompt)
 
 
+class MetaStubLLM(StubLLM):
+    """A client that can report finish_reason."""
+
+    def __init__(self, response="Tiny summary.", finish_reason="stop"):
+        super().__init__(response)
+        self.finish_reason = finish_reason
+        self.meta_calls = 0
+
+    def generate_with_meta(self, prompt, *, max_tokens=64, temperature=0.0, **kw):
+        self.meta_calls += 1
+        return self.response, self.finish_reason
+
+
+class TestGenerateWithMeta:
+    """finish_reason distinguishes an UNFINISHED answer from a wrong one."""
+
+    def test_variant_keyspace_cannot_collide_with_plain_generate(self):
+        plain = cache_key("m", "p", 64, 0.0)
+        meta = cache_key("m", "p", 64, 0.0, variant="meta")
+        assert plain != meta
+
+    def test_default_variant_reproduces_the_historical_key(self):
+        """Every cache_key already logged into a compress event depends on this
+        payload being byte-identical — changing it would dangle the whole
+        campaign's offline text recovery."""
+        import hashlib
+        expected = hashlib.sha256(
+            f"m\x00{64}\x00{0.0:.6g}\x00p".encode("utf-8")).hexdigest()
+        assert cache_key("m", "p", 64, 0.0) == expected
+        assert cache_key("m", "p", 64, 0.0, variant="") == expected
+
+    def test_meta_call_is_cached_and_returns_the_pair(self, tmp_path):
+        inner = MetaStubLLM(finish_reason="length")
+        llm = CachedLLM(inner, LLMDiskCache(tmp_path))
+        assert llm.generate_with_meta("prompt") == ("Tiny summary.", "length")
+        assert llm.generate_with_meta("prompt") == ("Tiny summary.", "length")
+        assert inner.meta_calls == 1                  # second call served from disk
+
+    def test_meta_entry_is_not_served_to_plain_generate(self, tmp_path):
+        inner = MetaStubLLM()
+        llm = CachedLLM(inner, LLMDiskCache(tmp_path))
+        llm.generate_with_meta("prompt")
+        llm.generate("prompt")
+        assert inner.calls == 1                       # generate really went out
+        assert inner.meta_calls == 1
+
+    def test_degrades_when_the_inner_client_has_no_meta_call(self, tmp_path):
+        """Unknown is not the same as not-cut: a client that cannot report
+        finish_reason returns None rather than raising."""
+        inner = StubLLM()                             # generate() only
+        llm = CachedLLM(inner, LLMDiskCache(tmp_path))
+        assert llm.generate_with_meta("prompt") == ("Tiny summary.", None)
+        assert inner.calls == 1
+
+
 class TestCachedLLM:
 
     def test_second_call_is_a_hit(self, tmp_path):

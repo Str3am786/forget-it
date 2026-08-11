@@ -61,6 +61,39 @@ class OpenAiLLM(LLM):
 
         raise last_err
 
+    def generate_with_meta(
+        self,
+        prompt: str,
+        *,
+        max_tokens: int = 512,
+        temperature: float = 0.0,
+        max_retries: int = 6,
+        base_delay: float = 0.5,
+    ) -> tuple[str, str | None]:
+        """Like generate(), returning (text, finish_reason).
+
+        finish_reason is what distinguishes an unfinished answer (cut at the
+        cap) from a wrong one — the reader records it as cap_hit. Without it an
+        enumeration truncated mid-list is indistinguishable from a bad answer.
+        """
+        last_err = None
+        for attempt in range(max_retries):
+            try:
+                r = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                )
+                return r.choices[0].message.content, r.choices[0].finish_reason
+
+            except RateLimitError as e:
+                last_err = e
+                sleep_s = base_delay * (2 ** attempt) * (1.0 + random.random() * 0.2)
+                time.sleep(sleep_s)
+
+        raise last_err
+
     def stream(
         self,
         prompt: str,

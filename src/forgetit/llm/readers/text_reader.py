@@ -1,7 +1,13 @@
+"""The reading stage: retrieved memories in, a graded answer out.
+
+"""
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import time
+from dataclasses import dataclass, field, asdict
 from typing import TYPE_CHECKING
 
 from forgetit.core.schema import AnswerResult, MemRecord, Question
@@ -9,376 +15,186 @@ from forgetit.core.schema import AnswerResult, MemRecord, Question
 if TYPE_CHECKING:
     from forgetit.llm.base import LLM
 
-
-# ── prompt builder ──────────────────────────────────────────────────
-
-# Explicit truncation marker for the budgeted path — the model (and anyone
-# reading the prompt offline) can tell a cut item from a complete one.
-TRUNCATION_MARKER = " …[truncated]"
-
-# chars-per-token approximation used when no tokenizer for the served model is
-# available (per E6c spec: len(text) // 4 — do not add a tokenizer dependency).
 _CHARS_PER_TOKEN = 4
+TRUNCATION_MARKER = " […truncated]"
 
-# Budgeted-mode default: ~matches the legacy prompt's worst-case evidence size
-# (5 items × 300 chars ≈ 1500 chars ≈ 375 tokens), so switching modes changes
-# HOW the window is filled, not how big it is.
-DEFAULT_READER_TOKEN_BUDGET = 375
+# The campaign's measured value, not a round number. At 1500 the k-list
+# questions measured evidence delivery at 0.4567 — session itemisers produce
+# items large enough that the budget cuts gold before the reader sees it. 32k
+# leaves no headroom for wrapper + generation against the 32768 chat serving
+# window the LUMI jobs pin, so 16000 is the ceiling that actually delivers.
+DEFAULT_TOKEN_BUDGET = 16000
+DEFAULT_ANSWER_MAX_TOKENS = 256
 
-# Baseline setting for new answer-stage runs. The parity budget above holds the
-# window at the legacy size, which is the size that starves the reader: ~375
-# tokens is roughly ONE retrieved item, so gold that retrieval delivered at rank
-# 2–5 never reaches the model (measured: hit@5 ≈ 0.86 against abstain ≈ 0.70
-# under legacy context).
-#
-# SIZE THIS TO THE ITEMISER — 1500 is not "enough" everywhere. Measured share of
-# a k=5 retrieved list that actually reaches the reader (data/ corpora, 2026-07):
-#
-#   itemiser               legacy   1500    4000    8000   16000
-#   longmemeval/session       21%    24%     40%     72%    100%
-#   longmemeval/turn_pair     30%    79%    100%    100%    100%
-#   locomo/session            20%    47%     97%    100%    100%
-#   locomo/turn_pair          94%   100%    100%    100%    100%
-#   beam/turn                 30%    65%    100%    100%    100%
-#   beam/turn_pair            20%    39%     79%    100%    100%
-#
-# (legacy's items are all present but each cut to 300 chars — 3-19% of the
-# retrieved CONTENT, which is the number that matters.) Session-itemised grids
-# need ~8000+; turn/turn-pair grids saturate around 4000. Whatever the value,
-# evidence_delivery_rate in summary.csv reports what a run actually delivered.
-RECOMMENDED_READER_TOKEN_BUDGET = 1500
 
-# Shared --reader-token-budget help text: every runner exposes the SAME flag
-# with the SAME semantics, so the string lives with the reader it configures.
-# NOTE: this is passed straight to argparse, which %-formats help strings —
-# keep it free of '%' (write "a quarter", not "25%") or --help raises.
-READER_TOKEN_BUDGET_HELP = (
-    "Give the reader ONE total evidence budget of ~N tokens (len//4 chars), "
-    "filled whole-item in retrieval-rank order, with an explicit …[truncated] "
-    f"marker on a final cut item. {RECOMMENDED_READER_TOKEN_BUDGET} is the "
-    "baseline for new runs; SIZE IT TO THE ITEMISER — at 1500 a k=5 list "
-    "arrives whole for turn-pair LoCoMo but only about a quarter of it "
-    "survives for session-itemised LongMemEval, which needs ~8000+ (see "
-    "RECOMMENDED_READER_TOKEN_BUDGET for the measured table; summary.csv "
-    "reports evidence_delivery_rate for what a run actually delivered). "
-    "Omitted = LEGACY context: at most 5 items, each hard-cut to 300 chars "
-    "(~375 tokens total, a twentieth to a fifth of the retrieved content), "
-    "which abstains on gold retrieval actually found — kept only so historical "
-    "runs reproduce. The budget is carried in the reader name "
-    "(PlainTextReader_rtok1500), so artifact paths, config hashes and the "
-    "`reader` column can never confuse the two modes."
+# ── the prompt ──────────────────────────────────────────────────────
+
+DEFAULT_PROMPT = (
+    "Answer the question using ONLY the memories below.\n"
+    "You may combine facts from several memories and compute derived "
+    "answers from them (date differences, counts, ordered lists).\n"
+    "If the information needed is absent from the memories, say exactly: IDK\n"
+    "Be concise.\n"
+    "\n"
+    "Memories:\n"
+    "{evidence}\n"
+    "\n"
+    "Question: {question}\n"
+    "Answer:"
 )
+"""The default instruction wrapper.
 
+Permits derivation ("you may combine facts and compute derived answers"),
+which removes the false refusals the previous wording caused on questions
+whose answer is a difference or a count, and drops the one-sentence cap that
+mutilated enumerations. The exact IDK string is what abstention detection keys
+on, so it stays literal in any replacement.
 
-# Prompt wrapper selection (D4 fix iv). v1 stays the default so a no-flag run
-# reproduces historical prompts byte-for-byte; v2 is the repaired instruction.
-DEFAULT_READER_PROMPT = "v1"
-RECOMMENDED_READER_PROMPT = "v2"
+A TEMPLATE, not a version enum. The prompt is an experimental axis — comparing
+wordings across reader models is a real study — but a two-item enum with a
+deprecated member is not how you run one. Pass your own via
+``PlainTextReader(prompt=...)``; its sha lands on every row, so two runs with
+different wordings are never silently pooled. Must contain {evidence} and
+{question}.
+"""
 
-# Shared --reader-prompt help text (see the '%' warning on the budget help —
-# argparse %-formats these, so keep this string free of percent signs).
-READER_PROMPT_HELP = (
-    "Which instruction wrapper the reader uses. v1 (default) is the legacy "
-    "prompt, kept so historical runs reproduce byte-for-byte: it says 'using "
-    "ONLY the memories' and 'one sentence maximum', which forbids DERIVING an "
-    "answer the evidence supports (summing two figures, differencing two "
-    "dates) and truncates ordered-list answers — both score as misses even "
-    "when every needed item was retrieved. v2 explicitly permits combining "
-    "facts and computing derived answers (date differences, counts, ordered "
-    "lists) and drops the sentence cap, while keeping the exact-form 'say "
-    "exactly: IDK' line that abstention detection matches on. Non-default "
-    "renames the reader (PlainTextReader_pv2), so artifact paths, config "
-    "hashes and the `reader` column can never confuse the two."
+# Constructor templates only — PARAMETRIC_PROMPT deliberately has no {evidence}
+# and is therefore not a valid PlainTextReader(prompt=...) argument.
+REQUIRED_PROMPT_FIELDS = ("evidence", "question")
+
+PARAMETRIC_PROMPT = (
+    "Answer the question from your own knowledge.\n"
+    "If you do not know, say exactly: IDK\n"
+    "Be concise.\n"
+    "\n"
+    "Question: {question}\n"
+    "Answer:"
 )
+"""The no-evidence wrapper for measuring PARAMETRIC memory.
+
+Feeding the standard prompt an empty memories block measures instruction
+compliance ("say IDK when memories are absent"), not what the model knows.
+Measuring what the campaign's accuracy owes to the model rather than to the
+memory system requires asking the model directly — this template does that,
+and the delta between it and a gold-evidence context is the memory system's
+actual contribution.
+"""
 
 
-# Answer post-processing mode (D4 fix ii). firstline stays the default so a
-# no-flag run reproduces historical answers byte-for-byte.
-DEFAULT_READER_CLEAN = "firstline"
-RECOMMENDED_READER_CLEAN = "full"
+def prompt_sha(template: str) -> str:
+    """Content hash of a prompt template — the provenance handle.
 
-# Shared --reader-clean help text (argparse %-formats these — no percent signs).
-READER_CLEAN_HELP = (
-    "How much of the model's output to keep after noise-stripping. Both modes "
-    "strip the same noise (code fences, asterisks, wrapping quotes, 'Sure,' / "
-    "'Based on the memories' preambles). firstline (default) then keeps ONLY "
-    "the first line, which reproduces historical runs but decapitates every "
-    "multi-line answer — an ordered list scores as its first item alone, and "
-    "the reader's own docstring records mean raw F1 beating cleaned output in "
-    "every measured condition. full keeps the whole stripped answer, so "
-    "enumerations survive. Non-default renames the reader "
-    "(PlainTextReader_cleanfull), so artifact paths, config hashes and the "
-    "`reader` column can never confuse the two. Both modes are recorded per "
-    "row regardless: AnswerResult.meta carries raw_output and cleaned_output."
-)
-
-
-# Abstention detection mode (D4 fix vii, detection half). loose stays the
-# default so a no-flag run reproduces historical abstention flags exactly.
-DEFAULT_READER_ABSTENTION = "loose"
-RECOMMENDED_READER_ABSTENTION = "exact"
-
-# Shared --reader-abstention help text (argparse %-formats these — no percents).
-READER_ABSTENTION_HELP = (
-    "How an answer is judged to be a refusal. loose (default) flags the answer "
-    "if a refusal phrase appears ANYWHERE in it, so an informative answer "
-    "carrying a trailing hedge ('the rent was 2,100, IDK if there were "
-    "others') is recorded as an abstention and scored as no answer at all — "
-    "a measured false-positive class, kept only so historical runs reproduce. "
-    "exact requires the WHOLE normalized answer to be a refusal phrase, which "
-    "is sound here because both prompt versions instruct an exact-form 'say "
-    "exactly: IDK'. Pairs with --reader-clean full, which lengthens the text "
-    "this runs over and so widens the loose mode's exposure. Non-default "
-    "renames the reader (PlainTextReader_absexact), so artifact paths, config "
-    "hashes and the `reader` column can never confuse the two. Detection only "
-    "— whether abstaining was CORRECT is a separate grading concern."
-)
-
-
-# Answer GENERATION cap (D4 fix vii, cap half) — how many tokens the reader is
-# allowed to emit. Unlike the four mode flags this is NOT part of the reader
-# name: it has always lived in the config hash instead (pipeline._config_hash
-# takes answer_max_tokens as a field), so changing it re-runs configs without
-# renaming anything. That asymmetry is deliberate, not an oversight.
-DEFAULT_ANSWER_MAX_TOKENS = 128
-RECOMMENDED_ANSWER_MAX_TOKENS = 256
-
-# Shared --answer-max-tokens help text (argparse %-formats these — no percents).
-ANSWER_MAX_TOKENS_HELP = (
-    "Hard cap on how many tokens the reader may generate per answer. The "
-    "legacy 128 cut roughly a third of answered generations off mid-sentence "
-    "in the probe (10 of 32), which lands hardest on multi-item answers — an "
-    "ordered list stops mid-item and is graded on the fragment. 256 is the "
-    "validated setting. This value does NOT appear in the reader name; it is "
-    "a field of the config hash, so changing it re-runs affected configs and "
-    "invalidates their DONE markers on its own. It is also part of the LLM "
-    "disk-cache key, so a 256 run never reuses a 128-capped cached answer. "
-    "NOTE: a generation that HITS the cap is not recorded anywhere per row — "
-    "the LLM layer returns text only and discards finish_reason — so cap-hits "
-    "cannot be counted after the fact, only avoided by setting this high "
-    "enough."
-)
-
-
-def log_answer_max_tokens(log, answer_max_tokens: int) -> None:
-    """Announce the generation cap the answer stage is running under.
-
-    Same reason as the reader-mode logs, with one extra: because a cap-hit
-    leaves no per-row trace, the run's own log is the only place the chosen
-    value is recorded outside the config hash.
+    Same convention as the compression policy's prompt_compress_sha: the
+    wording is part of the experiment's identity, so a run that changes it is
+    a different configuration and must be distinguishable by columns alone.
     """
-    if answer_max_tokens <= DEFAULT_ANSWER_MAX_TOKENS:
-        log.warning(
-            "answer generation cap = %d tokens (legacy default %d): the probe measured "
-            "~1 in 3 answered generations cut off mid-sentence at this cap, worst on "
-            "multi-item answers. Cap-hits are NOT recorded per row. Pass "
-            "--answer-max-tokens %d for the validated setting.",
-            answer_max_tokens, DEFAULT_ANSWER_MAX_TOKENS, RECOMMENDED_ANSWER_MAX_TOKENS)
-    else:
-        log.info(
-            "answer generation cap = %d tokens (legacy default %d); cap-hits are not "
-            "recorded per row, so this is set-and-trust, not audited",
-            answer_max_tokens, DEFAULT_ANSWER_MAX_TOKENS)
+    return hashlib.sha256((template or "").encode("utf-8")).hexdigest()[:12]
 
 
-def log_reader_abstention(log, abstention_match: str) -> None:
-    """Announce which abstention-detection mode the answer stage is running.
+def render_prompt(template: str, question: Question, evidence: str) -> str:
+    return template.format(evidence=evidence, question=question.text)
 
-    Same reason as the other three: loose silently converts answers into
-    refusals, which lands as a zero on rows the reader actually got right.
+
+# ── context construction (pure — no model) ──────────────────────────
+
+@dataclass
+class ReaderContext:
+    """Everything the model will see, and the audit of how it was assembled.
+
+    Serialisable on purpose: persist these during a run and every later reader
+    model is an offline pass over stored text. `item_ids` is what makes a
+    delivered-evidence claim checkable against the retrieval log rather than
+    inferred from a count.
     """
-    if abstention_match == DEFAULT_READER_ABSTENTION:
-        log.warning(
-            "reader abstention = LEGACY %s: any refusal phrase ANYWHERE in the answer "
-            "flags it as a refusal, so hedged-but-informative answers are recorded as "
-            "abstentions and score as no answer. Pass --reader-abstention %s to require "
-            "the whole answer to be a refusal.",
-            DEFAULT_READER_ABSTENTION, RECOMMENDED_READER_ABSTENTION)
-    else:
-        log.info(
-            "reader abstention = %s: the whole normalized answer must BE a refusal "
-            "phrase; hedged answers keep their content and are graded on it",
-            abstention_match)
+    query_id: str
+    question_text: str
+    prompt: str
+    item_ids: list[str] = field(default_factory=list)
+    n_offered: int = 0            # what retrieval handed over
+    n_delivered: int = 0          # what the prompt actually carried
+    truncated: bool = False       # a delivered item was cut mid-text
+    evidence_chars: int = 0
+    token_budget: int = DEFAULT_TOKEN_BUDGET
+    # The wording that produced this prompt, and its handle. Persisted with the
+    # context so an offline reader pass is reproducible even if the default
+    # template later changes.
+    prompt_sha: str = ""
+
+    def to_json(self) -> str:
+        return json.dumps(asdict(self), ensure_ascii=False)
+
+    @classmethod
+    def from_json(cls, s: str) -> "ReaderContext":
+        return cls(**json.loads(s))
 
 
-def log_reader_clean(log, clean_mode: str) -> None:
-    """Announce which post-processing mode the answer stage is running.
+def build_evidence(records: list[MemRecord],
+                   token_budget: int) -> tuple[str, bool, list[str]]:
+    """Fill evidence in rank order under ONE total budget, whole items first.
 
-    Same reason as the other two: firstline silently discards content the
-    model produced correctly, and a run about to do that should say so rather
-    than leave it to be inferred from list-type grades.
-    """
-    if clean_mode == DEFAULT_READER_CLEAN:
-        log.warning(
-            "reader cleaning = LEGACY %s: keeps only the FIRST LINE of each answer, "
-            "so multi-line and enumerated answers are truncated to their first item "
-            "even when fully correct. Pass --reader-clean %s to keep the whole "
-            "noise-stripped answer.",
-            DEFAULT_READER_CLEAN, RECOMMENDED_READER_CLEAN)
-    else:
-        log.info(
-            "reader cleaning = %s: whole noise-stripped answer kept (fences, "
-            "asterisks, quotes, preamble still removed); multi-line answers survive",
-            clean_mode)
-
-
-def log_reader_prompt(log, prompt_version: str) -> None:
-    """Announce which instruction wrapper the answer stage is running.
-
-    Same reason as log_reader_context: v1 loses answers the reader had the
-    evidence for (derivation refused, lists cut), and a run doing that should
-    say so up front rather than leave it to be inferred from the grades.
-    """
-    if prompt_version == DEFAULT_READER_PROMPT:
-        log.warning(
-            "reader prompt = LEGACY %s: forbids derivation ('using ONLY the memories') "
-            "and caps answers at one sentence, so combined/computed answers and ordered "
-            "lists score as misses even when the evidence was delivered. Pass "
-            "--reader-prompt %s to permit derivation and drop the cap.",
-            DEFAULT_READER_PROMPT, RECOMMENDED_READER_PROMPT)
-    else:
-        log.info(
-            "reader prompt = %s: derivation permitted (date differences, counts, "
-            "ordered lists), no sentence cap, exact-form IDK retained",
-            prompt_version)
-
-
-def log_reader_context(log, token_budget: int | None) -> None:
-    """Announce which evidence mode the answer stage is running in.
-
-    Legacy mode is the silent failure this exists to make loud: retrieval can
-    report hit@5 ≈ 0.86 while the reader abstains on ~70% of the same queries,
-    because gold was cut out of the prompt after retrieval found it. A run that
-    is about to do that should say so in its first ten log lines.
-    """
-    if token_budget is None:
-        log.warning(
-            "reader evidence = LEGACY context: <=%d items, each hard-cut to %d chars "
-            "(~%d tokens total) — the reader sees roughly ONE retrieved item, so gold "
-            "retrieved at rank 2-5 never reaches it. Pass --reader-token-budget %d "
-            "for whole-item rank-order fill.",
-            5, 300, DEFAULT_READER_TOKEN_BUDGET, RECOMMENDED_READER_TOKEN_BUDGET)
-    else:
-        log.info(
-            "reader evidence = BUDGETED context: ~%d tokens (~%d chars) total, whole "
-            "items in retrieval-rank order, '%s' on a final cut item",
-            token_budget, token_budget * _CHARS_PER_TOKEN, TRUNCATION_MARKER.strip())
-
-
-def _wrap_prompt(question: Question, evidence: str) -> str:
-    """v1 (legacy, DEFAULT — pinned byte-for-byte by tests): forbids derivation
-    ("ONLY", "not in the memories") and forbids list answers ("one sentence
-    maximum"). Both are measured reader losses (probe findings v/vi); kept as
-    the default so historical runs reproduce exactly."""
-    return (
-        f"Answer the question using ONLY the memories below.\n"
-        f"If the answer is not in the memories, say exactly: IDK\n"
-        f"Be brief — one sentence maximum.\n"
-        f"\n"
-        f"Memories:\n"
-        f"{evidence}\n"
-        f"\n"
-        f"Question: {question.text}\n"
-        f"Answer:"
-    )
-
-
-def _wrap_prompt_v2(question: Question, evidence: str) -> str:
-    """v2 (D4 fix iv, flagged): permits combining/computing from the memories
-    (the date-subtraction false-refusal class) and drops the one-sentence cap
-    (the enumeration mutilation class), while KEEPING the exact-form IDK
-    instruction so abstention detection stays sharp. Adopted only on probe-
-    bench evidence (false refusals down on visible rows, no hallucination rise
-    on absent rows) — see report/04_reader_fixes.md."""
-    return (
-        f"Answer the question using ONLY the memories below.\n"
-        f"You may combine facts from several memories and compute derived "
-        f"answers from them (date differences, counts, ordered lists).\n"
-        f"If the information needed is absent from the memories, say exactly: IDK\n"
-        f"Be concise.\n"
-        f"\n"
-        f"Memories:\n"
-        f"{evidence}\n"
-        f"\n"
-        f"Question: {question.text}\n"
-        f"Answer:"
-    )
-
-
-PROMPT_BUILDERS = {"v1": _wrap_prompt, "v2": _wrap_prompt_v2}
-
-# BEAM abilities whose reference answers are multi-item lists — the types the
-# 128-token cap demonstrably cuts mid-list (probe finding: 10/32 answered
-# generations cut mid-sentence, worst on these). The per-type generation-cap
-# override (D4 fix iii, --answer-max-tokens-list) applies to exactly this set.
-LIST_ANSWER_TYPES = frozenset({"event_ordering", "summarization"})
-
-
-def _build_prompt(question: Question, records: list[MemRecord], *, wrap=_wrap_prompt) -> str:
-    """Legacy prompt: hard-truncate every memory to ~300 chars.
-
-    Kept selectable (token_budget=None) so historical runs stay reproducible.
-    Known artifact: mutilates long items (e.g. compression summaries) — the
-    budgeted builder below is the documented choice for new runs (E6c).
-    ``wrap`` selects the instruction wrapper (v1 default; see PROMPT_BUILDERS).
-    """
-    # Number the memories — models handle numbered lists well
-    evidence_lines: list[str] = []
-    for i, r in enumerate(records, 1):
-        # Truncate each memory to ~300 chars to keep prompt short
-        text = r.text[:300].rstrip()
-        if len(r.text) > 300:
-            text += "…"
-        evidence_lines.append(f"[{i}] {text}")
-
-    return wrap(question, "\n".join(evidence_lines))
-
-
-def _build_evidence_budgeted(records: list[MemRecord],
-                             token_budget: int) -> tuple[str, bool, int]:
-    """Fill evidence in retrieval-rank order under ONE total token budget.
-
-    Whole items preferred — no fixed per-item cap, so a long item (compression
-    summary) is not silently mutilated. When the next item doesn't fit, its
-    head is included with an explicit truncation marker, then filling stops.
-    The same total budget applies to every policy/config: parity is the point —
-    compression's "more, shorter items fit" advantage becomes expressible.
-
-    Returns (evidence_block, truncated_any, n_items_included). The count is the
-    number of retrieved items that REACHED the model, which is what makes hit@k
-    interpretable: 5 retrieved with 1 delivered is a reader-context result, not
-    a retrieval result.
+    Returns (block, truncated, delivered_ids). No per-item cap: a long item is
+    either delivered whole, delivered as a marked head, or not at all — never
+    silently mutilated, which is what the old 300-char cap did to every
+    compression summary in the campaign.
     """
     remaining = token_budget * _CHARS_PER_TOKEN
     lines: list[str] = []
+    delivered: list[str] = []
     truncated = False
+
     for i, r in enumerate(records, 1):
         prefix = f"[{i}] "
-        text = r.text.rstrip()
-        sep = 1 if lines else 0                    # joining newline
+        text = (r.text or "").rstrip()
+        sep = 1 if lines else 0
         cost = sep + len(prefix) + len(text)
         if cost <= remaining:
             lines.append(prefix + text)
+            delivered.append(r.id)
             remaining -= cost
             continue
-        # Doesn't fit whole: emit the head that fits + marker, then stop.
         head = remaining - sep - len(prefix) - len(TRUNCATION_MARKER)
         if head > 0:
             lines.append(prefix + text[:head].rstrip() + TRUNCATION_MARKER)
+            delivered.append(r.id)
             truncated = True
         break
-    return "\n".join(lines), truncated, len(lines)
+
+    return "\n".join(lines), truncated, delivered
 
 
-def _build_prompt_budgeted(question: Question, records: list[MemRecord],
-                           token_budget: int, *, wrap=_wrap_prompt) -> tuple[str, bool, int]:
-    evidence, truncated, n_included = _build_evidence_budgeted(records, token_budget)
-    return wrap(question, evidence), truncated, n_included
+def build_context(question: Question, records: list[MemRecord], *,
+                  token_budget: int = DEFAULT_TOKEN_BUDGET,
+                  prompt: str = DEFAULT_PROMPT) -> ReaderContext:
+    """Deterministic: same records, budget and template give the same context."""
+    evidence, truncated, delivered = build_evidence(records, token_budget)
+    return ReaderContext(
+        query_id=question.id,
+        question_text=question.text,
+        prompt=render_prompt(prompt, question, evidence),
+        prompt_sha=prompt_sha(prompt),
+        item_ids=delivered,
+        n_offered=len(records),
+        n_delivered=len(delivered),
+        truncated=truncated,
+        evidence_chars=len(evidence),
+        token_budget=token_budget,
+    )
 
 
-# ── post-processing ────────────────────────────────────────────────
+def build_parametric_context(question: Question) -> ReaderContext:
+    """A context with NO evidence, under the parametric wrapper."""
+    return ReaderContext(
+        query_id=question.id,
+        question_text=question.text,
+        prompt=PARAMETRIC_PROMPT.format(question=question.text),
+        item_ids=[], n_offered=0, n_delivered=0, truncated=False,
+        evidence_chars=0, token_budget=0,
+        prompt_sha=prompt_sha(PARAMETRIC_PROMPT),
+    )
 
-# Strip common preamble noise from small models
+
+# ── post-processing ─────────────────────────────────────────────────
+
 _PREAMBLE_RE = re.compile(
     r"^(based on the (?:provided )?memories?[,:\s]*"
     r"|according to the (?:provided )?memories?[,:\s]*"
@@ -389,201 +205,147 @@ _PREAMBLE_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Sentence-ending punctuation (for truncation)
-_SENTENCE_END = re.compile(r"[.!?]")
 
+def clean_answer(raw: str) -> str:
+    """Strip small-model noise. Never truncate.
 
-def _clean_answer(raw: str, mode: str = "firstline") -> str:
-    """Trim small-model output.
-
-    ``firstline`` (legacy, DEFAULT): noise-strip then keep only the first
-    line — known to mutilate correct multi-line enumerations (probe finding
-    vi; mean raw F1 beats cleaned in every measured condition). Pinned as the
-    default so historical runs reproduce.
-    ``full`` (D4 fix ii, flagged): same noise stripping (fences, asterisks,
-    quotes, preamble), whole text kept — list answers survive post-processing.
+    The old first-line rule cut correct multi-line answers — enumerations are
+    the reference format for several BEAM and LongMemEval types, so truncating
+    at the newline destroyed exactly the answers those questions want.
     """
-    text = raw.strip()
-
-    # Remove markdown fences, asterisks, quotes
+    text = (raw or "").strip()
     text = re.sub(r"```[\s\S]*?```", "", text)
     text = text.replace("**", "").replace("*", "")
-    text = text.strip('"\'')
-
-    # Strip preamble
-    text = _PREAMBLE_RE.sub("", text).strip()
-
-    if mode == "full":
-        return text
-
-    # Ramble prevention, take first line
-    first_line = text.split("\n")[0].strip()
-
-    if len(first_line) > 200:
-        m = _SENTENCE_END.search(first_line, 20)
-        if m:
-            first_line = first_line[: m.end()]
-
-    return first_line
+    text = text.strip("\"'")
+    return _PREAMBLE_RE.sub("", text).strip()
 
 
 _ABSTENTION_PHRASES = frozenset({
-    "idk",
-    "i do not know",
-    "i don't know",
-    "i cannot answer",
-    "i can't answer",
-    "not enough information",
-    "insufficient information",
-    "no relevant information",
-    "the answer is not in the memories",
+    "idk", "i do not know", "i don't know", "i cannot answer", "i can't answer",
+    "not enough information", "insufficient information",
+    "no relevant information", "the answer is not in the memories",
     "none of the memories",
 })
 
 
-def _is_abstention(text: str, mode: str = "loose") -> bool:
-    """Abstention detection.
+def is_abstention(text: str) -> bool:
+    """The whole answer must BE a refusal.
 
-    ``loose`` (legacy, DEFAULT): substring match — flags any answer that
-    CONTAINS a refusal phrase, including informative hedged answers
-    ("…IDK if there are other options"), a measured false-positive class
-    (probe finding vii). Pinned as the default.
-    ``exact`` (D4 fix v, flagged): the whole answer (normalized) must BE an
-    abstention phrase — hedged answers never flag.
+    Substring matching flagged "…, though IDK whether there were others" as an
+    abstention and scored an informative answer as a refusal. An answer that
+    merely CONTAINS a refusal phrase is an answer.
     """
-    t = text.strip().lower().rstrip(".")
-
-    if t in _ABSTENTION_PHRASES:
-        return True
-    if mode == "exact":
-        return False
-    return any(p in t for p in _ABSTENTION_PHRASES)
+    return (text or "").strip().lower().rstrip(".") in _ABSTENTION_PHRASES
 
 
-# ── reader class ────────────────────────────────────────────────────
+# ── reader ──────────────────────────────────────────────────────────
 
 class PlainTextReader:
-    """Reader for small local LLMs.
+    """Reads an answer out of retrieved memories.
 
-    Parameters
-    ----------
-    llm : LLM
-        The language model (OpenAI-compatible).
-    max_tokens : int
-        Hard generation cap.  64 is aggressive but prevents rambling.
-        Increase to 96 if answers are getting truncated mid-word.
-    max_evidence : int
-        Maximum number of retrieved memories to include in the prompt
-        (legacy mode only). Fewer = shorter prompt = more reliable output
-        from small models.
-    token_budget : int | None
-        None (default) = legacy context: ``max_evidence`` items, each
-        hard-truncated to ~300 chars — byte-for-byte what historical runs used.
-        An int = E6c budgeted context: ONE total evidence budget of ~N tokens
-        (len//4 approximation), filled whole-item in retrieval-rank order with
-        an explicit marker on a final truncated item. The documented choice for
-        new runs — size it to the itemiser (see
-        RECOMMENDED_READER_TOKEN_BUDGET for measured delivery per corpus);
-        DEFAULT_READER_TOKEN_BUDGET reproduces the legacy WINDOW SIZE and is
-        for mode-comparison ablations, not for production runs. The reader
-        ``name`` carries the budget (e.g. ``PlainTextReader_rtok1500``) so
-        artifact paths and the ``reader`` results column can never confuse the
-        two modes.
+    ``name`` carries the model tag and the evidence budget, and nothing else —
+    there are no other behavioural knobs to encode. Two readers with different
+    models are two arms; two readers with the same model and budget are the
+    same reader.
     """
 
     def __init__(
         self,
-        llm: LLM,
+        llm: "LLM",
         *,
-        max_tokens: int = 64,
-        max_evidence: int = 5,
-        token_budget: int | None = None,
-        prompt_version: str = "v1",
-        abstention_match: str = "loose",
-        clean_mode: str = "firstline",
+        token_budget: int = DEFAULT_TOKEN_BUDGET,
+        max_tokens: int = DEFAULT_ANSWER_MAX_TOKENS,
+        prompt: str = DEFAULT_PROMPT,
     ) -> None:
-        if prompt_version not in PROMPT_BUILDERS:
-            raise ValueError(f"prompt_version must be one of {sorted(PROMPT_BUILDERS)}")
-        if abstention_match not in ("loose", "exact"):
-            raise ValueError("abstention_match must be 'loose' or 'exact'")
-        if clean_mode not in ("firstline", "full"):
-            raise ValueError("clean_mode must be 'firstline' or 'full'")
+        if token_budget <= 0:
+            raise ValueError("token_budget must be > 0")
+        if max_tokens <= 0:
+            raise ValueError("max_tokens must be > 0")
+        missing = [f for f in REQUIRED_PROMPT_FIELDS if "{" + f + "}" not in prompt]
+        if missing:
+            raise ValueError(
+                f"prompt template is missing {missing}; it must contain "
+                f"{{evidence}} and {{question}}")
         self.llm = llm
-        self.max_tokens = max_tokens
-        self.max_evidence = max_evidence
         self.token_budget = token_budget
-        self.prompt_version = prompt_version
-        self.abstention_match = abstention_match
-        self.clean_mode = clean_mode
-        # Every non-default mode is encoded in the reader name, so artifact
-        # paths and the `reader` results column can never confuse configs
-        # (same convention as _rtokN).
-        name = ("PlainTextReader" if token_budget is None
-                else f"PlainTextReader_rtok{token_budget}")
-        if prompt_version != "v1":
-            name += f"_p{prompt_version}"
-        if abstention_match != "loose":
-            name += "_absexact"
-        if clean_mode != "firstline":
-            name += "_cleanfull"
-        self.name = name
+        self.max_tokens = max_tokens
+        self.prompt = prompt
+        self.prompt_sha = prompt_sha(prompt)
+        # Colons and slashes become path separators / drive markers in the
+        # artifact layout, and the reader name IS a directory component.
+        model = re.sub(r"[^A-Za-z0-9._-]", "-",
+                       str(getattr(llm, "model", "unknown")))
+        self.name = f"reader_{model}_rtok{token_budget}_gen{max_tokens}"
+        if self.prompt_sha != prompt_sha(DEFAULT_PROMPT):
+            # A non-default wording is a different arm; the artifact path and
+            # the `reader` column must say so.
+            self.name += f"_p{self.prompt_sha[:6]}"
 
-    def answer(
-        self,
-        question: Question,
-        records: list[MemRecord],
-        *,
-        max_tokens: int | None = None,
-    ) -> AnswerResult:
-        wrap = PROMPT_BUILDERS[self.prompt_version]
-        if self.token_budget is None:
-            # Legacy: count-capped, per-item 300-char truncation.
-            evidence = records[: self.max_evidence]
-            prompt = _build_prompt(question, evidence, wrap=wrap)
-            truncated = None            # not tracked on the legacy path
-            n_delivered = len(evidence)  # all present, each possibly mutilated
-        else:
-            # Budgeted: rank-order fill under one total token budget.
-            evidence = records
-            prompt, truncated, n_delivered = _build_prompt_budgeted(
-                question, evidence, self.token_budget, wrap=wrap)
-        tok_limit = max_tokens or self.max_tokens
+    # -- generation from a prebuilt context -------------------------------
+    def answer_from_context(self, ctx: ReaderContext, *,
+                            max_tokens: int | None = None) -> AnswerResult:
+        """Generate from a context built earlier — possibly by another run.
 
+        This is the seam that makes a reader sweep affordable: contexts are
+        persisted once during the policy run, then every model afterwards is an
+        offline pass with no store, no eviction and no retrieval.
+        """
+        cap = max_tokens or self.max_tokens
         t0 = time.perf_counter()
+
+        raw, finish_reason, error = "", None, None
         try:
-            raw = self.llm.generate(
-                prompt,
-                max_tokens=tok_limit,
-                temperature=0.0,
-            ).strip()
+            # Prefer a metadata-returning call where the client offers one, so
+            # a generation cut at the cap is recorded rather than inferred.
+            gen_meta = getattr(self.llm, "generate_with_meta", None)
+            if callable(gen_meta):
+                raw, finish_reason = gen_meta(ctx.prompt, max_tokens=cap,
+                                              temperature=0.0)
+            else:
+                raw = self.llm.generate(ctx.prompt, max_tokens=cap,
+                                        temperature=0.0)
         except Exception as exc:
-            return AnswerResult(
-                query_id=question.id,
-                answer=f"[LLM error: {exc}]",
-                abstained=True,
-                latency_sec=time.perf_counter() - t0,
-                meta={"error": str(exc)},
-            )
+            error = f"{type(exc).__name__}: {exc}"
+
         latency = time.perf_counter() - t0
+        meta = {
+            "prompt": ctx.prompt,
+            "prompt_char_len": len(ctx.prompt),
+            "item_ids": list(ctx.item_ids),
+            "evidence_count": ctx.n_offered,
+            "evidence_delivered": ctx.n_delivered,
+            "evidence_truncated": ctx.truncated,
+            "token_budget": ctx.token_budget,
+            "prompt_sha": ctx.prompt_sha,
+            "gen_max_tokens": cap,
+            "finish_reason": finish_reason,
+            # A cut generation is not a wrong answer, it is an unfinished one —
+            # the distinction the campaign could not make.
+            "cap_hit": (finish_reason == "length") if finish_reason else None,
+            "raw_output": raw,
+        }
 
-        cleaned = _clean_answer(raw, mode=self.clean_mode)
-        abstained = _is_abstention(cleaned, mode=self.abstention_match)
+        if error is not None:
+            # NOT an abstention. Scoring a timeout as a correct refusal on an
+            # unanswerable question was a live bug; errored rows belong in
+            # neither the correct nor the abstained column.
+            meta["error"] = error
+            return AnswerResult(
+                query_id=ctx.query_id, answer="", abstained=False,
+                errored=True, latency_sec=latency, meta=meta,
+            )
 
+        cleaned = clean_answer(raw)
+        meta["cleaned_output"] = cleaned
         return AnswerResult(
-            query_id=question.id,
-            answer=cleaned,
-            abstained=abstained,
-            latency_sec=latency,
-            meta={
-                "raw_output": raw,
-                "cleaned_output": cleaned,
-                "prompt_char_len": len(prompt),
-                # offered = what retrieval handed over; delivered = what the
-                # prompt actually carried. They differ exactly when the budget
-                # (or the legacy cap) cut the tail off the retrieved list.
-                "evidence_count": len(evidence),
-                "evidence_delivered": n_delivered,
-                "token_budget": self.token_budget,
-                "evidence_truncated": truncated,
-            },
+            query_id=ctx.query_id, answer=cleaned,
+            abstained=is_abstention(cleaned), errored=False,
+            latency_sec=latency, meta=meta,
         )
+
+    # -- the runner-facing path -------------------------------------------
+    def answer(self, question: Question, records: list[MemRecord], *,
+               max_tokens: int | None = None) -> AnswerResult:
+        ctx = build_context(question, records, token_budget=self.token_budget,
+                            prompt=self.prompt)
+        return self.answer_from_context(ctx, max_tokens=max_tokens)

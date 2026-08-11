@@ -50,26 +50,14 @@ export HF_HOME=/scratch/project_465XXXXXX/hf_cache              # EDIT: cache on
 NUM_SHARDS=2            # client processes (= dataset copies). Keep small.
 WORKERS=8              # examples replayed concurrently within a config (fresh store each)
 READER_WORKERS=8       # concurrent QA reader calls (two-pass) within a config
-# Total evidence window handed to the reader, whole items in retrieval-rank
-# order. Empty string = legacy context (5 items × 300 chars ≈ 375 tokens ≈ ONE
-# item), which abstains on gold that retrieval already found — don't.
-# D-6: 16000. The earlier 1.5k budget measured k-list evidence delivery at
-# 0.4567 — session itemisers overflow it and gold still gets cut. 32k has no
-# headroom against the 32768 chat serving window pinned below.
-READER_TOKEN_BUDGET=16000
-# Instruction wrapper: v1 (legacy) forbids derivation and caps answers at one
-# sentence — combined/computed answers and ordered lists score as misses even
-# when the evidence was delivered. v2 permits both, keeps the exact-form IDK.
-READER_PROMPT=v2
-# Answer cleaning: firstline (legacy) keeps only the first line — multi-line and
-# enumerated answers are decapitated. full keeps the whole stripped answer.
-READER_CLEAN=full
-# Abstention detection: loose (legacy) flags a refusal phrase ANYWHERE in the
-# answer — hedged-but-informative answers score as no answer. exact requires the
-# whole answer to be a refusal (both prompts instruct an exact-form IDK).
-READER_ABSTENTION=exact
-# Generation cap: legacy 128 truncated ~1 in 3 answered generations mid-sentence.
-# 256 is validated. Lives in the config hash, not the reader name.
+# Reader configuration now lives in the code, not here. The evidence budget
+# (16000 tokens, D-6) is DEFAULT_TOKEN_BUDGET, and there is one unversioned
+# reader — the prompt/clean/abstention switches are gone, each having been a
+# choice between a measured-worse and a measured-better behaviour. Override the
+# survivors per-run with --reader-token-budget / --answer-max-tokens /
+# --reader-prompt if you are deliberately sweeping that axis.
+# Generation cap: the old 128 truncated ~1 in 3 answered generations
+# mid-sentence. 256 is validated, and rides in the reader name.
 ANSWER_MAX_TOKENS=256
 EVENT_LOG=""          # set to "--event-log" for per-eviction traces (large on disk)
 EXPERIMENTS=(run_longmemeval_qa run_beam)
@@ -152,10 +140,6 @@ for EXP in "${EXPERIMENTS[@]}"; do
         python -m "forgetit.experiments.$EXP" \
             --shard "$i" --num-shards "$NUM_SHARDS" \
             --workers "$WORKERS" --reader-workers "$READER_WORKERS" \
-            --reader-token-budget "$READER_TOKEN_BUDGET" \
-            --reader-prompt "$READER_PROMPT" \
-            --reader-clean "$READER_CLEAN" \
-            --reader-abstention "$READER_ABSTENTION" \
             --answer-max-tokens "$ANSWER_MAX_TOKENS" \
             --out-dir "$REPO/artifacts/benchmark" $EVENT_LOG \
             > "logs/${EXP}-${SLURM_JOB_ID}-${i}.log" 2>&1 &

@@ -175,7 +175,6 @@ def _run_reader(
     reader_impl: Reader | None,
     query: Query,
     retrieved: list,
-    answer_max_tokens: int,
     ref_answer: str,
     question_type: str,
     grader_embedder=None,
@@ -194,11 +193,10 @@ def _run_reader(
         meta=query.meta.copy(),
     )
 
-    answer_result = reader_impl.answer(
-        question,
-        retrieved,
-        max_tokens=answer_max_tokens,
-    )
+    # No per-call cap: the reader's own max_tokens governs, and its name
+    # encodes that value. A caller-supplied override would let the `reader`
+    # column claim a cap the run did not use.
+    answer_result = reader_impl.answer(question, retrieved)
     meta = answer_result.meta or {}
 
     if getattr(answer_result, "errored", False):
@@ -470,7 +468,6 @@ def run_one_example(
     collect_events: bool = False,
     collect_gold_snapshot: bool = False,
     example_id: str = "",
-    answer_max_tokens: int = 128,
 ) -> tuple[list[EvalResult], list[tuple], list[dict], list[dict]]:
     """Replay ONE example's events against ONE fresh store.
 
@@ -696,7 +693,6 @@ def run(
     itemiser: str = "",
     reader_name: str = "",
     reader_impl: Reader | None = None,
-    answer_max_tokens: int = 128,
     reader_workers: int = 1,
 ) -> list[EvalResult]:
     """
@@ -838,7 +834,7 @@ def run(
                              event.ref_answer, event.question_type))
         else:
             qa = _run_reader(reader_impl=reader_impl, query=event.query, retrieved=base.retrieved,
-                             answer_max_tokens=answer_max_tokens, ref_answer=event.ref_answer,
+                             ref_answer=event.ref_answer,
                              question_type=event.question_type)
 
         # For opaque stores, "SURVIVED/EVICTED" is just noise.  Show a hyphen.
@@ -929,7 +925,7 @@ def run(
         def _answer(task):
             idx, query, retrieved, ref, qtype = task
             return idx, _run_reader(reader_impl=reader_impl, query=query, retrieved=retrieved,
-                                    answer_max_tokens=answer_max_tokens, ref_answer=ref,
+                                    ref_answer=ref,
                                     question_type=qtype)
 
         with ThreadPoolExecutor(max_workers=reader_workers) as pool:

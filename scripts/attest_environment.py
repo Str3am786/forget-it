@@ -117,14 +117,15 @@ def check_baseline(model: str) -> dict:
             fixtures.extend(yaml.safe_load(path.read_text()))
     by_id = {f["id"]: f for f in fixtures}
     llm = OpenAiLLM(base_url=LLM_BASE_URL, api_key=LLM_API_KEY, model=model)
-    reader = PlainTextReader(llm, token_budget=4000, prompt_version="v2",
-                             abstention_match="exact", clean_mode="full")
+    # v2 / exact / full WAS this attestation's configuration; it is now the
+    # reader's only behaviour, so the kwargs go and the intent is unchanged.
+    reader = PlainTextReader(llm, token_budget=4000, max_tokens=256)
     rows = {}
     for fid in BASELINE_FIXTURES:
         fx = by_id[fid]
         records = build_evidence(fx)
         res = reader.answer(Question(id=fid, text=fx["input"]["question"],
-                                     timestamp=0.0, meta={}), records, max_tokens=256)
+                                     timestamp=0.0, meta={}), records)
         ok, details = check_expected(fx, res.answer, res.abstained)
         rows[fid] = {"pass": ok, "details": details, "answer": res.answer[:120]}
     gated_ok = all(rows[f]["pass"] for f in GATED_FIXTURES)
