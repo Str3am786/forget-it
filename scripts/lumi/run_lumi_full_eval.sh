@@ -210,17 +210,15 @@ if [ -z "${SKIP_A7_SMOKE:-}" ] && [ ! -e "$LME_DATASET" ]; then
     exit 1
 fi
 
-[ -f "$REPO/.env" ] && [ ! -f "$REPO/.env.prelumi" ] && cp "$REPO/.env" "$REPO/.env.prelumi"
-cat > "$REPO/.env" <<EOF
-LLM_BASE_URL=http://localhost:${CHAT_PORT_BASE}/v1
-LLM_API_KEY=sk-lumi
-LLM_MODEL=$SERVED_CHAT
-EMBED_BASE_URL=http://localhost:${EMBED_PORT}/v1
-EMBED_API_KEY=sk-lumi
-EMBED_MODEL=$SERVED_EMBED
-LETTA_BASE_URL=http://localhost:8283
-LETTA_API_KEY=none
-EOF
+# .env is deliberately NOT written here. python-dotenv loads it with
+# override=False, so the endpoints passed inline to each invocation below
+# already win — and those are per-shard (${cport}), where this file hard-coded
+# CHAT_PORT_BASE for every shard. Any path reading the file instead of the
+# environment would have sent every shard to shard 0's server.
+#
+# It was also a `[ ] && [ ] && cp` chain, which evaluates false once
+# .env.prelumi exists and is therefore FATAL under `set -e` — which is why the
+# first submission worked and every one after it died at startup.
 
 set +e
 module purge
