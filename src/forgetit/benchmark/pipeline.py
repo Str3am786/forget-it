@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import csv
 import hashlib
-import inspect
 import json
 import logging
 import os
@@ -137,31 +136,11 @@ def _stamp_provenance(results, *, config_hash: str, reader_impl, store_probe) ->
     prompt_reader_sha = ""
     if reader_impl is not None:
         llm_model = str(getattr(getattr(reader_impl, "llm", None), "model", "") or "")
-        try:
-            from forgetit.llm.readers import text_reader
-            # Hash the evidence builder the reader ACTUALLY uses: legacy
-            # (per-item 300-char cut) and budgeted (one total token budget) turn
-            # the same retrieval into different prompts, so one sha for both
-            # would claim two different runs used the same reader context. The
-            # legacy branch stays byte-identical to historical rows.
-            budget = getattr(reader_impl, "token_budget", None)
-            if budget is None:
-                blob = inspect.getsource(text_reader._build_prompt)
-            else:
-                blob = (inspect.getsource(text_reader._build_evidence_budgeted)
-                        + f"\n# token_budget={budget}")
-            # ...and the instruction WRAPPER it wraps that evidence in (D4 fix
-            # iv). v1 vs v2 changes what the model is allowed to do with the
-            # same evidence — different prompt, so different sha. Appended only
-            # for non-v1 so every v1 row keeps its historical hash exactly.
-            version = getattr(reader_impl, "prompt_version", "v1")
-            if version != "v1":
-                wrapper = text_reader.PROMPT_BUILDERS[version]
-                blob += (f"\n# prompt_version={version}\n"
-                         + inspect.getsource(wrapper))
-            prompt_reader_sha = hashlib.sha256(blob.encode("utf-8")).hexdigest()[:12]
-        except Exception:
-            pass
+        # The template's own content hash IS the identity of the wording.
+        # Hashing the renderer's source was only ever a proxy for this, and a
+        # silent one: when the renderer was renamed the whole computation threw
+        # and every row was stamped blank.
+        prompt_reader_sha = getattr(reader_impl, "prompt_sha", "")
 
     embed_model = str(getattr(getattr(store_probe, "embedder", None), "model", "") or "")
 
@@ -270,7 +249,6 @@ def run_pipeline(
     itemiser: str = "",
     reader: str = "",
     reader_impl: Reader | None = None,
-    answer_max_tokens: int = 128,
     reader_workers: int = 1,
     budget_bytes: int = 0,
     budget_frac: float = 0.0,
@@ -340,7 +318,6 @@ def run_pipeline(
                 itemiser=itemiser,
                 reader_name=reader,
                 reader_impl=reader_impl,
-                answer_max_tokens=answer_max_tokens,
                 reader_workers=reader_workers,
             )
     finally:
@@ -368,7 +345,7 @@ def run_pipeline(
     cfg_hash = _config_hash(
         dataset=dataset, itemiser=itemiser, store_label=store_label,
         reader=reader, k=k, seed=seed, budget_bytes=budget_bytes,
-        budget_frac=budget_frac, answer_max_tokens=answer_max_tokens,
+        budget_frac=budget_frac,
         n_examples=None, write_events=write_events,
         **_probe_identity(workload, base),
     )
@@ -461,7 +438,6 @@ def run_pipeline_concurrent(
     itemiser: str = "",
     reader: str = "",
     reader_impl: Reader | None = None,
-    answer_max_tokens: int = 128,
     example_workers: int = 1,
     reader_workers: int = 1,
     budget_bytes: int = 0,
@@ -531,7 +507,6 @@ def run_pipeline_concurrent(
                     footprint=fp, seed=seed, itemiser=itemiser, reader_name=reader,
                     collect_reader_context=collect_ctx, collect_events=write_events,
                     collect_gold_snapshot=write_gold_snapshot, example_id=example_id,
-                    answer_max_tokens=answer_max_tokens,
                 )
         finally:
             # Dispose the per-example store (frees memory; isolation already
@@ -555,7 +530,7 @@ def run_pipeline_concurrent(
     cfg_hash = _config_hash(
         dataset=dataset, itemiser=itemiser, store_label=store_label,
         reader=reader, k=k, seed=seed, budget_bytes=budget_bytes,
-        budget_frac=budget_frac, answer_max_tokens=answer_max_tokens,
+        budget_frac=budget_frac,
         n_examples=len(indexed), write_events=write_events,
         write_gold_snapshot=write_gold_snapshot,
         # R8 probe identity — computed BEFORE the skip-if-done check so a
@@ -613,7 +588,7 @@ def run_pipeline_concurrent(
         def _answer(task):
             result, query, retrieved, ref, qtype = task
             qa = _run_reader(reader_impl=reader_impl, query=query, retrieved=retrieved,
-                             answer_max_tokens=answer_max_tokens, ref_answer=ref,
+                             ref_answer=ref,
                              question_type=qtype, grader_embedder=grader_embedder,
                              grade_sim_threshold=grade_sim_threshold)
             return result, qa

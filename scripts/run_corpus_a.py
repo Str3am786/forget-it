@@ -124,9 +124,6 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--label", required=True)
     ap.add_argument("--model", default="qwen2.5:7b-instruct-q5km-16k")
-    ap.add_argument("--prompt-version", choices=["v1", "v2"], default="v1")
-    ap.add_argument("--abstention-match", choices=["loose", "exact"], default="loose")
-    ap.add_argument("--clean-mode", choices=["firstline", "full"], default="firstline")
     ap.add_argument("--max-tokens", type=int, default=256)
     ap.add_argument("--token-budget", type=int, default=4000,
                     help="evidence token budget (must cover the 3000-token "
@@ -144,16 +141,14 @@ def main() -> None:
 
     llm = OpenAiLLM(base_url=LLM_BASE_URL, api_key=LLM_API_KEY, model=args.model)
     reader = PlainTextReader(llm, token_budget=args.token_budget,
-                             prompt_version=args.prompt_version,
-                             abstention_match=args.abstention_match,
-                             clean_mode=args.clean_mode)
+                             max_tokens=args.max_tokens)
 
     rows, n_pass = [], 0
     t0 = time.time()
     for fx in fixtures:
         records = build_evidence(fx)
         q = Question(id=fx["id"], text=fx["input"]["question"], timestamp=0.0, meta={})
-        res = reader.answer(q, records, max_tokens=args.max_tokens)
+        res = reader.answer(q, records)
         ok, details = check_expected(fx, res.answer, res.abstained)
         n_pass += ok
         rows.append({"id": fx["id"], "class": fx["class"], "pass": ok,

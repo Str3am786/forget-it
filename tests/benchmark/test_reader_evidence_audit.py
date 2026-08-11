@@ -26,7 +26,7 @@ TOPK = [MemRecord(id=f"i{n}", text=f"item {n}: " + "z" * 800,
 
 def run(reader):
     return _run_reader(reader_impl=reader, query=QUERY, retrieved=TOPK,
-                       answer_max_tokens=64, ref_answer="somewhere",
+                       ref_answer="somewhere",
                        question_type="single_hop")
 
 
@@ -48,7 +48,7 @@ def test_tight_budget_records_partial_delivery():
 
 def test_no_reader_leaves_audit_at_defaults():
     qa = _run_reader(reader_impl=None, query=QUERY, retrieved=TOPK,
-                     answer_max_tokens=64, ref_answer="somewhere",
+                     ref_answer="somewhere",
                      question_type="single_hop")
     assert qa.reader_evidence_delivered == 0
     assert qa.reader_evidence_truncated is False
@@ -62,6 +62,15 @@ def test_llm_error_does_not_crash_the_audit():
             raise RuntimeError("endpoint down")
 
     qa = run(PlainTextReader(BoomLLM(), token_budget=1500))
-    assert qa.abstained is True                      # error path abstains
-    assert qa.reader_evidence_delivered == 0         # meta carries only the error
+    # An infrastructure failure is neither an answer nor a refusal. Recording
+    # it as an abstention scored a timeout on an unanswerable question as a
+    # correct refusal — the row must say "errored", not "declined".
+    assert qa.reader_errored is True
+    assert qa.abstained is False
+    assert qa.reader_answer == ""
+    # The audit survives the failure. The context is assembled before the call,
+    # so a failed row still says what evidence WOULD have been read — which is
+    # what makes a retry comparable to the run it is replacing.
+    assert qa.reader_evidence_delivered == len(TOPK)
     assert qa.reader_evidence_truncated is False
+    assert qa.reader_item_ids == '["i0", "i1", "i2", "i3", "i4"]'

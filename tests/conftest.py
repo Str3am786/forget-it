@@ -36,7 +36,4 @@ collect_ignore = [
     "corpora/test_corpus_r.py",
     # forgetit.policies.ScriptedEvictionPolicy  (via tests/corpora/harness.py)
     "corpora/test_verdict_deterministic.py",
-    # forgetit.benchmark.pipeline._answer_contexts_inline
-    # (grade_with_abstention/is_answerable now resolve — see MEASURED CAVEAT above)
-    "llm/test_reader_fixes.py",
 ]

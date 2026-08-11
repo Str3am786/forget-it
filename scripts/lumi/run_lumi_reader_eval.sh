@@ -18,24 +18,21 @@
 #   • Per-job A7 smoke dir + smoke embed-cache (fixes the sqlite lock when
 #     several jobs start simultaneously).
 #
-# v3 (2026-07-21, reader evidence window):
-#   • --reader-token-budget 16000 (READER_TOKEN_BUDGET to override). The legacy
-#     evidence path handed the reader 5 items × 300 chars ≈ 375 tokens — about
-#     ONE retrieved item — so gold that retrieval had already found at rank 2-5
-#     was cut before the model saw it (abstain ≈ 0.70 against hit@5 ≈ 0.86).
-#     Now: one total budget, whole items in rank order. The budget rides in the
-#     reader name (PlainTextReader_rtok16000), which is a path component and part
-#     of the config hash, so budgeted rows can never be mixed with legacy ones.
-#     D-6 (2026-07-22): 16000, not the first-cut 1.5k budget, whose measured
+# v4 (reader overhaul): the reader's configuration moved INTO the code.
+#   • The evidence budget is DEFAULT_TOKEN_BUDGET = 16000 and no longer passed
+#     here. D-6 (2026-07-22): 16000, not the first-cut 1.5k, whose measured
 #     k-list evidence delivery was 0.4567 — session itemisers overflow it, so
-#     gold was STILL being cut. 32k leaves no headroom against the confirmed
-#     32768 serving window (T2 pins it), so 16000 is the largest safe value.
-#   • --reader-prompt v2 (READER_PROMPT to override). The legacy v1 wrapper
-#     forbids derivation ("using ONLY the memories") and caps answers at one
-#     sentence, so answers the reader had the evidence for — a sum of two
-#     figures, a difference of two dates, an ordered list — scored as misses.
-#     v2 permits combining/computing and drops the cap, keeping the exact-form
-#     IDK line. Also in the reader name (…_pv2).
+#     gold retrieval had already found was STILL cut before the model saw it
+#     (abstain ≈ 0.70 against hit@5 ≈ 0.86). 32k leaves no headroom against the
+#     confirmed 32768 serving window (T2 pins it), so 16000 is the largest safe
+#     value. It rides in the reader name (…_rtok16000), a path component and
+#     part of the config hash.
+#   • The prompt/clean/abstention switches are GONE. Each selected between a
+#     measured-worse and a measured-better behaviour, and only the better one
+#     exists now: the wrapper permits derivation, cleaning never truncates, and
+#     a refusal must BE the whole answer. --reader-prompt survives with new
+#     meaning — a template file or inline string, whose sha lands in provenance
+#     and whose non-default wordings get their own reader name.
 #
 # HOW TO SUBMIT (one dataset per job; calibrate with LIMIT=n if needed):
 #   export SBATCH_ACCOUNT=project_<your-id>
@@ -257,50 +254,24 @@ READER_WORKERS=8           # concurrent QA reader calls (two-pass) per config
 POOL=64
 
 # ── reader evidence window ──────────────────────────────────────────────────
-# ONE total budget, filled whole-item in retrieval-rank order. Without it the
-# reader runs the legacy context (5 items × 300 chars ≈ 375 tokens ≈ ONE item),
-# which is what produced abstain ≈ 0.70 against hit@5 ≈ 0.86: gold was
-# retrieved, then cut before the reader saw it. The budget is in the reader
-# name (PlainTextReader_rtok16000), so this tree never mixes with legacy rows.
-# D-6: 16000 is the SIGNED value. The first-cut 1.5k budget measured k-list
-# evidence delivery at 0.4567 — better than legacy, still cutting gold on
-# session-itemised rows. 32k is refused: the chat serving window is pinned at
-# 32768, leaving no room for the instruction wrapper + generation. Check
-# evidence_delivery_rate, not just abstain, when reading the results.
-READER_TOKEN_BUDGET="${READER_TOKEN_BUDGET:-16000}"
+# No longer passed from here: DEFAULT_TOKEN_BUDGET is 16000, the signed D-6
+# value, so an un-flagged run gets the measured configuration rather than a
+# worse one. ONE total budget, filled whole-item in retrieval-rank order. The
+# first-cut 1.5k budget measured k-list evidence delivery at 0.4567 — session
+# itemisers overflow it, so gold retrieval had already found was still cut
+# before the model saw it (abstain ≈ 0.70 against hit@5 ≈ 0.86). 32k is
+# refused: the chat serving window is pinned at 32768, leaving no room for the
+# wrapper + generation. The budget rides in the reader name (…_rtok16000).
+# Check evidence_delivery_rate, not just abstain, when reading the results.
+# Sweeping the axis deliberately: add --reader-token-budget N below.
 
-# ── reader instruction wrapper (D4 fix iv) ──────────────────────────────────
-# v1 (legacy) says "using ONLY the memories … one sentence maximum": it forbids
-# DERIVING an answer the evidence supports (summing two figures, differencing
-# two dates) and truncates ordered lists, so those score as misses even when
-# retrieval delivered every needed item. v2 permits combining/computing and
-# drops the cap, keeping the exact-form IDK line abstention detection matches.
-# Rides in the reader name (…_pv2), so v1 and v2 rows never mix.
-READER_PROMPT="${READER_PROMPT:-v2}"
-
-# ── reader answer cleaning (D4 fix ii) ──────────────────────────────────────
-# firstline (legacy) keeps only the first line after noise-stripping, so every
-# multi-line answer is decapitated — an ordered list scores as its first item.
-# full keeps the whole stripped answer (same fence/asterisk/quote/preamble
-# removal). Pairs with prompt v2, which is what stops forbidding lists in the
-# first place. Rides in the reader name (…_cleanfull).
-READER_CLEAN="${READER_CLEAN:-full}"
-
-# ── reader abstention detection (D4 fix vii, detection half) ────────────────
-# loose (legacy) flags an answer as a refusal if a refusal phrase appears
-# ANYWHERE in it, so "the rent was 2,100, IDK if there were others" is recorded
-# as an abstention and scores as no answer. exact requires the WHOLE answer to
-# be a refusal — sound because both prompts instruct an exact-form IDK. This
-# matters more with READER_CLEAN=full, which gives loose more text to match in.
-# Rides in the reader name (…_absexact).
-READER_ABSTENTION="${READER_ABSTENTION:-exact}"
-
-# ── answer generation cap (D4 fix vii, cap half) ────────────────────────────
-# The legacy 128 cut ~1 in 3 answered generations off mid-sentence in the probe
-# (10 of 32), worst on multi-item answers. 256 is the validated value. NOT in
-# the reader name — it is a config-hash field, so raising it re-runs affected
-# configs on its own. Cap-HITS are not recorded per row (the LLM layer discards
-# finish_reason), so this is set-high-enough, not audit-after.
+# ── answer generation cap ───────────────────────────────────────────────────
+# The old 128 cut ~1 in 3 answered generations off mid-sentence in the probe
+# (10 of 32), worst on multi-item answers. 256 is the validated value, and now
+# rides in the READER NAME (…_gen256) rather than being a separate config-hash
+# field — the reader is the single source of truth for its own cap, so a row
+# can no longer be labelled with a cap it did not use. Cap hits ARE now
+# recorded per row (reader_cap_hit, from finish_reason).
 ANSWER_MAX_TOKENS="${ANSWER_MAX_TOKENS:-256}"
 
 if [ -z "${DATASETS:-}" ]; then
@@ -449,10 +420,6 @@ if [ -z "${SKIP_A7_SMOKE:-}" ]; then
                  GIT_COMMIT='$GIT_COMMIT' \
                  python -m forgetit.experiments.run_longmemeval_qa \
                    --policies semantic semantic_keep --limit 1 \
-                   --reader-token-budget $READER_TOKEN_BUDGET \
-                   --reader-prompt $READER_PROMPT \
-                   --reader-clean $READER_CLEAN \
-                   --reader-abstention $READER_ABSTENTION \
                    --answer-max-tokens $ANSWER_MAX_TOKENS \
                    --shard 0 --num-shards 1 --out-dir '$A7_SMOKE_DIR' --dense" \
         > "$LOGS/a7-smoke-reader-${SLURM_JOB_ID}.log" 2>&1 \
@@ -463,7 +430,7 @@ fi
 # ── 3. run each dataset's sweep, sharded, READER ON ─────────────────────────
 run_dataset () {
     local dataset="$1" module="$2" workers="$3"
-    echo "[lumi] ===== $dataset: $NUM_SHARDS shards (workers=$workers, reader-workers=$READER_WORKERS, reader=ON, reader-token-budget=$READER_TOKEN_BUDGET, reader-prompt=$READER_PROMPT, reader-clean=$READER_CLEAN, reader-abstention=$READER_ABSTENTION, answer-max-tokens=$ANSWER_MAX_TOKENS) ====="
+    echo "[lumi] ===== $dataset: $NUM_SHARDS shards (workers=$workers, reader-workers=$READER_WORKERS, reader=ON, answer-max-tokens=$ANSWER_MAX_TOKENS; evidence budget + prompt are the code defaults) ====="
     local pids=() i cport
     for i in $(seq 0 $((NUM_SHARDS - 1))); do
         cport=$((CHAT_PORT_BASE + i % NUM_CHAT_GCDS))
@@ -485,10 +452,6 @@ run_dataset () {
                        --include-floor \
                        --dense --workers $workers \
                        --reader-workers $READER_WORKERS \
-                       --reader-token-budget $READER_TOKEN_BUDGET \
-                       --reader-prompt $READER_PROMPT \
-                       --reader-clean $READER_CLEAN \
-                       --reader-abstention $READER_ABSTENTION \
                        --answer-max-tokens $ANSWER_MAX_TOKENS $LIMIT_FLAG" \
             > "$LOGS/${dataset}-reader-${SLURM_JOB_ID}-${i}.log" 2>&1 &
         pids+=($!)

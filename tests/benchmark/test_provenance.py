@@ -58,6 +58,7 @@ class TestStampProvenance:
 
         class FakeReader:
             llm = FakeLLM()
+            prompt_sha = "abcdef123456"
 
         class FakePolicy:
             prompt_template = "Compress: {text}"
@@ -102,19 +103,57 @@ class TestStampProvenance:
         assert rows[0].prompt_reader_sha == ""      # no reader ran
         assert rows[0].embed_model == ""
 
-    def test_reader_sha_separates_legacy_from_budgeted_context(self):
-        # Same retrieval, two evidence modes: legacy cuts each item to 300
-        # chars, budgeted fills one total token budget. Rows from the two must
-        # not claim the same reader prompt — and two different budgets are two
-        # different reader contexts.
+    def test_reader_sha_is_the_templates_own_hash(self):
+        # The wording IS the identity. Hashing the renderer's source was only
+        # ever a proxy, and a silently-failing one: when the renderer was
+        # renamed the whole computation threw and every row got "".
+        from forgetit.llm.readers import (
+            DEFAULT_PROMPT, PlainTextReader, prompt_sha)
+
         class FakeLLM:
             model = "llama-test:1b"
 
-        class FakeReader:
-            llm = FakeLLM()
+        class FakeStore:
+            policy = object()
+            embedder = None
 
-            def __init__(self, token_budget):
-                self.token_budget = token_budget
+        rows = [_row()]
+        _stamp_provenance(rows, config_hash="x",
+                          reader_impl=PlainTextReader(FakeLLM()),
+                          store_probe=FakeStore())
+        assert rows[0].prompt_reader_sha == prompt_sha(DEFAULT_PROMPT)
+        assert len(rows[0].prompt_reader_sha) == 12
+
+    def test_reader_sha_separates_two_wordings(self):
+        # Two wordings are two arms. If they shared a sha, a rerun under new
+        # instructions would look like a repeat of the old one.
+        from forgetit.llm.readers import DEFAULT_PROMPT, PlainTextReader
+
+        class FakeLLM:
+            model = "llama-test:1b"
+
+        class FakeStore:
+            policy = object()
+            embedder = None
+
+        def sha(prompt):
+            rows = [_row()]
+            _stamp_provenance(rows, config_hash="x",
+                              reader_impl=PlainTextReader(FakeLLM(), prompt=prompt),
+                              store_probe=FakeStore())
+            return rows[0].prompt_reader_sha
+
+        other = "Answer briefly.\n{evidence}\nQ: {question}\nA:"
+        assert sha(DEFAULT_PROMPT) != sha(other)
+
+    def test_evidence_budget_does_not_move_the_prompt_sha(self):
+        # The budget is not part of the WORDING — it rides in the reader name
+        # (and so in the config hash). Folding it into the prompt sha would
+        # make the column answer two questions at once.
+        from forgetit.llm.readers import PlainTextReader
+
+        class FakeLLM:
+            model = "llama-test:1b"
 
         class FakeStore:
             policy = object()
@@ -123,77 +162,12 @@ class TestStampProvenance:
         def sha(token_budget):
             rows = [_row()]
             _stamp_provenance(rows, config_hash="x",
-                              reader_impl=FakeReader(token_budget),
+                              reader_impl=PlainTextReader(FakeLLM(),
+                                                          token_budget=token_budget),
                               store_probe=FakeStore())
             return rows[0].prompt_reader_sha
 
-        legacy, small, large = sha(None), sha(375), sha(1500)
-        assert len({legacy, small, large}) == 3
-        assert all(len(s) == 12 for s in (legacy, small, large))
-
-    def test_reader_sha_separates_prompt_versions(self):
-        # v1 and v2 wrap the SAME evidence in different instructions (v2 permits
-        # derivation, drops the sentence cap), so they are different prompts and
-        # must not share a sha — otherwise a v2 rerun looks like a repeat of v1.
-        class FakeLLM:
-            model = "llama-test:1b"
-
-        class FakeReader:
-            llm = FakeLLM()
-
-            def __init__(self, prompt_version, token_budget=None):
-                self.prompt_version = prompt_version
-                self.token_budget = token_budget
-
-        class FakeStore:
-            policy = object()
-            embedder = None
-
-        def sha(prompt_version, token_budget=None):
-            rows = [_row()]
-            _stamp_provenance(rows, config_hash="x",
-                              reader_impl=FakeReader(prompt_version, token_budget),
-                              store_probe=FakeStore())
-            return rows[0].prompt_reader_sha
-
-        assert sha("v1") != sha("v2")
-        assert sha("v1", 1500) != sha("v2", 1500)
-        # The two axes are independent: prompt version must not be able to
-        # alias a different evidence budget, or vice versa.
-        assert len({sha("v1"), sha("v2"), sha("v1", 1500), sha("v2", 1500)}) == 4
-
-    def test_v1_reader_sha_is_unchanged_by_the_prompt_version_axis(self):
-        # Reproducibility invariant: adding the wrapper to the hash must not
-        # renumber existing v1 rows. A v1 reader's sha is still exactly the
-        # hash of the evidence builder's source, as historical runs recorded.
-        import hashlib
-        import inspect
-
-        from forgetit.llm.readers import text_reader
-
-        class FakeLLM:
-            model = "llama-test:1b"
-
-        class LegacyReader:          # no prompt_version attribute at all
-            llm = FakeLLM()
-            token_budget = None
-
-        class V1Reader(LegacyReader):
-            prompt_version = "v1"
-
-        class FakeStore:
-            policy = object()
-            embedder = None
-
-        expected = hashlib.sha256(
-            inspect.getsource(text_reader._build_prompt).encode("utf-8")
-        ).hexdigest()[:12]
-
-        for reader_cls in (LegacyReader, V1Reader):
-            rows = [_row()]
-            _stamp_provenance(rows, config_hash="x", reader_impl=reader_cls(),
-                              store_probe=FakeStore())
-            assert rows[0].prompt_reader_sha == expected
+        assert sha(375) == sha(16000)
 
     def test_plain_policy_leaves_llm_fields_blank(self):
         class FakeStore:

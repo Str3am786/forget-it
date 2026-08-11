@@ -89,8 +89,11 @@ def check_hash() -> None:
         bad(f"cannot import _config_hash: {e}")
         return
 
-    base = dict(dataset="d", itemiser="i", store_label="s", reader="r", k=5,
-                seed=0, budget_bytes=1, budget_frac=0.25, answer_max_tokens=128,
+    # The generation cap is NOT a field here any more: it lives in the reader
+    # name (…_gen256), which is already part of this identity via `reader`.
+    base = dict(dataset="d", itemiser="i", store_label="s", k=5,
+                reader="reader_m_rtok16000_gen256",
+                seed=0, budget_bytes=1, budget_frac=0.25,
                 n_examples=2, probe_scheme="disjoint_split_v1", probe_every=1)
     for flag in ("write_events", "write_gold_snapshot"):
         on = _config_hash(**base, **{flag: True,

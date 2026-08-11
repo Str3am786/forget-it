@@ -426,12 +426,18 @@ def grade_with_abstention(
     ``abstain_correct`` / ``abstain_missed`` keep these rows countable apart
     from content grades.
 
-    SCOPE (SYMS, 2026-07-22): ported from the verification-sprint branch for
-    OFFLINE re-grading only — ``scripts/regrade_answers.py`` is its one caller.
-    The runtime path (``runner_core``) deliberately still calls ``grade()``, so
-    every stored ``qa_correct`` keeps its historical semantics and v1/v2 rows
-    stay comparable. Do not wire this into the runners without re-running the
-    grid: it changes 30 of 500 LongMemEval verdicts.
+    SCOPE: OFFLINE re-grading only. The runtime path (``runner_core``)
+    deliberately still calls ``grade()``, so every stored ``qa_correct`` keeps
+    one consistent meaning across the whole artefact tree. Do not wire this
+    into the runners without re-running the grid: it changes 30 of 500
+    LongMemEval verdicts.
+
+    It currently has no caller in the tree — ``scripts/regrade_answers.py``,
+    which was its one consumer, was deleted with the reader's version
+    switches (it existed to reconstruct v1-vs-v2 verdicts, and that comparison
+    is a non-goal). Kept because the convention it encodes is still correct and
+    still tested; the grader corpus is now the instrument for how wrong the
+    archive's verdicts were.
     """
     if answerable:
         return grade(answer, ref, abstained=abstained, **grade_kwargs)
