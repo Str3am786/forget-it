@@ -26,6 +26,14 @@ def add_reader_args(p: argparse.ArgumentParser) -> None:
                    help="prompt template: a file path or an inline string "
                         "containing {evidence} and {question}; the template's "
                         "sha lands in provenance either way")
+    # An ARTEFACT switch, not reader behaviour: it changes what is written, so
+    # it never reaches ReaderConfig, the reader name or prompt_sha.
+    g.add_argument("--dump-retrieval", action="store_true",
+                   help="write retrieved_index.jsonl per config and "
+                        "evidence_items.shard<N>.jsonl at the output root: what "
+                        "each scored query retrieved, in rank order. Costs no "
+                        "inference and works under --no-reader, so one policy "
+                        "run can afterwards be read by any number of models.")
 
 
 def reader_config_from_args(args: argparse.Namespace) -> ReaderConfig:

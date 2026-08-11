@@ -110,10 +110,23 @@ def test_main_builds_the_reader_from_the_parsed_args(module):
     """main() can't be called in a test (it runs a whole sweep), so assert on
     the wiring: one shared definition in, one shared builder out."""
     src = inspect.getsource(module.main)
-    assert "build_reader(llm, reader_config_from_args(args))" in src
+    assert "reader_cfg = reader_config_from_args(args)" in src
+    assert "build_reader(llm, reader_cfg)" in src
     src_parse = inspect.getsource(module.parse_args)
     assert "add_reader_args(p)" in src_parse
     assert "validate_reader_args(p, args)" in src_parse
+
+
+@pytest.mark.parametrize("module", RUNNERS, ids=RUNNER_IDS)
+def test_reader_config_is_built_even_under_no_reader(module):
+    """--dump-retrieval records the budget and template a reader WOULD have
+    used, so the config must be built outside the --no-reader branch. If it
+    moved back inside, a retrieval-only dump would have no provenance to write."""
+    src = inspect.getsource(module.main)
+    cfg_at = src.index("reader_cfg = reader_config_from_args(args)")
+    guard_at = src.index("if args.no_reader:")
+    assert cfg_at < guard_at, "reader config must be built before the no-reader guard"
+    assert "retrieval_dump=retrieval_dump" in src
 
 
 @pytest.mark.parametrize("module", RUNNERS, ids=RUNNER_IDS)

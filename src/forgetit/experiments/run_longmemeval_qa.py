@@ -7,7 +7,7 @@ import json
 import logging
 from typing import Callable, Iterator
 
-from forgetit.benchmark.pipeline import run_pipeline_concurrent
+from forgetit.benchmark.pipeline import RetrievalDump, run_pipeline_concurrent
 from forgetit.benchmark.budget import example_footprints, DEFAULT_BUDGET_FRACTIONS
 from forgetit.benchmark.workloads.longmemeval import (
     LongMemEvalWorkload,
@@ -24,7 +24,7 @@ from forgetit.policies import LRUPolicy, LFUPolicy, FIFOPolicy, RandomPolicy, LL
     SemanticRedundancyPolicy, SemanticCoveragePolicy, SemanticKeepSimilarPolicy, \
     SalienceDecayPolicy, GDSFPolicy, OraclePolicy
 from forgetit.llm import get_llm
-from forgetit.llm.readers import build_reader
+from forgetit.llm.readers import build_reader, prompt_sha
 from forgetit.experiments._reader_cli import (
     add_reader_args,
     reader_config_from_args,
@@ -298,6 +298,17 @@ def main() -> None:
     # The reader is the only thing that needs an LLM endpoint; skip it for
     # pure retrieval/eviction runs (e.g. while debugging policies on LUMI).
     seed = 42
+    # Built UNCONDITIONALLY: --dump-retrieval records the evidence budget and
+    # prompt template a reader WOULD have used, so the config is needed even
+    # when no reader runs. Only build_reader() stays behind --no-reader.
+    reader_cfg = reader_config_from_args(args)
+    retrieval_dump = (
+        RetrievalDump(shard=args.shard,
+                      token_budget=reader_cfg.token_budget,
+                      prompt_sha=prompt_sha(reader_cfg.prompt))
+        if args.dump_retrieval else None
+    )
+
     if args.no_reader:
         llm = None
         reader_impl = None
@@ -305,7 +316,7 @@ def main() -> None:
     else:
         llm = get_llm()
         try:
-            reader_impl = build_reader(llm, reader_config_from_args(args))
+            reader_impl = build_reader(llm, reader_cfg)
         except ValueError as exc:
             raise SystemExit(f"--reader-prompt: {exc}")
         reader_name = getattr(reader_impl, "name", type(reader_impl).__name__)
@@ -462,6 +473,7 @@ def main() -> None:
             out_dir=args.out_dir,
             write_events=args.event_log,
             write_gold_snapshot=args.gold_snapshot,
+            retrieval_dump=retrieval_dump,
             example_footprints=footprints.get(itemiser.name),
             **extras,
         )
