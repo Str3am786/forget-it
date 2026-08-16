@@ -80,9 +80,15 @@ RUN_DIR="${RUN_DIR:?set RUN_DIR to the --dump-retrieval run, e.g. artifacts/benc
 [ "${RUN_DIR#/}" = "$RUN_DIR" ] && RUN_DIR="$REPO/$RUN_DIR"
 RETRIEVAL_DIR="${RETRIEVAL_DIR:-$RUN_DIR}"
 
-for _f in "$RUN_DIR/results.csv" "$RUN_DIR/gold_answer_snapshot.jsonl"; do
-    [ -e "$_f" ] || { echo "[sweep] MISSING: $_f — reader_probe needs the gold snapshot and results" >&2; exit 1; }
-done
+# reader_probe.find_run_dirs() recurses: it accepts a tree and discovers every
+# config dir holding BOTH files. Assert the pair exists somewhere beneath, not
+# at the root — a curated subset has nothing at its own top level.
+_n_cfg=$(find -L "$RUN_DIR" -name gold_answer_snapshot.jsonl \
+         -execdir test -f results.csv \; -print 2>/dev/null | wc -l)
+[ "$_n_cfg" -gt 0 ] || {
+    echo "[sweep] REFUSING: no results.csv + gold_answer_snapshot.jsonl pair under $RUN_DIR" >&2
+    exit 1; }
+echo "[sweep] config dirs discovered: $_n_cfg"
 _n_items=$(ls "$RETRIEVAL_DIR"/evidence_items.shard*.jsonl 2>/dev/null | wc -l)
 _n_index=$(find "$RETRIEVAL_DIR" -name retrieved_index.jsonl 2>/dev/null | wc -l)
 if [ "$_n_items" -eq 0 ] || [ "$_n_index" -eq 0 ]; then

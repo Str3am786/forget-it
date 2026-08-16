@@ -13,7 +13,8 @@ export CLIENT_SIF="$HOME/15-08-forgetit/forgetit.sif"
 export RETRIEVAL_ROOT="/scratch/$PROJ/artifacts/benchmark_full"
 
 # Curated 30 config subset: 15 policies x {010pct, 050pct}, lexical, longmemeval/turn_pair.
-export SUB="/scratch/$PROJ/artifacts/sweep_subset/longmemeval_turn_pair"
+export SUBSET_ROOT="/scratch/$PROJ/artifacts/sweep_subset"
+export SUB="$SUBSET_ROOT/longmemeval_turn_pair"
 
 export MODELS_DIR="/scratch/$PROJ/models"
 export HF_HOME="/scratch/$PROJ/hf_cache"
