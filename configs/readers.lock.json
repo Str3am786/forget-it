@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "serving_window": 32768,
+  "dtype": "bfloat16",
+  "models_dir": "/scratch/project_462001123/models",
+  "staged": [
+    {
+      "id": "llama-3.1-8b-instruct",
+      "hf_repo": "meta-llama/Llama-3.1-8B-Instruct",
+      "family": "llama3",
+      "band": "A",
+      "licence": "Llama-3.1-Community",
+      "local_path": "/scratch/project_462001123/models/llama-3.1-8b-instruct",
+      "status": "ok",
+      "revision": "0e9e39f249a16976918f6564b8830bc894c89659",
+      "file_count": 42,
+      "bytes": 16071963027,
+      "gib": 14.97,
+      "expected_bf16_gib": 16.1,
+      "chars_per_token": 5.099
+    }
+  ]
+}
