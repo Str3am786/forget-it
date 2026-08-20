@@ -5,6 +5,36 @@
   "models_dir": "/scratch/project_462001123/models",
   "staged": [
     {
+      "id": "qwen2.5-1.5b-instruct",
+      "hf_repo": "Qwen/Qwen2.5-1.5B-Instruct",
+      "family": "qwen2.5",
+      "band": "floor",
+      "licence": "Apache-2.0",
+      "local_path": "/scratch/project_462001123/models/qwen2.5-1.5b-instruct",
+      "status": "ok",
+      "revision": "989aa7980e4cf806f80c7fef2b1adb7bc71aa306",
+      "file_count": 30,
+      "bytes": 3098974304,
+      "gib": 2.89,
+      "expected_bf16_gib": 3.1,
+      "chars_per_token": 5.099
+    },
+    {
+      "id": "qwen2.5-7b-instruct",
+      "hf_repo": "Qwen/Qwen2.5-7B-Instruct",
+      "family": "qwen2.5",
+      "band": "A",
+      "licence": "Apache-2.0",
+      "local_path": "/scratch/project_462001123/models/qwen2.5-7b-instruct",
+      "status": "ok",
+      "revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+      "file_count": 42,
+      "bytes": 15242809693,
+      "gib": 14.2,
+      "expected_bf16_gib": 15.2,
+      "chars_per_token": 5.099
+    },
+    {
       "id": "llama-3.1-8b-instruct",
       "hf_repo": "meta-llama/Llama-3.1-8B-Instruct",
       "family": "llama3",
@@ -18,6 +48,36 @@
       "gib": 14.97,
       "expected_bf16_gib": 16.1,
       "chars_per_token": 5.099
+    },
+    {
+      "id": "qwen2.5-14b-instruct",
+      "hf_repo": "Qwen/Qwen2.5-14B-Instruct",
+      "family": "qwen2.5",
+      "band": "B",
+      "licence": "Apache-2.0",
+      "local_path": "/scratch/project_462001123/models/qwen2.5-14b-instruct",
+      "status": "ok",
+      "revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
+      "file_count": 54,
+      "bytes": 29551693077,
+      "gib": 27.52,
+      "expected_bf16_gib": 29.6,
+      "chars_per_token": 5.099
+    },
+    {
+      "id": "gemma-3-12b-it",
+      "hf_repo": "google/gemma-3-12b-it",
+      "family": "gemma3",
+      "band": "B",
+      "licence": "Gemma-Terms-of-Use",
+      "local_path": "/scratch/project_462001123/models/gemma-3-12b-it",
+      "status": "ok",
+      "revision": "96b6f1eccf38110c56df3a15bffe176da04bfd80",
+      "file_count": 48,
+      "bytes": 24414166640,
+      "gib": 22.74,
+      "expected_bf16_gib": 24.4,
+      "chars_per_token": 5.118
     }
   ]
 }
