@@ -100,7 +100,9 @@ fi
 # ---- knobs -----------------------------------------------------------------
 DATASET="${DATASET:-}"          # substring filter on the dataset column; empty = all
 LIMIT="${LIMIT:-0}"             # 0 = every scored question; the only grid reducer
-OUT_DIR="${OUT_DIR:-$REPO/artifacts/reader_sweep}"
+OUT_ROOT="${OUT_DIR:-$REPO/artifacts/reader_sweep}"
+# Per reader directory: no two array tasks share a path, and the merge
+# at analysis time is a glob rather than a filename convention.
 
 # HELD CONSTANT across the axis. The dump stores retrieval output rather than a
 # rendered prompt, so a replay MAY hand a bigger reader more evidence. For a
@@ -166,6 +168,7 @@ API_KEY=sk-lumi
 PORT=8000
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 
+OUT_DIR="$OUT_ROOT/$READER_ID"
 mkdir -p logs "$OUT_DIR"
 cd "$REPO"
 
@@ -250,13 +253,17 @@ export LLM_MAX_CONNECTIONS=$(( READER_WORKERS + 8 ))
 # (Gemma has no system role), format compliance low enough that tier one
 # grading scores style rather than knowledge, and a tokeniser packing evidence
 # at a different density so the held budget is not a constant.
-python3 scripts/preflight_reader.py \
-    --base-url "$LLM_BASE_URL" --api-key "$API_KEY" --model "$SERVED_NAME" \
-    --reader-id "$READER_ID" --model-path "$MODEL_PATH" \
-    ${REF_CPT:+--reference-cpt "$REF_CPT"} ${MODEL_CPT:+--measured-cpt "$MODEL_CPT"} \
-    --bench 24 --bench-concurrency "$READER_WORKERS" \
-    --out "$OUT_DIR/preflight.$READER_ID.json" \
-    ${PREFLIGHT_STRICT:+--strict}
+# Inside CLIENT_SIF: the compute nodes' system python3 is 3.6 and cannot
+# parse `from __future__ import annotations`. Same container as the payload,
+# so both halves run on one interpreter.
+"$CONTAINER_RT" exec -B "/scratch/$PROJ,$REPO" "$CLIENT_SIF" \
+    python scripts/preflight_reader.py \
+        --base-url "$LLM_BASE_URL" --api-key "$API_KEY" --model "$SERVED_NAME" \
+        --reader-id "$READER_ID" --model-path "$MODEL_PATH" \
+        ${REF_CPT:+--reference-cpt "$REF_CPT"} ${MODEL_CPT:+--measured-cpt "$MODEL_CPT"} \
+        --bench 24 --bench-concurrency "$READER_WORKERS" \
+        --out "$OUT_DIR/preflight.$READER_ID.json" \
+        ${PREFLIGHT_STRICT:+--strict}
 
 # ---- 3. replay -------------------------------------------------------------
 # Resumability is the script's own: rows append to <out>/<reader-name>.jsonl and
@@ -270,6 +277,7 @@ set +e
              python scripts/reader_probe.py '$RUN_DIR' \
                  --retrieval '$RETRIEVAL_DIR' \
                  --token-budget '$TOKEN_BUDGET' \
+                 --workers '$READER_WORKERS' \
                  ${DATASET:+--dataset '$DATASET'} \
                  $( [ "$LIMIT" -gt 0 ] && echo "--limit '$LIMIT'" ) \
                  --out '$OUT_DIR'" 2>&1 | tee "$PROBE_LOG"

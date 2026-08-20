@@ -74,7 +74,6 @@
       "vllm_extra": [],
       "gpu_memory_utilization": 0.90,
       "gated": true,
-      "deferred": true,
       "licence": "Llama-3.1-Community",
       "released": "2024-07",
       "role": "family contrast at band A",
