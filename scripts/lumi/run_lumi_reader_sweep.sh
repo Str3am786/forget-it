@@ -215,7 +215,7 @@ trap 'echo "[sweep] stopping vLLM ($VLLM_PID)"; kill $VLLM_PID 2>/dev/null || tr
 
 echo "[sweep] waiting for vLLM ..."
 UP=0
-for _ in $(seq 1 240); do
+for _ in $(seq 1 "${VLLM_WAIT_TRIES:-720}"); do
     curl -sf "http://localhost:${PORT}/health" >/dev/null && { UP=1; break; }
     kill -0 $VLLM_PID 2>/dev/null || { echo "[sweep] vLLM died at startup:" >&2; tail -40 "$VLLM_LOG" >&2; exit 1; }
     sleep 5
