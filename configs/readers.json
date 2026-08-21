@@ -19,11 +19,9 @@
     "  4. revision is pinned to a commit sha by the staging script and written to",
     "     readers.lock.json. 'main' here means 'not yet staged'."
   ],
-
   "schema_version": 1,
   "serving_window": 32768,
   "dtype": "bfloat16",
-
   "readers": [
     {
       "id": "qwen2.5-1.5b-instruct",
@@ -36,7 +34,7 @@
       "native_ctx": 32768,
       "vllm_parallel": "--data-parallel-size 8",
       "vllm_extra": [],
-      "gpu_memory_utilization": 0.90,
+      "gpu_memory_utilization": 0.9,
       "gated": false,
       "licence": "Apache-2.0",
       "released": "2024-09",
@@ -54,7 +52,7 @@
       "native_ctx": 32768,
       "vllm_parallel": "--data-parallel-size 8",
       "vllm_extra": [],
-      "gpu_memory_utilization": 0.90,
+      "gpu_memory_utilization": 0.9,
       "gated": false,
       "licence": "Apache-2.0",
       "released": "2024-09",
@@ -72,7 +70,7 @@
       "native_ctx": 131072,
       "vllm_parallel": "--data-parallel-size 8",
       "vllm_extra": [],
-      "gpu_memory_utilization": 0.90,
+      "gpu_memory_utilization": 0.9,
       "gated": true,
       "licence": "Llama-3.1-Community",
       "released": "2024-07",
@@ -90,7 +88,7 @@
       "native_ctx": 32768,
       "vllm_parallel": "--data-parallel-size 8",
       "vllm_extra": [],
-      "gpu_memory_utilization": 0.90,
+      "gpu_memory_utilization": 0.9,
       "gated": false,
       "licence": "Apache-2.0",
       "released": "2024-09",
@@ -107,16 +105,17 @@
       "bf16_weights_gb": 24.4,
       "native_ctx": 131072,
       "vllm_parallel": "--data-parallel-size 8",
-      "vllm_extra": ["--limit-mm-per-prompt", "image=0"],
-      "gpu_memory_utilization": 0.90,
+      "vllm_extra": [
+        "--language-model-only"
+      ],
+      "gpu_memory_utilization": 0.9,
       "gated": true,
       "licence": "Gemma-Terms-of-Use",
       "released": "2025-03",
       "role": "family contrast at band B",
-      "notes": "GATED. Three gotchas: (1) the chat template has NO system role and folds system content into the first user turn, so the rendered prompt differs structurally from the rest of the roster and preflight must confirm it is sane; (2) the checkpoint is multimodal, so the vision path is disabled to reclaim memory, and the --limit-mm-per-prompt syntax changed across vLLM versions, so verify it against the container before submitting; (3) release postdates LongMemEval, so its C0 leakage number is load bearing."
+      "notes": "GATED. (1) The chat template has NO system role and folds system content into the first user turn; the frozen reader prompt is flat text with no system role, so this does not arise on the measured path. (2) The checkpoint is multimodal. vLLM 0.22.1 parses --limit-mm-per-prompt as JSON, so the key=value form is rejected; --language-model-only is used instead. It runs the model text-only (all modality limits set to 0) but still loads the vision weights: 22.52 GiB at load, leaving 32.71 GiB of KV cache, 364,297 tokens, 11.12x concurrency at the 32768 window. (3) Release postdates LongMemEval, so its C0 leakage number is load bearing."
     }
   ],
-
   "fallbacks": {
     "_comment": "Substitutes, only if the primary cannot be served or staged. Record any substitution in the methods, since it changes the family set.",
     "llama-3.1-8b-instruct": {
@@ -141,7 +140,6 @@
       "notes": "Only if the container's vLLM cannot serve Gemma 3. Text only, no template surprises, but 24B sits above band B so the capacity match to Qwen2.5-14B is looser. Fits one GCD at roughly 47 GB with about 16 GB left for KV; verify the free KV line before trusting it."
     }
   },
-
   "excluded": {
     "_comment": "Recorded so the appendix can say why, rather than leaving the reader to wonder.",
     "microsoft/phi-4": "Native context 16384, below the 32768 serving window. Would have required either a shorter window at one point of the design or context extension at one point, both of which break the held constant.",
