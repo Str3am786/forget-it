@@ -200,9 +200,17 @@ EOF
 VLLM_LOG="logs/vllm-${SLURM_JOB_ID}-${READER_ID}.log"
 echo "[sweep] launching vLLM ..."
 # shellcheck disable=SC2086
+# --generation-config vllm: ignore each checkpoint's generation_config.json.
+# Qwen2.5 ships repetition_penalty (1.1 on the 1.5B, 1.05 on 7B/14B), Llama and
+# Gemma ship none. The client sends temperature=0, but a repetition penalty is a
+# logits processor and still alters GREEDY output, and vLLM applies it over
+# prompt tokens too, which penalises the verbatim copying that containment
+# grading scores. Left on, it is an uncontrolled variable sitting on the model
+# axis, and it differs within the Qwen family.
 "$CONTAINER_RT" exec -B "/scratch/$PROJ" "$VLLM_SIF" \
     /opt/venv/bin/vllm serve "$MODEL_PATH" \
         --served-model-name "$SERVED_NAME" \
+        --generation-config vllm \
         --host 0.0.0.0 --port "$PORT" \
         --api-key "$API_KEY" \
         --max-model-len "$MAX_MODEL_LEN" \
