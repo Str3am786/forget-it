@@ -197,6 +197,14 @@ EOF
 # --max-model-len is pinned from the manifest for EVERY reader, including those
 # whose native window is four times larger. The serving window is a held
 # constant; letting each model use its own maximum would vary it along the axis.
+# LLM cache to node-local tmpfs, NEVER to home or scratch. It is one small
+# JSON file per call: a previous campaign put 1.44M inodes on scratch (60% of
+# the project) and exhausted home's 100K file quota tonight. Small in bytes, so
+# tmpfs is free, and the inodes die with the job.
+export LLM_CACHE_DIR="/tmp/llm_cache_${SLURM_JOB_ID}"
+mkdir -p "$LLM_CACHE_DIR"
+trap 'rm -rf "$LLM_CACHE_DIR"' EXIT
+
 VLLM_LOG="logs/vllm-${SLURM_JOB_ID}-${READER_ID}.log"
 echo "[sweep] launching vLLM ..."
 # shellcheck disable=SC2086
@@ -219,7 +227,9 @@ echo "[sweep] launching vLLM ..."
         $VLLM_PARALLEL $VLLM_EXTRA \
     > "$VLLM_LOG" 2>&1 &
 VLLM_PID=$!
-trap 'echo "[sweep] stopping vLLM ($VLLM_PID)"; kill $VLLM_PID 2>/dev/null || true' EXIT
+# One EXIT handler: a second `trap ... EXIT` REPLACES the first, so the cache
+# cleanup on line 206 is folded in here rather than left to be silently lost.
+trap 'echo "[sweep] stopping vLLM ($VLLM_PID)"; kill $VLLM_PID 2>/dev/null || true; rm -rf "$LLM_CACHE_DIR"' EXIT
 
 echo "[sweep] waiting for vLLM ..."
 UP=0
