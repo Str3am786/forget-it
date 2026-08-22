@@ -319,8 +319,8 @@ def main() -> int:
                 r.update(facets)
                 r["stage"] = args.stage
                 r["cache_key"] = cache_key(r)
-        a = (r.get("answer") or "").strip().lower()
-        r["answer_in_context"] = bool(a) and a in r["context"].lower()
+                a = (r.get("answer") or "").strip().lower()
+                r["answer_in_context"] = bool(a) and a in r["context"].lower()
                 rows.append(r)
         except StopIteration:
             continue
