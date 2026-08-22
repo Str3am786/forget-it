@@ -1,0 +1,47 @@
+{
+  "_note": "Copy this, change the right-hand sides to your column names, pass with --schema. Anything you leave out falls back to the defaults in verdicts.py.",
+
+  "columns": {
+    "workload": "workload",
+    "policy": "policy",
+    "budget": "budget",
+    "reader": "reader",
+    "question_id": "question_id",
+    "outcome": "qa_correct",
+    "gradeable": "gradeable",
+    "grader": "grader",
+    "gold_answer_survival": "gold_answer_survival",
+    "gold_survival_rate": "gold_survival_rate"
+  },
+
+  "_note_proxies": "The ladder, in the order it is reported. Rung order is the order of the keys here. `binary` is documentation only — the same exact paired test is used either way, which is what makes the rungs comparable.",
+  "proxies": {
+    "retention": {"column": "gold_id_retained", "binary": true},
+    "preservation": {"column": "preserved_frac", "binary": false},
+    "sufficiency": {"column": "sufficient", "binary": true}
+  },
+
+  "_note_sensitivity": "Reported as extra rungs and flagged as sensitivity rows, not as the primary measure. Drop this block entirely to skip them.",
+  "sensitivity_proxies": {
+    "preservation_any": {"column": "preserved_any", "binary": true},
+    "preservation_all": {"column": "preserved_all", "binary": true}
+  },
+
+  "_note_controls": "Ceiling is the no-eviction control, not the oracle, until the oracle byte-feasibility question is settled. Floor is empty memory, taken per workload. Both are excluded from every pairwise comparison and from every argmax.",
+  "controls": {
+    "ceiling_policy": "no_eviction",
+    "floor_policy": "empty_memory"
+  },
+
+  "_note_prereg": "Fix these before looking at anything. They are the numbers that go in the methods section.",
+  "preregistration": {
+    "materiality": 0.03,
+    "alpha": 0.05,
+    "primary_proxy": "retention",
+    "primary_workload": "longmemeval",
+    "primary_budget": 25,
+    "bootstrap": 2000,
+    "seed": 20260822,
+    "min_proxy_coverage": 0.10
+  }
+}
