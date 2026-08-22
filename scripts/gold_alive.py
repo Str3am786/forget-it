@@ -96,6 +96,7 @@ present. If the text is empty, answer false.
 
 Reply with exactly one word, in English: true or false"""
 
+CONTEXT_CAP = 100_000   # chars; ~19.6k tokens at 5.1 chars/token
 VERDICT_RE = re.compile(r"\b(true|false)\b", re.I)
 
 
@@ -247,12 +248,13 @@ def load_retrieved_contexts(cfg_dir: Path, args) -> list[dict]:
 def cache_key(row: dict) -> str:
     """Content addressed. Two configs that left the same text behind for the
     same question are one call, not two. Most of the saving is here."""
-    blob = "\x00".join((row["question"], row["answer"], row["context"]))
+    blob = "\x00".join((f"cap={CONTEXT_CAP}", row["question"],
+                        row["answer"], row["context"][:CONTEXT_CAP]))
     return hashlib.sha256(blob.encode()).hexdigest()[:24]
 
 
 def judge_one(llm, ctx: dict) -> dict:
-    p = PROMPT.format(context=ctx["context"][:12000],
+    p = PROMPT.format(context=ctx["context"][:CONTEXT_CAP],
                       question=ctx["question"][:2000],
                       answer=ctx["answer"][:1000])
     try:
@@ -321,6 +323,7 @@ def main() -> int:
                 r["cache_key"] = cache_key(r)
                 a = (r.get("answer") or "").strip().lower()
                 r["answer_in_context"] = bool(a) and a in r["context"].lower()
+                r["context_chars"] = len(r["context"])
                 rows.append(r)
         except StopIteration:
             continue
