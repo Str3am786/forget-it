@@ -1,0 +1,7 @@
+LABEL RULE: human_sufficient=true iff the reference answer is stated in the
+TEXT or directly derivable from it by a careful reader given the QUESTION and
+TEXT only. String presence without derivability is false. Derivability without
+string presence is true. Empty text is false. On every false, fill cause with
+one of: coincidence (answer string present in an unrelated role),
+insufficient (related material present but the answer is not derivable),
+other (with a note).
