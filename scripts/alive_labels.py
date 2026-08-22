@@ -66,8 +66,9 @@ def rebuild(workload: str) -> pd.DataFrame:
                     for r in d.to_dict("records")]
     d["context_chars"] = d.context.str.len()
     a = d.answer.astype(str).str.strip().str.lower()
-    d["answer_in_context"] = (a != "") & [
-        x in c.lower() for x, c in zip(a, d.context)]
+    hits = pd.Series([x in c.lower() for x, c in zip(a, d.context)],
+                     index=d.index)
+    d["answer_in_context"] = (a != "") & hits
     return d
 
 
