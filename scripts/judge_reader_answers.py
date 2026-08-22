@@ -71,14 +71,19 @@ it as answering the question, regardless of wording. Paraphrase is fine.
 - Numbers, dates, quantities and names must match the reference. A close but \
 different number or date is INCORRECT.
 - A partial answer to a multi-part question is INCORRECT.
-- An abstention ("I don't know", "IDK", "not provided") is CORRECT only if the \
-question is genuinely unanswerable. If the reference gives an answer, an \
-abstention is INCORRECT.
+- An abstention ("I don't know", "IDK", "not provided") is INCORRECT whenever \
+the REFERENCE contains an answer, no matter how reasonable the abstention \
+looks. Do not reason about what evidence the candidate had; judge only against \
+the reference.
+- If the REFERENCE says the record is contradictory, inconsistent or ambiguous, \
+then the candidate is CORRECT only if it also flags the contradiction. A \
+candidate that confidently asserts one side is INCORRECT even when its details \
+appear in the reference.
 - Extra unsupported detail around a correct answer does not make it incorrect, \
 but confident wrongness does.
 - Judge the candidate against the question and reference only.
 
-Reply with exactly two lines and nothing else:
+Reply in ENGLISH, with exactly two lines and nothing else:
 VERDICT: CORRECT
 WHY: <at most 12 words>"""
 
