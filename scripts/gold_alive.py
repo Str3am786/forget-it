@@ -97,6 +97,7 @@ present. If the text is empty, answer false.
 Reply with exactly one word, in English: true or false"""
 
 CONTEXT_CAP = 100_000   # chars; ~19.6k tokens at 5.1 chars/token
+CONTEXT_CAP = 100_000   # chars; ~19.6k tokens at 5.1 chars/token
 VERDICT_RE = re.compile(r"\b(true|false)\b", re.I)
 
 
@@ -323,6 +324,7 @@ def main() -> int:
                 r["cache_key"] = cache_key(r)
                 a = (r.get("answer") or "").strip().lower()
                 r["answer_in_context"] = bool(a) and a in r["context"].lower()
+                r["context_chars"] = len(r["context"])
                 r["context_chars"] = len(r["context"])
                 rows.append(r)
         except StopIteration:
