@@ -1,7 +1,7 @@
 import json, os
 from collections import defaultdict, Counter
 
-ROOT = "artifacts/reader_smoke/longmemeval_turn_pair"
+ROOT = "artifacts/reader_figures_v2/longmemeval_turn_pair"
 delivered = defaultdict(dict)
 
 for rid in sorted(os.listdir(ROOT)):
