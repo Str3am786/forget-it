@@ -57,7 +57,9 @@ ROUTED = ("miss", "content_words", "reverse")
 DEPLOYABLE_EXCLUDES = {"oracle"}          # clairvoyant, not a candidate
 
 JUDGED = "/scratch/project_462001123/artifacts/judged"
-ALIVE = "/scratch/project_462001123/artifacts/alive"
+import os
+ALIVE = os.environ.get("ALIVE_DIR",
+    "/scratch/project_462001123/artifacts/alive")
 EXCLUDE_FILE = Path("configs/locomo_ungradeable_ids.txt")
 OUT = Path("report/rq")
 
