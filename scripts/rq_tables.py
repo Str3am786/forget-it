@@ -307,6 +307,12 @@ def main() -> int:
     rows, controls = load_judged(audit)
     store = load_store()
     rows, store = apply_exclusions(rows), apply_exclusions(store)
+    # store side restricted to answer-side gradeable questions, so both
+    # instruments share one denominator per workload
+    gradeable = rows[["workload", "query_id"]].drop_duplicates()
+    n0 = len(store)
+    store = store.merge(gradeable, on=["workload", "query_id"])
+    print(f"store rows after gradeable join: {len(store):,} (was {n0:,})")
 
     print(f"answer rows: {len(rows):,}   store rows: {len(store):,}")
     print("guard firings:",
