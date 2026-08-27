@@ -5,9 +5,13 @@
 # the committed, tested code produces rows nothing can later verify. In order:
 #
 #   1. git -C "$REPO" pull                      # the laptop work must be pushed
-#   2. grep -n RENDER_VERSION src/forgetit/llm/readers/text_reader.py
-#      -> must print the constant. If it does not, the pull did not land and
-#         this sweep would silently write undated rows under a dated name.
+#   2. singularity exec -B "/scratch/$PROJ,$REPO" "$CLIENT_SIF" bash -c \
+#          "cd '$REPO' && PYTHONPATH='$REPO/src' python -c \
+#           'from forgetit.llm.readers import render_sha, DEFAULT_PROMPT; \
+#            print(render_sha(DEFAULT_PROMPT))'"
+#      -> must print 98d35e968dcf. Anything else means the pull did not land,
+#         or the renderer changed, and this sweep would write rows whose
+#         evidence block is not the one the tables assume.
 #   3. singularity exec --bind /scratch/$PROJ "$CLIENT_SIF" \
 #          python3 -m pytest tests/ -q
 #      -> the whole suite, including tests/test_dated_render.py.
@@ -117,6 +121,32 @@ fi
 DATASET="${DATASET:-}"          # substring filter on the dataset column; empty = all
 LIMIT="${LIMIT:-0}"             # 0 = every scored question; the only grid reducer
 OUT_ROOT="${OUT_DIR:-$REPO/artifacts/reader_sweep_dated}"
+
+# Smoke path: a file of query ids restricts the run to those questions. Made
+# absolute here so a relative path is not resolved against the container's
+# working directory.
+IDS_FILE="${IDS_FILE:-}"
+if [ -n "$IDS_FILE" ]; then
+    [ "${IDS_FILE#/}" = "$IDS_FILE" ] && IDS_FILE="$REPO/$IDS_FILE"
+    [ -f "$IDS_FILE" ] || { echo "[sweep] no such ids file: $IDS_FILE" >&2; exit 2; }
+fi
+
+# Raw dataset files for the render-time date lookup. reader_probe.py defaults to
+# <repo>/data; the check is here because a missing directory does not fail, it
+# renders every memory item without its date and reproduces the defect this
+# sweep exists to remove.
+DATA_DIR="${DATA_DIR:-$REPO/data}"
+for _d in longmemeval_s_cleaned.json locomo10.json beam_500K.jsonl; do
+    [ -f "$DATA_DIR/$_d" ] || {
+        echo "[sweep] REFUSING: $DATA_DIR/$_d not found; rows would render undated" >&2
+        exit 2; }
+done
+
+# Appending dated rows to a file of undated ones would merge two experiments in
+# one artefact. reader_probe.py refuses a complete file unless told; RESUME=1
+# passes --resume through for a genuinely interrupted task.
+RESUME="${RESUME:-}"
+
 # Per reader directory: no two array tasks share a path, and the merge
 # at analysis time is a glob rather than a filename convention.
 
@@ -205,6 +235,8 @@ cat <<EOF
 [sweep] run dir  : $RUN_DIR
 [sweep] budget   : $TOKEN_BUDGET (held constant across the axis)
 [sweep] dataset  : ${DATASET:-<all>}   limit: $LIMIT
+[sweep] data dir : $DATA_DIR
+[sweep] ids      : ${IDS_FILE:-<all questions>}
 [sweep] git      : ${GIT_COMMIT:-unknown}
 [sweep] ─────────────────────────────────────────────────────────────
 EOF
@@ -312,6 +344,9 @@ set +e
                  --retrieval '$RETRIEVAL_DIR' \
                  --token-budget '$TOKEN_BUDGET' \
                  --workers '$READER_WORKERS' \
+                 --data-dir '$DATA_DIR' \
+                 ${IDS_FILE:+--ids '$IDS_FILE'} \
+                 ${RESUME:+--resume} \
                  ${DATASET:+--dataset '$DATASET'} \
                  $( [ "$LIMIT" -gt 0 ] && echo "--limit '$LIMIT'" ) \
                  --out '$OUT_DIR'" 2>&1 | tee "$PROBE_LOG"
@@ -343,6 +378,7 @@ json.dump({
     "run_dir": "$RUN_DIR", "retrieval_dir": "$RETRIEVAL_DIR",
     "replay_token_budget": int("$TOKEN_BUDGET"),
     "dataset_filter": "$DATASET", "limit": int("$LIMIT"),
+    "data_dir": "$DATA_DIR", "ids_file": "$IDS_FILE", "resume": bool("$RESUME"),
     "reader_workers_hint": int("$READER_WORKERS"),
     "git_commit": os.environ.get("GIT_COMMIT", "unknown"),
     "slurm_job": "$SLURM_JOB_ID", "restart_count": int("$SLURM_RESTART_COUNT"),
