@@ -1,4 +1,20 @@
 #!/bin/bash
+#
+# ── SYNC GATE — run this on LUMI BEFORE any sbatch of this script ───────────
+# The dated renderer changes what every row means, so a run whose code is not
+# the committed, tested code produces rows nothing can later verify. In order:
+#
+#   1. git -C "$REPO" pull                      # the laptop work must be pushed
+#   2. grep -n RENDER_VERSION src/forgetit/llm/readers/text_reader.py
+#      -> must print the constant. If it does not, the pull did not land and
+#         this sweep would silently write undated rows under a dated name.
+#   3. singularity exec --bind /scratch/$PROJ "$CLIENT_SIF" \
+#          python3 -m pytest tests/ -q
+#      -> the whole suite, including tests/test_dated_render.py.
+#
+# Only when all three pass is this script safe to submit.
+# ───────────────────────────────────────────────────────────────────────────
+
 # ============================================================================
 # forget-it on LUMI — the reader sweep (model axis).
 #
@@ -100,7 +116,7 @@ fi
 # ---- knobs -----------------------------------------------------------------
 DATASET="${DATASET:-}"          # substring filter on the dataset column; empty = all
 LIMIT="${LIMIT:-0}"             # 0 = every scored question; the only grid reducer
-OUT_ROOT="${OUT_DIR:-$REPO/artifacts/reader_sweep}"
+OUT_ROOT="${OUT_DIR:-$REPO/artifacts/reader_sweep_dated}"
 # Per reader directory: no two array tasks share a path, and the merge
 # at analysis time is a glob rather than a filename convention.
 
@@ -172,7 +188,7 @@ OUT_DIR="$OUT_ROOT/$READER_ID"
 mkdir -p logs "$OUT_DIR"
 cd "$REPO"
 
-GIT_COMMIT="$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || true)"
+GIT_COMMIT="$(git -C "$REPO" rev-parse HEAD 2>/dev/null || true)"
 if [ -n "$GIT_COMMIT" ] && [ -n "$(git -C "$REPO" status --porcelain 2>/dev/null)" ]; then
     GIT_COMMIT="${GIT_COMMIT}-dirty"
 fi

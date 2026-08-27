@@ -62,6 +62,10 @@ import pandas as pd
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 
+from forgetit.benchmark.item_dates import DateMap                    # noqa: E402
+from forgetit.core.schema import MemRecord                            # noqa: E402
+from forgetit.llm.readers import build_evidence, render_sha            # noqa: E402
+
 SHA_LEN = 12
 SNAPSHOT_GLOB = "gold_answer_snapshot*.jsonl"
 RETRIEVED_GLOB = "retrieved_index*.jsonl"
@@ -88,6 +92,9 @@ EXPECTED ANSWER: {answer}
 
 Reading ONLY the text above, is the expected answer stated in it or directly \
 implied by it?
+
+Each numbered piece of text begins with the date of the conversation it comes \
+from, in parentheses, when that date is known.
 
 The text may be a shortened or rewritten version of something longer. That is \
 not a reason to answer false. Ignore style, length and anything the text \
@@ -169,7 +176,28 @@ def load_questions(cfg_dir: Path) -> dict:
             for _, r in d.iterrows()}
 
 
-def load_store_contexts(cfg_dir: Path, args) -> list[dict]:
+def render_context(items, date_map=None, example_id: str = "") -> str:
+    """Render (item_id, text) pairs EXACTLY as the reader sees them.
+
+    Same build_evidence, same numbering, same dated prefixes, same one-budget
+    overflow rule -- so a sufficiency verdict is a statement about the reader's
+    context rather than about a second, classifier-only format. Overflow now
+    drops whole items instead of cutting at a character cap, which is a real
+    change to this instrument: see the render-concordance follow-up.
+    """
+    recs = []
+    for item_id, text in items:
+        meta = {}
+        if date_map is not None and item_id:
+            ds = date_map.lookup(item_id, example_id)
+            if ds:
+                meta["date_str"] = ds
+        recs.append(MemRecord(id=item_id or "", text=text, meta=meta))
+    block, _truncated, _delivered = build_evidence(recs, CONTEXT_CAP // 4)
+    return block
+
+
+def load_store_contexts(cfg_dir: Path, args, date_map=None) -> list[dict]:
     """One row per question: the surviving gold text, joined.
 
     An item with empty resident text (evicted) contributes nothing. A question
@@ -189,7 +217,7 @@ def load_store_contexts(cfg_dir: Path, args) -> list[dict]:
             "query_id": qid,
             "question": pick(r, "question", args.field_question),
             "answer": pick(r, "answer", args.field_answer),
-            "n_gold": 0, "n_alive_ids": 0, "texts": [],
+            "n_gold": 0, "n_alive_ids": 0, "items": [],
         })
         q["n_gold"] += 1
         if not q["question"]:
@@ -199,19 +227,22 @@ def load_store_contexts(cfg_dir: Path, args) -> list[dict]:
         resident = pick(r, "resident", args.field_resident).strip()
         if resident:
             q["n_alive_ids"] += 1
-            q["texts"].append(resident)
+            # The id travels with the text: the render-time date lookup is keyed
+            # by item id, and without it the classifier would read a DIFFERENT
+            # context from the one the reader gets.
+            q["items"].append((pick(r, "item_id", args.field_item_id), resident))
     qmap = load_questions(cfg_dir)
     rows = []
     for q in by_q.values():
         qt, ra = qmap.get(q["query_id"], ("", ""))
         q["question"] = q["question"] or qt
         q["answer"] = q["answer"] or ra
-        q["context"] = "\n\n".join(q.pop("texts"))
+        q["context"] = render_context(q.pop("items"), date_map, q["query_id"])
         rows.append(q)
     return rows
 
 
-def load_retrieved_contexts(cfg_dir: Path, args) -> list[dict]:
+def load_retrieved_contexts(cfg_dir: Path, args, date_map=None) -> list[dict]:
     """One row per question: the top-k delivered set, gold and non-gold alike.
 
     Non-gold items are INCLUDED on purpose. Answerability of what the reader
@@ -232,7 +263,7 @@ def load_retrieved_contexts(cfg_dir: Path, args) -> list[dict]:
         for it in items[: args.top_k]:
             t = (it.get("text") if isinstance(it, dict) else None) or ""
             if t.strip():
-                texts.append(t.strip())
+                texts.append((it.get("id") or it.get("item_id") or "", t.strip()))
         m = meta.get(qid, {})
         rows.append({
             "query_id": qid,
@@ -241,7 +272,7 @@ def load_retrieved_contexts(cfg_dir: Path, args) -> list[dict]:
             "n_gold": m.get("n_gold", 0),
             "n_alive_ids": m.get("n_alive_ids", 0),
             "n_retrieved": len(texts),
-            "context": "\n\n".join(texts),
+            "context": render_context(texts, date_map, qid),
         })
     return rows
 
@@ -281,11 +312,13 @@ def main() -> int:
     ap.add_argument("--top-k", type=int, default=10)
     ap.add_argument("--workers", type=int, default=32)
     ap.add_argument("--limit-configs", type=int, default=0)
+    ap.add_argument("--data-dir", type=Path, default=REPO / "data",
+                    help="raw dataset files, for the render-time date lookup")
     ap.add_argument("--dry-run", action="store_true",
                     help="count configs and contexts, make no LLM calls")
     ap.add_argument("--inspect", action="store_true",
                     help="print one snapshot record's keys and exit")
-    for f in ("query-id", "question", "answer", "resident"):
+    for f in ("query-id", "question", "answer", "resident", "item-id"):
         ap.add_argument(f"--field-{f.replace('-', '_')}", default=None)
     args = ap.parse_args()
 
@@ -303,7 +336,7 @@ def main() -> int:
             s = str(v).replace("\n", " ")
             print(f"  {k:<24} {s[:100]}")
         print("\nMap any missing field with --field-query-id / --field-question "
-              "/ --field-answer / --field-resident.")
+              "/ --field-answer / --field-resident / --field-item-id.")
         return 0
 
     if not args.out:
@@ -315,17 +348,31 @@ def main() -> int:
     # -- gather every context, tagged with its config -----------------------
     load = load_store_contexts if args.stage == "store" else load_retrieved_contexts
     rows: list[dict] = []
+    date_maps: dict[str, object] = {}          # workload -> DateMap, built once
     for i, cfg in enumerate(cfgs, 1):
         facets = config_facets(cfg, args.root)
+        wl = DateMap.resolve_name(str(facets.get("workload")
+                                      or facets.get("dataset") or ""))
+        if wl and wl not in date_maps:
+            try:
+                date_maps[wl] = DateMap.for_workload(wl, args.data_dir)
+                print(f"  dates: {wl} -> {len(date_maps[wl]):,} entries", flush=True)
+            except (FileNotFoundError, ValueError) as e:
+                print(f"  WARNING: no dates for {wl} ({type(e).__name__}: {e}); "
+                      f"contexts render UNDATED", file=sys.stderr)
+                date_maps[wl] = None
         try:
-            for r in load(cfg, args):
+            for r in load(cfg, args, date_maps.get(wl)):
                 r.update(facets)
                 r["stage"] = args.stage
                 r["cache_key"] = cache_key(r)
                 a = (r.get("answer") or "").strip().lower()
                 r["answer_in_context"] = bool(a) and a in r["context"].lower()
                 r["context_chars"] = len(r["context"])
-                r["context_chars"] = len(r["context"])
+                # The reader's render contract, not this script's prompt (that
+                # is prompt_sha): the column exists so one bundle's instruments
+                # can be checked for describing ONE evidence base.
+                r["render_sha"] = render_sha()
                 rows.append(r)
         except StopIteration:
             continue

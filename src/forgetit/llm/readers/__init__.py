@@ -9,14 +9,16 @@ from .text_reader import (
     PlainTextReader,
     ReaderContext,
     build_context,
+    build_evidence,
     build_parametric_context,
     prompt_sha,
+    render_sha,
 )
 
 __all__ = [
     "Reader", "JsonMemoryReader", "PlainTextReader", "ReaderContext",
     "ReaderConfig", "build_reader", "resolve_prompt",
-    "build_context", "build_parametric_context", "prompt_sha",
-    "DEFAULT_PROMPT", "PARAMETRIC_PROMPT",
+    "build_context", "build_parametric_context", "build_evidence", "prompt_sha",
+    "DEFAULT_PROMPT", "PARAMETRIC_PROMPT", "render_sha",
     "DEFAULT_TOKEN_BUDGET", "DEFAULT_ANSWER_MAX_TOKENS",
 ]

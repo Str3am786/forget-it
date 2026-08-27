@@ -7,17 +7,24 @@
 # is not a replay, it is a second campaign. The subset is a reduction of
 # REPLICATION, never of the ranking axis.
 #
-# WHAT IS CUT, AND WHY EACH IS SAFE
+# WHAT IS SWEPT
+#   retrievers     3   lexical, bm25, dense. Each gets its OWN subset tree
+#                      (--retriever, SUBSET_ROOT suffixed by the name), so the
+#                      three are built and read side by side rather than one
+#                      being fixed and declared.
+#   budgets        5   010/025/050/075/100 (--budgets, bare percents). The upper
+#                      two sit near the no-eviction control where policies
+#                      compress together; they are swept anyway, because "the
+#                      ranking degenerates as budget grows" is a result and not
+#                      a reason to stop measuring.
+#   policies      15   NOT CUT. Kendall's tau ranks policies; cutting them would
+#                      be cutting the measurement.
+#
+# WHAT IS STILL REDUCED, AND WHY IT IS SAFE
 #   random seeds  10 -> 1   random_s42..s51 are seed replicates of ONE policy.
-#                           A ranking needs random's position, not its variance,
-#                           and the variance is already established elsewhere.
-#   retrievers    n  -> 1   Retriever invariance is a different question. Fixed
-#                           and declared, not swept.
-#   budgets       5  -> 3   010/025/050. 075 and 100 sit near the no eviction
-#                           control where policies compress together, which is
-#                           where a ranking has least to say.
-#   policies      15 -> 15  NOT CUT. Kendall's tau ranks policies; cutting them
-#                           would be cutting the measurement.
+#                           A ranking needs random's position, not its variance.
+#                           The seed spread is measured separately, so it is
+#                           reported rather than folded into this grid.
 #
 # WHY SYMLINKS. The subset must be a view, not a copy: the tree is ~25 GB and a
 # copy would drift from the campaign. Note that Path.rglob does NOT follow
@@ -25,17 +32,22 @@
 # os.walk(followlinks=True). Do not "fix" that back.
 #
 #   source scripts/lumi/env.sh
-#   bash scripts/lumi/build_subsets.sh              # build
-#   bash scripts/lumi/build_subsets.sh --check      # verify only
+#   bash scripts/lumi/build_subsets.sh                                  # build
+#   bash scripts/lumi/build_subsets.sh --check                          # verify
+#   bash scripts/lumi/build_subsets.sh --retriever bm25 \
+#        --budgets "010 025 050 075 100"                                # sweep
+#
+# Each build stamps SUBSET.json with the retriever, the budgets and the full
+# git commit, so a subset tree can always say what produced it.
 # ============================================================================
 set -euo pipefail
 
 : "${PROJ:?source scripts/lumi/env.sh first}"
 : "${RETRIEVAL_ROOT:?source scripts/lumi/env.sh first}"
 
-SUBSET_ROOT="${SUBSET_ROOT:-/scratch/$PROJ/artifacts/sweep_subset}"
+SUBSET_ROOT_BASE="${SUBSET_ROOT:-/scratch/$PROJ/artifacts/sweep_subset}"
 RETRIEVER="${RETRIEVER:-lexical}"
-BUDGETS="${BUDGETS:-budget_010pct budget_025pct budget_050pct}"
+BUDGETS="${BUDGETS:-budget_010pct budget_025pct budget_050pct budget_075pct budget_100pct}"
 
 # 24 policy dirs minus nine surplus random seeds. random_s42 is kept as THE
 # random baseline; the other nine are replicates of it.
@@ -48,9 +60,36 @@ semantic_coverage semantic_keep}"
 PAIRS="${PAIRS:-longmemeval/turn_pair beam/beam_turn_pair locomo/turn_pair}"
 
 CHECK=0
-[ "${1:-}" = "--check" ] && CHECK=1
+# Flags beat env vars; env vars still work when no flag is given, so existing
+# invocations keep their meaning. Budgets are given as bare percents (010 025)
+# and expanded to the budget_NNNpct directory names the campaign wrote.
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --check)     CHECK=1 ;;
+        --retriever) shift; RETRIEVER="${1:?--retriever needs a value}" ;;
+        --budgets)   shift; BUDGETS="$(for b in ${1:?--budgets needs a value}; do
+                            case "$b" in budget_*) printf '%s ' "$b" ;;
+                                         *) printf 'budget_%spct ' "$b" ;; esac
+                        done)" ;;
+        *) echo "unknown argument: $1" >&2; exit 2 ;;
+    esac
+    shift
+done
+case "$RETRIEVER" in
+    lexical|bm25|dense) ;;
+    *) echo "--retriever must be lexical, bm25 or dense (got '$RETRIEVER')" >&2
+       exit 2 ;;
+esac
 
 n_pol=$(echo $POLICIES | wc -w)
+# One subset tree per retriever: the retriever is part of what the subset IS,
+# and a shared path let a second build overwrite the first in place.
+SUBSET_ROOT="${SUBSET_ROOT_BASE}_${RETRIEVER}"
+BS_REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+GIT_COMMIT="$(git -C "$BS_REPO" rev-parse HEAD 2>/dev/null || true)"
+export GIT_COMMIT
+[ -n "$GIT_COMMIT" ] || echo "WARNING: no git commit resolvable — SUBSET.json will say 'unknown'" >&2
+
 n_bud=$(echo $BUDGETS | wc -w)
 n_pair=$(echo $PAIRS | wc -w)
 echo "expecting $n_pol policies x $n_bud budgets = $((n_pol*n_bud)) configs per subset,"
@@ -111,6 +150,7 @@ if [ "$CHECK" = 0 ]; then
   "built": "$(date -Iseconds)",
   "source": "$RETRIEVAL_ROOT",
   "retriever": "$RETRIEVER",
+  "git_commit": "${GIT_COMMIT:-unknown}",
   "budgets": [$(printf '"%s",' $BUDGETS | sed 's/,$//')],
   "policies": [$(printf '"%s",' $POLICIES | sed 's/,$//')],
   "pairs": [$(printf '"%s",' $PAIRS | sed 's/,$//')],

@@ -56,6 +56,9 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 
 from forgetit.benchmark.grading import answer_in_text, grade          # noqa: E402
+from forgetit.benchmark.item_dates import (                           # noqa: E402
+    DateMap, longmemeval_question_dates,
+)
 from forgetit.core.schema import MemRecord, Question                  # noqa: E402
 from forgetit.llm import get_llm                                      # noqa: E402
 from forgetit.llm.readers import (                                    # noqa: E402
@@ -226,30 +229,65 @@ def imap_bounded(fn, tasks, workers: int):
                     futs[ex.submit(fn, nxt)] = nxt
 
 
-def make_worker(reader, cfg: ReaderConfig):
+def build_arm_context(task: dict, cfg: ReaderConfig, date_map=None,
+                      question_date: str = "") -> tuple:
+    """(context, n_dated_items) for one task. PURE: no model, no I/O.
+
+    Dates ride in on ``MemRecord.meta['date_str']`` and are rendered by
+    build_evidence; the record TEXT is never touched, so this replay stays a
+    faithful rebuild of what the run stored. LongMemEval lookups are scoped by
+    the example (its session ids repeat across examples with different dates),
+    which is what ``query_id`` is here — for LongMemEval the query id IS the
+    question id. Extracted from the worker so the golden test can rebuild a
+    prompt without constructing a model.
+    """
+    q, arm = task["q"], task["arm"]
+    qtext = q["question_text"]
+    if question_date:
+        # The question side of the fix: a temporal question is unanswerable
+        # unless the reader knows when it was asked.
+        qtext = f"(asked on {question_date}) {qtext}"
+    question = Question(id=q["query_id"], text=qtext)
+
+    if arm == "parametric":
+        return build_parametric_context(question), 0
+    if arm == "empty":
+        return build_context(question, [], token_budget=cfg.token_budget,
+                             prompt=cfg.prompt), 0
+    if arm == "gold":
+        recs = [MemRecord(id=gid, text=t) for gid, t in q["gold"]]
+    else:                                       # retrieved
+        recs = records_from_index(task["index_row"], task["items"])
+
+    n_dated = 0
+    if date_map is not None:
+        for r in recs:
+            ds = date_map.lookup(r.id, q["query_id"])
+            if ds:
+                r.meta["date_str"] = ds
+                n_dated += 1
+    ctx = build_context(question, recs, token_budget=cfg.token_budget,
+                        prompt=cfg.prompt)
+    return ctx, n_dated
+
+
+def make_worker(reader, cfg: ReaderConfig, date_maps: dict | None = None,
+                question_dates: dict | None = None):
     """One callable, run on many threads. Builds the context then answers.
 
     build_context is pure, so it is safe off the main thread and spreading it
     keeps the prompt for one task alive only as long as that task.
     """
+    date_maps = date_maps or {}
+    question_dates = question_dates or {}
+
     def work(task: dict) -> dict:
-        q, arm = task["q"], task["arm"]
-        question = Question(id=q["query_id"], text=q["question_text"])
-        if arm == "parametric":
-            ctx = build_parametric_context(question)
-        elif arm == "empty":
-            ctx = build_context(question, [], token_budget=cfg.token_budget,
-                                prompt=cfg.prompt)
-        elif arm == "gold":
-            recs = [MemRecord(id=gid, text=t) for gid, t in q["gold"]]
-            ctx = build_context(question, recs, token_budget=cfg.token_budget,
-                                prompt=cfg.prompt)
-        else:                                   # retrieved
-            recs = records_from_index(task["index_row"], task["items"])
-            ctx = build_context(question, recs, token_budget=cfg.token_budget,
-                                prompt=cfg.prompt)
+        q = task["q"]
+        dm = date_maps.get(DateMap.resolve_name(q["dataset"]) or "")
+        qdate = question_dates.get(q["query_id"], "")
+        ctx, n_dated = build_arm_context(task, cfg, dm, qdate)
         res = reader.answer_from_context(ctx)
-        return {"ctx": ctx, "res": res}
+        return {"ctx": ctx, "res": res, "n_dated": n_dated, "question_date": qdate}
     return work
 
 
@@ -264,7 +302,10 @@ def row_for(task: dict, out: dict, cfg: ReaderConfig, reader) -> dict:
         "config": task["config"],
         "query_id": q["query_id"], "arm": task["arm"],
         "dataset": q["dataset"], "question_type": q["question_type"],
-        "question": q["question_text"], "ref_answer": q["ref_answer"],
+        # question is the text AS ASKED (date prefix included); question_raw is
+        # the dataset's own wording, so grading and joins are unaffected.
+        "question": ctx.question_text, "question_raw": q["question_text"],
+        "ref_answer": q["ref_answer"],
         "answer": res.answer,
         "abstained": res.abstained, "errored": res.errored,
         "correct": g["correct"], "f1": round(g["f1"], 4), "tier": g["tier"],
@@ -273,6 +314,9 @@ def row_for(task: dict, out: dict, cfg: ReaderConfig, reader) -> dict:
         "truncated": ctx.truncated,
         "replay_token_budget": cfg.token_budget,
         "replay_prompt_sha": ctx.prompt_sha,
+        "render_sha": ctx.render_sha,
+        "question_date": out.get("question_date", ""),
+        "n_dated_items": out.get("n_dated", 0),
         "run_token_budget": idx_row.get("run_token_budget"),
         "run_prompt_sha": idx_row.get("run_prompt_sha"),
         "cap_hit": res.meta.get("cap_hit"),
@@ -345,6 +389,17 @@ def main() -> int:
                     help="retrieved arm only; the shared arms are already done")
     ap.add_argument("--dry-run", action="store_true",
                     help="count the work and exit without calling the model")
+    ap.add_argument("--resume", action="store_true",
+                    help="proceed even though the output file already holds "
+                         "every task for this reader. Without it a complete "
+                         "file is refused, so a second pass under changed "
+                         "settings (a new render version, a new prompt) cannot "
+                         "be appended to rows it does not match.")
+    ap.add_argument("--ids", type=Path, default=None, metavar="FILE",
+                    help="restrict to the query ids listed in FILE, one per "
+                         "line (# comments and blanks ignored) — the smoke path")
+    ap.add_argument("--data-dir", type=Path, default=REPO / "data",
+                    help="raw dataset files, for the render-time date lookup")
     args = ap.parse_args()
 
     run_dirs = find_run_dirs(args.run_dir)
@@ -369,6 +424,18 @@ def main() -> int:
         return 2
 
     qids = sorted(unique)
+    if args.ids is not None:
+        wanted = {ln.strip() for ln in args.ids.read_text().splitlines()
+                  if ln.strip() and not ln.lstrip().startswith("#")}
+        missing = wanted - set(qids)
+        qids = [q for q in qids if q in wanted]
+        per_config_q = {k: [q for q in v if q in wanted]
+                        for k, v in per_config_q.items()}
+        print(f"--ids: {len(wanted)} requested, {len(qids)} matched"
+              + (f", {len(missing)} not in this run" if missing else ""))
+        if not qids:
+            print("no requested ids matched", file=sys.stderr)
+            return 2
     if args.limit:
         qids = qids[:args.limit]
         keep = set(qids)
@@ -385,6 +452,28 @@ def main() -> int:
                   f"(was the run made with --dump-retrieval?)", file=sys.stderr)
             return 2
 
+    # Render-time date lookup, built ONCE on the main thread (the workers only
+    # read it). A missing raw file is loud but not fatal: the run continues
+    # undated rather than dying deep in a sweep.
+    date_maps: dict[str, DateMap] = {}
+    question_dates: dict[str, str] = {}
+    for name in {DateMap.resolve_name(unique[q]["dataset"]) for q in qids}:
+        if not name:
+            continue
+        try:
+            date_maps[name] = DateMap.for_workload(name, args.data_dir)
+            print(f"dates: {name} -> {len(date_maps[name]):,} entries")
+        except (FileNotFoundError, ValueError) as e:
+            print(f"  WARNING: no dates for {name} ({type(e).__name__}: {e}); "
+                  f"its items render UNDATED", file=sys.stderr)
+    if "longmemeval" in date_maps:
+        try:
+            question_dates = longmemeval_question_dates(
+                args.data_dir / "longmemeval_s_cleaned.json")
+            print(f"dates: {len(question_dates):,} longmemeval question dates")
+        except FileNotFoundError as e:
+            print(f"  WARNING: no question dates ({e})", file=sys.stderr)
+
     cfg = ReaderConfig(token_budget=args.token_budget) if args.token_budget \
         else ReaderConfig()
     reader = build_reader(get_llm(), cfg)
@@ -395,10 +484,12 @@ def main() -> int:
 
     # ── build the task list ────────────────────────────────────────────────
     tasks: list[dict] = []
+    expected: set[tuple[str, str, str]] = set()      # every key this run covers
 
     if not args.skip_shared:
         for qid in qids:
             for arm in SHARED_ARMS:
+                expected.add(("", qid, arm))
                 if ("", qid, arm) in seen:
                     continue
                 tasks.append({"config": "", "q": unique[qid], "arm": arm})
@@ -417,6 +508,7 @@ def main() -> int:
                 if row is None:
                     continue
                 dangling += sum(1 for r in row["retrieved"] if r["key"] not in items)
+                expected.add((key, qid, "retrieved"))
                 if (key, qid, "retrieved") in seen:
                     continue
                 tasks.append({"config": key, "q": unique[qid], "arm": "retrieved",
@@ -437,6 +529,14 @@ def main() -> int:
           f"{f', {len(seen)} already done' if seen else ''}")
     print(f"workers: {args.workers}   ->  {path}")
 
+    if expected and expected <= seen and not args.resume:
+        print(f"REFUSING: {path} already holds all {len(expected)} tasks for "
+              f"this reader. Appending a second pass would mix rows from two "
+              f"settings in one file — if this run differs (render version, "
+              f"prompt, budget) write it to a new --out. Pass --resume to "
+              f"proceed anyway.", file=sys.stderr)
+        return 2
+
     if args.dry_run:
         return 0
     if not tasks:
@@ -444,7 +544,7 @@ def main() -> int:
         return 0
 
     # ── run ────────────────────────────────────────────────────────────────
-    work = make_worker(reader, cfg)
+    work = make_worker(reader, cfg, date_maps, question_dates)
     written = 0
     t0 = time.time()
     lock = threading.Lock()          # sink is main thread only; lock guards stdout

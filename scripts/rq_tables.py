@@ -36,6 +36,8 @@ Run (login node, CPU):
 """
 from __future__ import annotations
 
+import argparse
+import datetime as dt
 import glob
 import json
 import math
@@ -60,8 +62,15 @@ JUDGED = "/scratch/project_462001123/artifacts/judged"
 import os
 ALIVE = os.environ.get("ALIVE_DIR",
     "/scratch/project_462001123/artifacts/alive")
-EXCLUDE_FILE = Path("configs/locomo_ungradeable_ids.txt")
-OUT = Path("report/rq")
+REPO = Path(__file__).resolve().parents[1]
+EXCLUDE_FILE = REPO / "configs" / "locomo_ungradeable_ids.txt"
+
+# ABSOLUTE, repo-anchored. The old value was the RELATIVE Path("report/rq"), so
+# the output landed wherever the script was invoked from ($HOME, in practice)
+# and a rerun pointed at different INPUTS (the ALIVE_DIR override) silently
+# overwrote the previous bundle in place. Override with --out.
+OUT_DEFAULT = REPO / "report" / "rq"
+
 
 CONTRA_REF = "contradictory information"
 FLAGS = re.compile(r"contradict|inconsist|conflict|clarif|discrepan", re.I)
@@ -115,12 +124,52 @@ def bh_reject(pvals: np.ndarray, alpha: float = ALPHA) -> np.ndarray:
 
 
 # ------------------------------------------------------------------ loading --
-def load_judged(audit: list) -> tuple[pd.DataFrame, pd.DataFrame]:
+def note_render_sha(seen: dict, path: str, d: pd.DataFrame) -> None:
+    """Record which render_sha value(s) one input file carries.
+
+    The empty string means rows written before the column existed. Default
+    readers keep clean file names, so nothing in the PATH distinguishes one
+    render contract from another -- it has to be read out of the DATA.
+    """
+    if "render_sha" in d.columns:
+        vals = {str(v).strip() for v in d["render_sha"].fillna("").unique()}
+    else:
+        vals = {""}
+    seen[path] = vals
+
+
+def assert_single_render_sha(seen: dict, allow_mixed: bool) -> str:
+    """One evidence base per table. Mixing them silently pools two experiments."""
+    groups = set().union(*seen.values()) if seen else {""}
+    if len(groups) > 1:
+        listing = "\n".join(
+            f"    {', '.join(x or '(no render_sha column)' for x in sorted(v)):<40}"
+            f" {p}"
+            for p, v in sorted(seen.items()))
+        shown = sorted(g or "(no render_sha column)" for g in groups)
+        msg = (f"MIXED RENDER CONTRACTS: {shown}\n{listing}\n"
+               f"  Rows rendered under different contracts describe different "
+               f"experiments and must not be merged into one table.")
+        if not allow_mixed:
+            raise SystemExit(msg + "\n  (--allow-mixed-render overrides, for "
+                                   "debugging only -- never for emission.)")
+        print("WARNING: " + msg, file=sys.stderr)
+        return "MIXED:" + "+".join(sorted(groups))
+    return groups.pop()
+
+
+
+def load_judged(audit: list, render_seen: dict | None = None,
+                inputs: list | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
     rows, controls = [], []
     rng = np.random.default_rng(SEED)
     for f in sorted(glob.glob(f"{JUDGED}/judged_*.csv")):
         w = f.split("judged_")[1].rsplit("_", 1)[0]
         d = pd.read_csv(f, low_memory=False)
+        if render_seen is not None:
+            note_render_sha(render_seen, f, d)
+        if inputs is not None:
+            inputs.append(f)
         d = d[d.ref_answer.fillna("").astype(str).str.strip() != ""].copy()
         det = to_bool(d.correct).fillna(False)
         jud = to_bool(d.judge_correct)
@@ -164,13 +213,18 @@ def load_judged(audit: list) -> tuple[pd.DataFrame, pd.DataFrame]:
     return pd.concat(rows, ignore_index=True), pd.DataFrame(controls)
 
 
-def load_store() -> pd.DataFrame:
+def load_store(render_seen: dict | None = None,
+               inputs: list | None = None) -> pd.DataFrame:
     frames = []
     for f in sorted(glob.glob(f"{ALIVE}/store_*.csv")):
         if f.endswith(".cache.csv"):
             continue
         w = f.split("store_")[1].replace(".csv", "")
         d = pd.read_csv(f)
+        if render_seen is not None:
+            note_render_sha(render_seen, f, d)
+        if inputs is not None:
+            inputs.append(f)
         d["workload"] = w
         d["budget"] = d.budget.map(norm_budget)
         frames.append(d[["workload", "policy", "budget", "query_id",
@@ -302,12 +356,81 @@ def vdct4_topsets(pairs: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(out)
 
 
+# ---------------------------------------------------------------- provenance --
+def _git(*args: str) -> str:
+    """Run git in the REPO and return stdout, or "" if it genuinely failed.
+
+    The old call had no returncode check, so a git failure inside the container
+    produced an EMPTY commit that was written as if it were real -- and the
+    FileNotFoundError path wrote the literal "unknown" that both existing
+    bundle manifests still carry.
+    """
+    try:
+        r = subprocess.run(["git", "-C", str(REPO), *args],
+                           capture_output=True, text=True)
+    except (OSError, ValueError):
+        return ""
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def provenance(render: str, inputs: list[str], out: Path,
+               allow_dirty: bool) -> dict:
+    """What the numbers were computed from. Refuses to lie about a dirty tree."""
+    commit = _git("rev-parse", "HEAD") or os.environ.get("GIT_COMMIT", "")
+    describe = _git("describe", "--tags", "--always", "--dirty")
+    dirty = bool(_git("status", "--porcelain"))
+    if dirty and not allow_dirty:
+        raise SystemExit(
+            f"REFUSING to write {out}/manifest.json from a DIRTY tree: the "
+            f"commit would not describe the code that produced these numbers. "
+            f"Commit first, or set ALLOW_DIRTY=1 to write a manifest marked "
+            f'"dirty": true (unusable for emission).')
+    if not commit:
+        print("WARNING: no git commit resolvable and $GIT_COMMIT unset — this "
+              "bundle will not be traceable to code.", file=sys.stderr)
+    return {
+        "commit": commit or "unknown",
+        "describe": describe or "unknown",
+        "date": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+        "dirty": dirty,
+        "render_sha": render,
+        "materiality": MATERIALITY, "alpha": ALPHA, "n_boot": N_BOOT,
+        "seed": SEED, "routed_tiers": list(ROUTED),
+        "guards": ["contradiction", "abstention"],
+        "deployable_excludes": sorted(DEPLOYABLE_EXCLUDES),
+        # Resolved, not the defaults: ALIVE_DIR is what told the two existing
+        # bundles apart, and neither manifest recorded it.
+        "judged_dir": JUDGED, "alive_dir": ALIVE,
+        "exclude_file": str(EXCLUDE_FILE), "out_dir": str(out),
+        "inputs": sorted(inputs),
+    }
+
+
 # --------------------------------------------------------------------- main --
 def main() -> int:
+    ap = argparse.ArgumentParser(
+        description="Canonical merge + the prespecified RQ3/RQ4 tests.")
+    ap.add_argument("--out", type=Path, default=OUT_DEFAULT,
+                    help=f"bundle directory (default {OUT_DEFAULT}). Absolute "
+                         f"and repo-anchored: a relative default is what let a "
+                         f"rerun overwrite a previous bundle in place.")
+    ap.add_argument("--allow-mixed-render", action="store_true",
+                    help="proceed even if inputs mix render versions. Debugging "
+                         "only — never for numbers that get reported.")
+    args = ap.parse_args()
+
+    OUT = args.out
     OUT.mkdir(parents=True, exist_ok=True)
     audit: list = []
-    rows, controls = load_judged(audit)
-    store = load_store()
+    render_seen: dict[str, set] = {}
+    inputs: list[str] = []
+    rows, controls = load_judged(audit, render_seen, inputs)
+    store = load_store(render_seen, inputs)
+    render = assert_single_render_sha(render_seen, args.allow_mixed_render)
+    print(f"render_sha: {render or '(pre-column rows)'} "
+          f"({len(render_seen)} input files)")
+    if EXCLUDE_FILE.is_file():
+        inputs.append(str(EXCLUDE_FILE))
     rows, store = apply_exclusions(rows), apply_exclusions(store)
     # store side restricted to answer-side gradeable questions, so both
     # instruments share one denominator per workload
@@ -344,16 +467,9 @@ def main() -> int:
     tops.to_csv(OUT / "topsets.csv", index=False)
     pd.DataFrame(audit).to_csv(OUT / "guard_audit.csv", index=False)
 
-    try:
-        commit = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True,
-                                text=True).stdout.strip()
-    except Exception:
-        commit = "unknown"
-    (OUT / "manifest.json").write_text(json.dumps({
-        "commit": commit, "materiality": MATERIALITY, "alpha": ALPHA,
-        "n_boot": N_BOOT, "seed": SEED, "routed_tiers": list(ROUTED),
-        "guards": ["contradiction", "abstention"],
-        "deployable_excludes": sorted(DEPLOYABLE_EXCLUDES)}, indent=2))
+    (OUT / "manifest.json").write_text(json.dumps(
+        provenance(render, inputs, OUT,
+                   os.environ.get("ALLOW_DIRTY") == "1"), indent=2) + "\n")
 
     # ------------------------------------------------------------ console ----
     print("\n=== vdct2 wrong-pick cost (store-guided selection) ===")

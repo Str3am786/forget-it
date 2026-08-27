@@ -33,6 +33,8 @@ DEFAULT_PROMPT = (
     "Answer the question using ONLY the memories below.\n"
     "You may combine facts from several memories and compute derived "
     "answers from them (date differences, counts, ordered lists).\n"
+    "Each memory begins with the date of the conversation it comes from, in "
+    "parentheses, when that date is known.\n"
     "If the information needed is absent from the memories, say exactly: IDK\n"
     "Be concise.\n"
     "\n"
@@ -119,6 +121,9 @@ class ReaderContext:
     # context so an offline reader pass is reproducible even if the default
     # template later changes.
     prompt_sha: str = ""
+    # Empty default: a context persisted before the renderer carried an identity
+    # must deserialise as what it was, not be relabelled.
+    render_sha: str = ""
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), ensure_ascii=False)
@@ -143,7 +148,11 @@ def build_evidence(records: list[MemRecord],
     truncated = False
 
     for i, r in enumerate(records, 1):
-        prefix = f"[{i}] "
+        # The date is looked up at RENDER time (forgetit.benchmark.item_dates)
+        # and rides in on meta, never in r.text -- item bytes, budgets and every
+        # eviction decision stay identical to the undated campaign.
+        date = (getattr(r, "meta", None) or {}).get("date_str")
+        prefix = f"[{i}] ({date}) " if date else f"[{i}] "
         text = (r.text or "").rstrip()
         sep = 1 if lines else 0
         cost = sep + len(prefix) + len(text)
@@ -162,6 +171,22 @@ def build_evidence(records: list[MemRecord],
     return "\n".join(lines), truncated, delivered
 
 
+def render_sha(template: str = DEFAULT_PROMPT) -> str:
+    """Identity of the render contract: template wording plus the exact output
+    shape of build_evidence, so a change to either is detectable from a row
+    alone.
+
+    Derived, never typed: a hand-maintained label goes stale the moment someone
+    edits the renderer and forgets to bump it, and the stale label is worse than
+    no label because it certifies the wrong thing. Same convention as
+    :func:`prompt_sha`.
+    """
+    fixture = [MemRecord(id="a", text="alpha", meta={"date_str": "D"}),
+               MemRecord(id="b", text="beta")]
+    block, _, _ = build_evidence(fixture, 1000)
+    return hashlib.sha256((template + "\x00" + block).encode()).hexdigest()[:12]
+
+
 def build_context(question: Question, records: list[MemRecord], *,
                   token_budget: int = DEFAULT_TOKEN_BUDGET,
                   prompt: str = DEFAULT_PROMPT) -> ReaderContext:
@@ -178,6 +203,7 @@ def build_context(question: Question, records: list[MemRecord], *,
         truncated=truncated,
         evidence_chars=len(evidence),
         token_budget=token_budget,
+        render_sha=render_sha(prompt),
     )
 
 
@@ -190,6 +216,7 @@ def build_parametric_context(question: Question) -> ReaderContext:
         item_ids=[], n_offered=0, n_delivered=0, truncated=False,
         evidence_chars=0, token_budget=0,
         prompt_sha=prompt_sha(PARAMETRIC_PROMPT),
+        render_sha=render_sha(PARAMETRIC_PROMPT),
     )
 
 
@@ -317,6 +344,7 @@ class PlainTextReader:
             "evidence_truncated": ctx.truncated,
             "token_budget": ctx.token_budget,
             "prompt_sha": ctx.prompt_sha,
+            "render_sha": ctx.render_sha,
             "gen_max_tokens": cap,
             "finish_reason": finish_reason,
             # A cut generation is not a wrong answer, it is an unfinished one —
