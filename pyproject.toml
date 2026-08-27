@@ -13,21 +13,20 @@ dependencies = [
     "falkordb",
     "langgraph",
     "openai>=1.0.0",
+    "httpx>=0.27",
     "python-dotenv>=1.0.0",
     "letta-client",
-    "humanize", # Decide to keep or not
-    "pandas",
+    "numpy>=1.26",
+    "pandas>=2.0",
 ]
 
 [project.optional-dependencies]
 figures = [
     "matplotlib>=3.8",
     "scipy>=1.11",
-    "numpy>=1.26",
-    "pandas>=2.0",
 ]
-test = ["pytest>=8.0"]
-dev  = ["pytest>=8.0", "ruff", "mypy", "forgetit[figures]"]
+test = ["pytest>=8.0", "pyyaml>=6.0"]
+dev  = ["ruff", "mypy", "forgetit[figures,test]"]
 
 [tool.setuptools]
 package-dir = { "" = "src" }
