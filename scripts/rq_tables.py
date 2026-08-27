@@ -44,6 +44,7 @@ import math
 import re
 import subprocess
 import sys
+import os
 from itertools import combinations
 from pathlib import Path
 
@@ -58,8 +59,9 @@ SEED = 42
 ROUTED = ("miss", "content_words", "reverse")
 DEPLOYABLE_EXCLUDES = {"oracle"}          # clairvoyant, not a candidate
 
-JUDGED = "/scratch/project_462001123/artifacts/judged"
-import os
+JUDGED = os.environ.get("JUDGED_DIR",
+                        "/scratch/project_462001123/artifacts/judged")
+                        
 ALIVE = os.environ.get("ALIVE_DIR",
     "/scratch/project_462001123/artifacts/alive")
 REPO = Path(__file__).resolve().parents[1]
