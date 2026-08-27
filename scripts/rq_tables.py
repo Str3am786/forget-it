@@ -81,15 +81,22 @@ ABSTAIN = re.compile(
     r"don'?t have (?:enough |that )?information)\b", re.I)
 
 BUDGET_MAP = {"budget_010pct": "010", "budget_025pct": "025",
-              "budget_050pct": "050", "0.1": "010", "0.25": "025", "0.5": "050"}
+              "budget_050pct": "050", "budget_075pct": "075",
+              "budget_100pct": "100",
+              "0.1": "010", "0.25": "025", "0.5": "050",
+              "0.75": "075", "1.0": "100", "1": "100"}
 
+PARAMETRIC_SHAS: set[str] = set()
+
+NO_RENDER_SHA = ""
 
 def norm_budget(v) -> str:
     s = str(v).strip()
     if s in BUDGET_MAP:
         return BUDGET_MAP[s]
     try:
-        return {0.1: "010", 0.25: "025", 0.5: "050"}[round(float(s), 2)]
+        return {0.1: "010", 0.25: "025", 0.5: "050",
+                0.75: "075", 1.0: "100"}[round(float(s), 2)]
     except (ValueError, KeyError):
         return s
 
@@ -125,17 +132,23 @@ def bh_reject(pvals: np.ndarray, alpha: float = ALPHA) -> np.ndarray:
 
 # ------------------------------------------------------------------ loading --
 def note_render_sha(seen: dict, path: str, d: pd.DataFrame) -> None:
-    """Record which render_sha value(s) one input file carries.
+    """Record the render contract(s) one input file carries.
 
-    The empty string means rows written before the column existed. Default
-    readers keep clean file names, so nothing in the PATH distinguishes one
-    render contract from another -- it has to be read out of the DATA.
+    Absence of the column means the rows predate dated rendering. Nothing in
+    the PATH distinguishes one contract from another, so it is read out of the
+    DATA. Parametric rows are recorded separately rather than gated: they have
+    no evidence to date.
     """
-    if "render_sha" in d.columns:
-        vals = {str(v).strip() for v in d["render_sha"].fillna("").unique()}
-    else:
-        vals = {""}
-    seen[path] = vals
+    if "render_sha" not in d.columns:
+        seen[path] = {NO_RENDER_SHA}
+        return
+    ev = d[d["arm"] != "parametric"] if "arm" in d.columns else d
+    pa = d[d["arm"] == "parametric"] if "arm" in d.columns else d.iloc[0:0]
+    PARAMETRIC_SHAS.update(
+        str(v).strip() for v in pa["render_sha"].fillna("").unique() if str(v).strip())
+    vals = {(str(v).strip() or NO_RENDER_SHA)
+            for v in ev["render_sha"].fillna("").unique()}
+    seen[path] = vals or {NO_RENDER_SHA}
 
 
 def assert_single_render_sha(seen: dict, allow_mixed: bool) -> str:
@@ -394,6 +407,7 @@ def provenance(render: str, inputs: list[str], out: Path,
         "date": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "dirty": dirty,
         "render_sha": render,
+        "render_sha_parametric": sorted(PARAMETRIC_SHAS) or None,
         "materiality": MATERIALITY, "alpha": ALPHA, "n_boot": N_BOOT,
         "seed": SEED, "routed_tiers": list(ROUTED),
         "guards": ["contradiction", "abstention"],
