@@ -62,7 +62,7 @@ from forgetit.benchmark.item_dates import (                           # noqa: E4
 from forgetit.core.schema import MemRecord, Question                  # noqa: E402
 from forgetit.llm import get_llm                                      # noqa: E402
 from forgetit.llm.readers import (                                    # noqa: E402
-    ReaderConfig, build_context, build_parametric_context, build_reader,
+    ReaderConfig, build_context, build_parametric_context, build_reader, resolve_prompt,
 )
 
 ARMS = ("parametric", "empty", "retrieved", "gold")
@@ -378,6 +378,10 @@ def main() -> int:
                     help="evidence budget (default: the reader's own). HOLD THIS "
                          "CONSTANT across a reader sweep: handing a larger model "
                          "more evidence confounds capacity with evidence volume.")
+    ap.add_argument("--prompt-file", type=Path, default=None,
+                    help="read the reader wrapper from FILE instead of the "
+                         "default. Its sha lands on every row and on the "
+                         "reader name, so two wordings can never pool.")
     ap.add_argument("--retrieval", type=Path, default=None, metavar="PATH",
                     help="campaign root holding evidence_items*.jsonl; adds the "
                          "'retrieved' arm, read per config from each config's "
@@ -474,9 +478,18 @@ def main() -> int:
         except FileNotFoundError as e:
             print(f"  WARNING: no question dates ({e})", file=sys.stderr)
 
-    cfg = ReaderConfig(token_budget=args.token_budget) if args.token_budget \
-        else ReaderConfig()
+    prompt = resolve_prompt(str(args.prompt_file) if args.prompt_file else None)
+    missing = [f for f in ("evidence", "question") if "{" + f + "}" not in prompt]
+    if missing:
+        print(f"--prompt-file {args.prompt_file} is missing {missing}",
+              file=sys.stderr)
+        return 2
+    kw = {"prompt": prompt}
+    if args.token_budget:
+        kw["token_budget"] = args.token_budget
+    cfg = ReaderConfig(**kw)
     reader = build_reader(get_llm(), cfg)
+    print(f"reader: {reader.name}  prompt sha {reader.prompt_sha}")
 
     args.out.mkdir(parents=True, exist_ok=True)
     path = args.out / f"{reader.name}.jsonl"

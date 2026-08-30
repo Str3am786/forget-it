@@ -1,0 +1,11 @@
+Answer the question using ONLY the memories below.
+You may combine facts from several memories and compute derived answers from them (date differences, counts, ordered lists).
+Each memory is preceded, in parentheses, by the date and time of the conversation it comes from. That date is part of the memory: use it to answer questions about when something happened, and to resolve relative references such as "yesterday" or "last week" against it.
+If the information needed is absent from the memories, say exactly: IDK
+Be concise.
+
+Memories:
+{evidence}
+
+Question: {question}
+Answer:

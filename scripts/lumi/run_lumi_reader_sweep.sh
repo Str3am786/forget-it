@@ -156,6 +156,12 @@ RESUME="${RESUME:-}"
 # evidence volume. Pinned to the campaign's budget; deliberately not swept.
 TOKEN_BUDGET="${TOKEN_BUDGET:-16000}"
 
+PROMPT_FILE="${PROMPT_FILE:-}"
+if [ -n "$PROMPT_FILE" ]; then
+    [ "${PROMPT_FILE#/}" = "$PROMPT_FILE" ] && PROMPT_FILE="$REPO/$PROMPT_FILE"
+    [ -f "$PROMPT_FILE" ] || { echo "[sweep] no such prompt file: $PROMPT_FILE" >&2; exit 2; }
+fi
+
 # ---- resolve which reader this array task owns -----------------------------
 if [ -n "${READERS:-}" ]; then
     read -r -a READER_IDS <<< "$READERS"
@@ -237,6 +243,7 @@ cat <<EOF
 [sweep] dataset  : ${DATASET:-<all>}   limit: $LIMIT
 [sweep] data dir : $DATA_DIR
 [sweep] ids      : ${IDS_FILE:-<all questions>}
+[sweep] prompt   : ${PROMPT_FILE:-<default>}
 [sweep] git      : ${GIT_COMMIT:-unknown}
 [sweep] ─────────────────────────────────────────────────────────────
 EOF
@@ -347,6 +354,7 @@ set +e
                  --data-dir '$DATA_DIR' \
                  ${IDS_FILE:+--ids '$IDS_FILE'} \
                  ${RESUME:+--resume} \
+                 ${PROMPT_FILE:+--prompt-file '$PROMPT_FILE'} \
                  ${DATASET:+--dataset '$DATASET'} \
                  $( [ "$LIMIT" -gt 0 ] && echo "--limit '$LIMIT'" ) \
                  --out '$OUT_DIR'" 2>&1 | tee "$PROBE_LOG"
@@ -379,6 +387,7 @@ json.dump({
     "replay_token_budget": int("$TOKEN_BUDGET"),
     "dataset_filter": "$DATASET", "limit": int("$LIMIT"),
     "data_dir": "$DATA_DIR", "ids_file": "$IDS_FILE", "resume": bool("$RESUME"),
+    "prompt_file": "$PROMPT_FILE",
     "reader_workers_hint": int("$READER_WORKERS"),
     "git_commit": os.environ.get("GIT_COMMIT", "unknown"),
     "slurm_job": "$SLURM_JOB_ID", "restart_count": int("$SLURM_RESTART_COUNT"),
