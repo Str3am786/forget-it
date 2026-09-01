@@ -1,0 +1,50 @@
+{
+  "commit": "fa67480efd6499b256a24d32fed6754116110baf",
+  "describe": "fa67480efd6499b256a24d32fed6754116110baf",
+  "seed": 20260831,
+  "source_bundle": "/scratch/project_462001123/artifacts/judged5_lexical",
+  "source_files": [
+    "judged_beam_beam_turn_pair_gemma-3-12b-it.csv",
+    "judged_beam_beam_turn_pair_llama-3.1-8b-instruct.csv",
+    "judged_beam_beam_turn_pair_qwen2.5-1.5b-instruct.csv",
+    "judged_beam_beam_turn_pair_qwen2.5-14b-instruct.csv",
+    "judged_beam_beam_turn_pair_qwen2.5-7b-instruct.csv",
+    "judged_locomo_turn_pair_gemma-3-12b-it.csv",
+    "judged_locomo_turn_pair_llama-3.1-8b-instruct.csv",
+    "judged_locomo_turn_pair_qwen2.5-1.5b-instruct.csv",
+    "judged_locomo_turn_pair_qwen2.5-14b-instruct.csv",
+    "judged_locomo_turn_pair_qwen2.5-7b-instruct.csv",
+    "judged_longmemeval_turn_pair_gemma-3-12b-it.csv",
+    "judged_longmemeval_turn_pair_llama-3.1-8b-instruct.csv",
+    "judged_longmemeval_turn_pair_qwen2.5-1.5b-instruct.csv",
+    "judged_longmemeval_turn_pair_qwen2.5-14b-instruct.csv",
+    "judged_longmemeval_turn_pair_qwen2.5-7b-instruct.csv"
+  ],
+  "n_drawn": 190,
+  "strata_requested": {
+    "miss": 40,
+    "content_words": 40,
+    "reverse": 40,
+    "contains": 25,
+    "abstain": 25,
+    "exact": 20
+  },
+  "strata_drawn": {
+    "abstain": 25,
+    "miss": 40,
+    "reverse": 40,
+    "contains": 25,
+    "content_words": 40,
+    "exact": 20
+  },
+  "population_share": {
+    "abstain": 0.48859,
+    "contains": 0.09592,
+    "content_words": 0.01877,
+    "exact": 0.0321,
+    "miss": 0.36261,
+    "reverse": 0.00202
+  },
+  "rows_without_reference_excluded": 163020,
+  "note": "Stratified, NOT proportional. Per-tier agreement is what this estimates. A campaign-wide rate must weight each tier's agreement by population_share above."
+}

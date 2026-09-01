@@ -1,0 +1,250 @@
+row_key,dataset,question_type,question,ref_answer,reader_answer,human_correct,human_note
+90c18ce225305dbf,locomo,temporal,When did Calvin's place get flooded in Tokyo?,"On a week before 16 May, 2023",IDK,,
+32cd08b3a6acb9aa,locomo,temporal,When did Audrey's positive reinforcement training course for dogs take place?,"June, 2023","Audrey saw a flyer for the positive reinforcement training class at her local pet store on 11 May, 2023.",,
+150124781c832c81,locomo,single_hop,What advice does Caroline give for getting started with adoption?,"Do research, find an adoption agency or lawyer, gather necessary documents, and prepare emotionally.",Caroline suggests applying to adoption agencies as a first step towards becoming a parent.,,
+a0cf9ad78eef0a35,locomo,single_hop,What kind of books does Nate enjoy?,Adventures and magic,IDK,,
+f0b67636d40f691b,beam,multi_session_reasoning,"Between my goals of becoming a senior editorial leader and leading a cross-functional project, which one am I aiming to achieve first?",You are aiming to lead a cross-functional project first before becoming a senior editorial leader.,Becoming a senior editorial leader.,,
+a2295d8b6457b080,longmemeval,single-session-user,(asked on 2023/05/30 (Tue) 11:59) Where did I meet Sophia?,a coffee shop in the city,You met Sophia at a coffee shop in the city.,,
+80ec95730cc04444,locomo,single_hop,What does Caroline's drawing symbolize for her?,Freedom and being true to herself.,"Caroline's drawing symbolizes self-acceptance and her readiness to offer love and support to others, empowering her to make a positive difference in their lives.",,
+0d560a350e89667c,longmemeval,knowledge-update,(asked on 2023/05/14 (Sun) 09:58) Is my mom using the same grocery list method as me?,Yes.,"Yes, your mom is using the same grocery list method as you.",,
+1345d76cea1680e9,locomo,multi_hop,How many times has Calvin had to deal with insurance paperwork?,two times,IDK,,
+1ed1d66a3af47216,locomo,single_hop,What did John receive for achieving second place in the tournament?,money and a trophy,IDK,,
+f72fa0aa90d1b032,longmemeval,single-session-user,(asked on 2023/05/30 (Tue) 16:24) Where did I attend for my study abroad program?,University of Melbourne in Australia,University of Melbourne.,,
+ea091662343e6c8b,locomo,single_hop,Where does James get his ideas from?,"books, movies, dreams","James gets his ideas from various sources like books, movies, and even dreams.",,
+218ae9569c9fd0f7,locomo,single_hop,What was one of Jolene's favorite games to play with her mom on the nintendo wii game system?,Monster Hunter: World,IDK,,
+d0eafa2fff1b0982,locomo,single_hop,What happened to Melanie's son on their road trip?,He got into an accident,"They got into an accident. Thankfully, Melanie's son is okay.",,
+ee13c8c531eebeef,beam,information_extraction,How many entries and ratings did I say my dataset includes at the start?,"You said your dataset includes over 10,000 restaurant entries and 50,000 user ratings.","10,000+ restaurant entries and 50,000 user ratings.",,
+15458864e788f05a,locomo,single_hop,How long does Audrey typically walk her dogs for?,about an hour,"Based on the information provided in the memories, Audrey typically walks her dogs for about 1.5 hours. This can be inferred from the fact that she mentions ""I started walking again"" and that the photo shared shows her dogs running in a field with a ball in their mouths, indicating they are engaged in a game that typically lasts about 1.5 hours.",,
+2486c01906dc6631,locomo,temporal,When did Melanie go to the pottery workshop?,The Friday before 15 July 2023,"Last Friday. Since last Friday is the day before the conversation on 15 July, 2023, Melanie went to the pottery workshop on 14 July, 2023.",,
+3b83923468678836,locomo,temporal,When did Nate take his turtles to the beach?,"10 November, 2022","Yesterday, which was November 10, 2022.",,
+99d4e12c7af77816,longmemeval,single-session-assistant,(asked on 2023/05/30 (Tue) 20:16) I'm checking our previous chat about the shift rotation sheet for GM social media agents. Can you remind me what was the rotation for Admon on a Sunday?,Admon was assigned to the 8 am - 4 pm (Day Shift) on Sundays.,8 am - 4 pm,,
+e70e25a61e1dd819,locomo,single_hop,Why did Deborah spend time in the garden?,to find comfort after losing a friend,Deborah spent time in the garden to find some comfort after losing a friend last week.,,
+f90b60b2625ffa10,locomo,single_hop,"Which show did Deborah go to with a friend on 9 April, 2023?",an art show,An art show.,,
+73246c0ae4635310,longmemeval,single-session-user,(asked on 2023/05/30 (Tue) 21:26) What game did I finally beat last weekend?,Dark Souls 3 DLC,Dark Souls 3,,
+c2701df926172203,longmemeval,single-session-user,(asked on 2023/05/30 (Tue) 16:24) Where did I attend for my study abroad program?,University of Melbourne in Australia,The University of Melbourne.,,
+c00bc55ea3fd6cb2,locomo,multi_hop,Did Jolene teach herself how to play the console?,yes,"Yes, Jolene taught herself how to play the console.",,
+aa9f568291a84b8c,locomo,multi_hop,Which TV series does Tim mention watching?,"That, Wheel of Time",The Wheel of Time.,,
+76b8e76042a5846f,beam,information_extraction,What day and time do I usually talk to my son on the phone?,Every Sunday at 7 PM.,Sunday at 7 PM.,,
+1ee89e71e84e40c6,longmemeval,temporal-reasoning,"(asked on 2023/05/28 (Sun) 13:10) Which trip did I take first, the one to Europe with family or the solo trip to Thailand?",The solo trip to Thailand,The trip you took first was the one to Europe with your family.,,
+15b28d1ab9c93a6d,longmemeval,single-session-preference,(asked on 2023/05/30 (Tue) 23:43) Can you recommend a show or movie for me to watch tonight?,"The user would prefer recommendations for stand-up comedy specials on Netflix, especially those that are known for their storytelling. They may not prefer recommendations for other genres or platforms.","IDK, I don't have specific recommendations for shows or movies based on your preferences. However, you might enjoy checking out popular streaming platforms like Netflix, Hulu, or Amazon Prime Video to browse their current trending or highly-rated shows and movies. You can also look for recommendations based on genres you like, such as comedy, drama, sci-fi, or action. If you share your preferences, I can provide more tailored suggestions!",,
+3cab45b9369e9a1d,locomo,commonsense,What is a prominent charity organization that John might want to work with and why?,"Good Sports, because they work with Nike, Gatorade, and Under Armour and they aim toprovide youth sports opportunities for kids ages 3-18 in high-need communities.",IDK,,
+b13f6940d84dbe46,locomo,single_hop,What did Jon say about creating a special experience for customers?,It's the key to making them feel welcome and coming back,Creating a special experience for customers is the key to making them feel welcome and coming back.,,
+2232212cf53fd311,longmemeval,single-session-user,(asked on 2023/05/30 (Tue) 21:26) What game did I finally beat last weekend?,Dark Souls 3 DLC,Dark Souls 3,,
+7a99992ea7f09f94,locomo,single_hop,"What did Jolene's mom stress the value of, which she wants to keep in mind for her engineering projects?",Helping others,"Jolene's mom stressed the value of helping others, which Jolene wants to keep in mind for her engineering projects.",,
+50fbea5bb40615f2,locomo,temporal,When did Melanie sign up for a pottery class?,2 July 2023,Melanie signed up for a pottery class yesterday.,,
+44da8944ae3d5828,locomo,single_hop,What did Andrew get for Scout to create a safe and fun space for them?,"essentials like a bed, toys, and puppy pads","A bed, toys, and puppy pads.",,
+7ab94d11f5a6b9ca,locomo,single_hop,Which movie's theme is Tim's favorite to play on the piano?,"""Harry Potter and the Philosopher's Stone""",Tim's favorite theme to play on the piano is from a movie he really enjoys. It brings back lots of great memories.,,
+de6f384b25272bb0,beam,contradiction_resolution,Have I ever coordinated a team or led project planning sessions before?,"I notice you've mentioned contradictory information about this. You said you have never coordinated any teams or led project planning sessions, but you also mentioned coordinating a 10-person team for project planning. Could you clarify which is correct?",IDK,,
+72fb2b7e20c8156a,beam,multi_session_reasoning,"How do the quadratic equations I encountered in my problems differ in their discriminants and roots, and what does this tell me about the nature of their solutions?","The first quadratic has a discriminant of 20 and roots involving √5, indicating two distinct real irrational roots. The second has a discriminant of 40 and roots involving √10, also two distinct real irrational roots but with different values. This shows both have two distinct real roots but differ in root magnitude and discriminant size.","The nature of the solutions to quadratic equations is determined by the value of their discriminants, which is given by the formula \(\Delta = b^2 - 4ac\). Here's how the discriminant affects the roots and what it tells you about the solutions:
+
+1. Positive Discriminant (\(\Delta > 0\)):
+   - Roots: Two distinct real roots.
+   - Interpretation: This indicates that the quadratic equation intersects the x-axis at two distinct points. In the context of intersections between curves, it means the line or curve intersects the other curve at two different points.
+
+2. Zero Discriminant (\(\Delta = 0\)):
+   - Roots: One real root (a repeated root).
+   - Interpretation: This indicates that the quadratic equation touches the x-axis at exactly one point. In the context of intersections, it means the line or curve is tangent to the other curve at exactly one point.
+
+3. Negative Discriminant (\(\Delta < 0\)):
+   - Roots: No real roots (two complex roots).
+   - Interpretation: This indicates that the quadratic equation does not intersect the x-axis. In the context of",,
+0dfd25fd39b7d7be,locomo,temporal,When did John and his wife go on a European vacation?,"November, 2023.","John and his wife went on a European vacation on November 6, 2023.",,
+e5c3a00d652dddcc,locomo,single_hop,What inspired Joanna to take a picture of the sunset in the field near Fort Wayne?,The incredible sunset and surrounding beauty,The sunset and the surrounding beauty.,,
+c60ec8d5dda83c34,locomo,temporal,When did Sam and his friend decide to try kayaking?,"October 14, 2023","Sam and his friend decided to try kayaking after Evan suggested the idea on 14 October, 2023. They planned to try it ""now"" after Evan's suggestion.",,
+800d3ae6a909afd2,longmemeval,temporal-reasoning,(asked on 2021/10/02 (Sat) 03:56) How many months ago did I attend the Seattle International Film Festival?,4 months ago,"To calculate how many months ago you attended the Seattle International Film Festival, I'll use the dates provided in the memories.
+
+The last interaction about attending SIFF was on 2021/06/01 (Tue). The question was asked on 2021/10/02 (Sat).
+
+From June 1, 2021, to October 2, 2021:
+- June has 30 days, so from June 1 to June 30 is 1 month.
+- July is 1 month.
+- August is 1 month.
+- September is 1 month.
+- From October 1 to October 2 is part of the current month, which is the 5th month.
+
+So, you attended the Seattle International Film Festival approximately 5 months ago.",,
+ca5d5a5b70a89c24,locomo,temporal,When did Andrew and his girlfriend go fishing?,"weekend before August 24, 2023",IDK,,
+d40a736c488a3b37,longmemeval,temporal-reasoning,"(asked on 2023/05/28 (Sun) 13:10) Which trip did I take first, the one to Europe with family or the solo trip to Thailand?",The solo trip to Thailand,IDK. The memories do not provide information about a trip to Thailand or the order of the trips to Europe and the solo trip to South America.,,
+84cbf2d43a9a9606,locomo,multi_hop,Which career-high performances did John achieve in 2023?,"highest point score, highest assist","John started doing seminars, helping people with their sports and marketing.",,
+d817c0f240df3e76,longmemeval,knowledge-update,(asked on 2023/06/23 (Fri) 03:15) How much weight have I lost since I started going to the gym consistently?,10 pounds,You have lost 10 pounds since you started going to the gym consistently 3 months ago.,,
+55b8fa4f0ff599d5,beam,multi_session_reasoning,How much more am I budgeting for rent compared to my total utilities and internet combined?,"You are budgeting $2,350 more for rent than your combined utilities and internet costs.","Your rent is budgeted at $2,460, while your total for utilities and internet combined is $190 ($95 for electricity, $45 for water, and $50 for internet). The difference is $2,460 - $190 = $2,270. So, you are budgeting $2,270 more for rent compared to your total utilities and internet combined.",,
+fa8105f049d6573c,locomo,multi_hop,What recipes has Nate made?,"coconut milk icecream, chocolate and vanilla swirl",IDK,,
+dde3d415c2b25f7b,locomo,multi_hop,What kind of programming-related events has John hosted?,"online programming competition, programming seminar",IDK,,
+4157095683083273,locomo,single_hop,What did James adopt in April 2022?,a pup,James adopted a pup from a shelter in Stamford in April 2022.,,
+f35f0eb157b07b12,locomo,multi_hop,Did Jon and Gina both participate in dance competitions?,Yes,"Yes, Gina participated in dance competitions. IDK if Jon did.",,
+be696b3aa7768720,locomo,single_hop,What outdoor activities does Andrew plan on trying after the rock climbing class?,kayaking and bungee jumping,Kayaking and bungee jumping.,,
+bd63ec2be26afa85,locomo,single_hop,What does Nate rely on for cheer and joy?,his turtles,"Turtles bring joy and peace to Nate. He has recently added more turtles to his collection, bringing him even more cheer.",,
+e263f7f219c797f4,locomo,single_hop,What is John's main focus in local politics?,Improving education and infrastructure,John's main focus in local politics is to gather support and ideas for his next move.,,
+78b7e57fa4d3782f,locomo,single_hop,What music pieces does Deborah listen to during her yoga practice?,"Savana, Sleep","Savana"" and the album 'Sleep'.",,
+6b3c627dafed8332,locomo,single_hop,How did Jolene feel after receiving positive feedback at the virtual conference?,thrilled and rewarded,Jolene felt thrilled and it was rewarding to know that her efforts were appreciated.,,
+910ae03a1bf5d123,locomo,single_hop,What did Andrew get for Scout to create a safe and fun space for them?,"essentials like a bed, toys, and puppy pads","A bed, toys, and puppy pads.",,
+e06394633bfa1022,locomo,multi_hop,What hobby did Evan start practicing a few years ago that he enjoys?,Watercolor painting,Evan started practicing watercolor painting a few years ago that he enjoys.,,
+a5fccbb3015231c3,longmemeval,temporal-reasoning,(asked on 2023/05/30 (Tue) 18:54) How long have I been working before I started my current job at Google?,"The information provided is not enough. From the information provided, You haven't started working at Google yet.",IDK,,
+719ee00e19fd1cee,locomo,temporal,When did Caroline apply to adoption agencies?,The week of 23 August 2023,"23 August, 2023",,
+e10ef3f062c5175e,locomo,single_hop,What type of dog was Andrew looking to adopt based on his living space?,smaller dog,"Based on the shared images and memories, Andrew was looking to adopt a dog that could fit comfortably in his living space. The shared image shows a dog eating out of a bowl on the ground, which suggests that the dog is likely a small breed. This type of dog would be more suitable for living in a smaller apartment or home with limited space.",,
+a52fe1ec928ef8ac,locomo,single_hop,How long does Audrey typically walk her dogs for?,about an hour,"Based on the information provided in the memories, Audrey typically walks her dogs for about 1.5 hours. This can be inferred from the fact that she mentions ""I was thinking about what you said about missing nature the other day"" and then describes the photo of her dogs running in a field with a ball in their mouths, which suggests a walk lasting about 1.5 hours.",,
+4ec7f8259bfd7889,locomo,single_hop,What kind of pot did Mel and her kids make with clay?,a cup with a dog face on it,IDK,,
+d07ac5eabdc191bc,locomo,multi_hop,What animal do both Nate and Joanna like?,Turtles.,Both Nate and Joanna like pets.,,
+0f86b706cfac2d73,beam,information_extraction,What values did I give for the first term and the common ratio in the sequence example?,You said the first term is 3 and the common ratio is 2.,"In the sequence example given, the first term (\(a_1\)) is 2, and the common ratio (\(r\)) is 3.",,
+df74b398e8e19a73,locomo,temporal,When did Deborah start the yoga class in the neighborhood?,"Friday before 13 March, 2023","13 March, 2023",,
+8abb76af6533ad87,longmemeval,single-session-user,(asked on 2023/05/30 (Tue) 15:40) How many hours did I spend watching documentaries on Netflix last month?,10,You spent around 10 hours watching documentaries on Netflix last month.,,
+a63bd44d2d8b2ed2,longmemeval,multi-session,(asked on 2023/05/30 (Tue) 20:17) What is the minimum amount I could get if I sold the vintage diamond necklace and the antique vanity?,"$5,150","IDK
+
+The provided memories do not contain any information about the value of a vintage diamond necklace or an antique vanity, nor do they provide any context or details that would allow for an estimation of their sale value.",,
+30eda3d2b1e029ff,longmemeval,knowledge-update,(asked on 2023/09/04 (Mon) 17:07) How long have I been using my Fitbit Charge 3?,9 months,You have been using your Fitbit Charge 3 for 9 months.,,
+929f424738af1522,locomo,temporal,When did Caroline pass the adoption interview?,The Friday before 22 October 2023,"22 October, 2023.",,
+ae270a1f5a00d564,locomo,single_hop,"What dish is one of Audrey's favorite dishes that includes garlic and is shared with Andrew on 3 July, 2023?",Roasted Chicken,IDK,,
+cf9cf1550bac9ecd,longmemeval,knowledge-update,(asked on 2023/09/21 (Thu) 08:41) What type of camera lens did I purchase most recently?,a 70-200mm zoom lens,"Based on the information provided in the memories, you did not purchase any camera lens most recently. The most recent purchase mentioned was the Think Tank Urban Disguise 40L backpack, and you also considered getting a wide-angle lens like a 14-24mm or 16-35mm, but no specific purchase was confirmed.",,
+c1a6eafe2886d7d3,locomo,single_hop,How did Evan get into watercolor painting?,friend's advice,A friend got him into it and gave him advice.,,
+a409019946b02332,locomo,single_hop,What did Audrey make to thank her neighbors?,Goodies,Audrey made goodies (cookies) to thank her neighbors for their pup-friendly homes.,,
+930b1edb0049e341,locomo,single_hop,What ingredient did Nate use to make the ice cream lactose-free?,coconut milk,Coconut milk.,,
+3166cbff492f8271,locomo,single_hop,Where did Joanna go for a road trip for research?,Woodhaven,"Joanna went to Woodhaven, a small town in the Midwest, for her road trip research.",,
+f9a5f824cdfa1aa0,longmemeval,knowledge-update,(asked on 2023/06/09 (Fri) 11:14) How many pre-1920 American coins do I have in my collection?,38,IDK,,
+6e9f5ae493ebd64e,locomo,temporal,When did Sam and his friend decide to try kayaking?,"October 14, 2023","They decided to try kayaking on the same day, as mentioned in memories [2] and [3] (14 October, 2023).",,
+ff1fb9fc366711cb,longmemeval,multi-session,(asked on 2021/08/20 (Fri) 23:34) How many years in total did I spend in formal education from high school to the completion of my Bachelor's degree?,10 years,2 years,,
+8ffd4767cef441ff,locomo,multi_hop,What Jon thinks the ideal dance studio should look like?,"By the water, with natural light and Marley flooring","Based on the information provided, Jon hasn't explicitly described what he thinks the ideal dance studio should look like. However, he mentioned finding a place with great natural light, which suggests he values a studio with ample natural light. IDK about other specific details.",,
+d3686981a528d1af,locomo,temporal,When did Deborah lead a meditation session during the sunset?,"week before 16 August, 2023","Deborah led a meditation yoga session during sunset at a local care home last week on 2:58 pm on 16 August, 2023. However, the exact date of the meditation session is not provided, only that it was ""last week"" before the conversation on August 16th, 2023. So, the precise date of the session is IDK.",,
+39e53feb643380dd,locomo,temporal,How many years passed between Audrey adopting Pixie and her other three dogs?,three years,"To calculate the number of years between Audrey adopting Pixie and her other three dogs, we need to determine the dates of these events.
+
+1. Audrey adopted Pixie on 19 October 2023.
+2. Audrey adopted the other three dogs on 4 November 2023.
+
+The difference in dates is:
+4 November 2023 - 19 October 2023 = 2 months and 1 day.
+
+Since there are 12 months in a year, 2 months is approximately 0.1667 years. Adding the 1 day gives us a total of approximately 0.1667 + 1 = 1.1667 years.
+
+Therefore, the number of years that passed between Audrey adopting Pixie and her other three dogs is approximately 1.17 years.",,
+f7b877683a207a3e,locomo,commonsense,What would be a good hobby related to his travel dreams for Tim to pick up?,Writing a travel blog.,Learning Spanish.,,
+87793ccd213cb580,locomo,single_hop,How does Jon feel about the opening night of his dance studio?,excited,Jon feels excited and determined about the opening night of his dance studio. He is working hard to make everything perfect and can't wait to see it all come together.,,
+00b7474f768e2065,locomo,multi_hop,Which TV series does Tim mention watching?,"That, Wheel of Time",The Wheel of Time,,
+9291debdc6e43428,locomo,single_hop,Why did Audrey sign up for a workshop about bonding with pets?,Strengthen the bond with her pets,Audrey signed up for a workshop about bonding with her pets to learn new stuff and strengthen her bond with them.,,
+30ceefc9943a05a4,locomo,single_hop,What did Calvin do recently at his Japanese house?,Threw a small party for his new album,Calvin recently threw a small party at his Japanese house for his new album release.,,
+1c289687ebb7ec11,locomo,single_hop,"What was Tim's huge writing issue last week,as mentioned on November 6, 2023?",He got stuck on a plot twist,Tim got stuck on a plot twist.,,
+17eda033f799349f,locomo,single_hop,What sparked James' passion for gaming when he was a kid?,Super Mario and The Legend of Zelda games,Super Mario and The Legend of Zelda.,,
+28c679577789d7f3,locomo,single_hop,What inspired James to create the game character in the virtual world?,Appearance of a woman he saw during a walk,"Witcher 3 gave James a ton of inspiration, with its amazing world and story.",,
+8b3f27e6dd2f140b,locomo,temporal,When did John and his programming friends host an online programming competition?,Last week before 13 October 2022.,"13 October, 2022",,
+bc321274563e78fa,longmemeval,knowledge-update,(asked on 2023/06/25 (Sun) 13:22) What was my personal best time in the charity 5K run?,25 minutes and 50 seconds (or 25:50),Your personal best time in the charity 5K run was 25:50.,,
+a783ad85a625ccbf,longmemeval,knowledge-update,(asked on 2023/06/06 (Tue) 16:35) What time do I usually go to the gym?,6:00 pm,You usually go to the gym at 6:00 pm.,,
+6323a60d11f4fb81,locomo,single_hop,What type of content does Dave post on his blog that inspired others to start their own DIY projects?,How he made his car look like a beast,"Dave recently posted about how he made a car look like a beast, which inspired others to start their own DIY projects.",,
+d8b25c4a356caf90,locomo,multi_hop,Which locations does Deborah practice her yoga at?,"at her mother's old home, park, yoga studio, beach",Deborah practices her yoga on the beach and on a chair based on the provided memories.,,
+c616c4007cbf6b96,locomo,temporal,When did Dave host a card-playing night with his friends?,"on the Friday before 22 August, 2023","22 August, 2023",,
+5ac5ce49488d0a7a,locomo,temporal,When did Joanna finish her first screenplay?,"The Friday before 23January, 2022","23 January, 2022.",,
+e2652ef845c38a97,locomo,single_hop,What did Calvin do recently at his Japanese house?,Threw a small party for his new album,"Calvin recently worked on transforming a Japanese mansion into a recording studio, which is his dream project to create a space for music creation with other artists.",,
+91d6d26eba2457b5,locomo,single_hop,What nature concept do watercolor painting classes emphasize according to Evan?,observing nature and painting what is seen,Painting what is seen.,,
+e31a0c49e35fec11,locomo,single_hop,Where did Jolene and her partner travel for a few weeks in September 2023?,Phuket,Phuket,,
+9d9c3dd5915184a3,locomo,multi_hop,What things has Nate reccomended to Joanna?,"A pet,""The Lord of the Rings"" movies,a dragon book series,coconut flavoring,""Project Hail Mary"" book,Xenoblade Chronicles, dairy-free margarine, coconut oil",Nate has recommended baking a chocolate tart with raspberries and a piece of chocolate cake with raspberries to Joanna.,,
+fb2fe53ecaf89ae7,longmemeval,single-session-assistant,"(asked on 2023/05/30 (Tue) 20:43) I was going through our previous chat and I was wondering, what was Andy wearing in the script you wrote for the comedy movie scene?","Andy was wearing an untidy, stained white shirt.","In the script, Andy was described as wearing an untidy, stained white shirt.",,
+74b286644f06bb67,locomo,multi_hop,What events has Caroline participated in to help children?,"Mentoring program, school speech",IDK,,
+e539dafedcfc4358,longmemeval,single-session-assistant,(asked on 2023/05/30 (Tue) 08:52) I'm looking back at our previous conversation where you created two sad songs for me. Can you remind me what was the chord progression for the chorus in the second song?,C D E F G A B A G F E D C,The chord progression for the chorus in the second song was: C D E F G A B A G F E D C,,
+b376f107c2ddb4b1,beam,knowledge_update,What is the maxmemory setting I should use in my Redis configuration to minimize cache evictions?,1GB,IDK,,
+d6cf5ba9062380d2,beam,information_extraction,How many entries and ratings did I say my dataset includes at the start?,"You said your dataset includes over 10,000 restaurant entries and 50,000 user ratings.","10,000+ restaurant entries and 50,000 user ratings.",,
+9c2e7f0a4909945d,locomo,single_hop,What kind of cookies did Jolene used to bake with someone close to her?,Chocolate chip cookies,Chocolate chip cookies.,,
+3b75be5ec0361172,locomo,temporal,When did Maria receive a medal from the homeless shelter?,The week before 9 August 2023,"Last week, according to Maria's message on 9 August, 2023.",,
+9f89330d11181066,locomo,temporal,Which week did Tim visit the UK for the Harry Potter Conference?,"The week before October 13th, 2023.","The week Tim visited the UK for the Harry Potter Conference was the week of October 6, 2023, as the conversation about the conference was on October 13, 2023.",,
+6c721eda7f923b49,beam,knowledge_update,What is the typical memory usage per session for batch resume processing?,Around 140MB per session,140MB per session.,,
+081d97a6aa9eff69,locomo,single_hop,What is Jon working on opening?,a dance studio,An online platform to show off the dance studio's stuff.,,
+165c8f3c0a9cc5a6,beam,multi_session_reasoning,"How much money have I allocated in total for catering, pavilion deposit, and the portrait across my event plans?",$400,$400,,
+71844337ac14601e,locomo,single_hop,What did Mel and her kids make during the pottery workshop?,pots,"During the pottery workshop, Mel and her kids made their own pots.",,
+29ca09f62f15e7ba,locomo,single_hop,What did Audrey do in November 2023 to better take care of her dogs?,Joined a dog owners group,"In November 2023, Audrey joined a dog owners group to learn how to better take care of her dogs.",,
+6989e2ce7564046c,locomo,single_hop,Which movie does Tim mention they enjoy watching during Thanksgiving?,"""Home Alone""",IDK,,
+27df8228bbe3b94a,locomo,temporal,When did John and his wife go on a European vacation?,"November, 2023.","John and his wife went on their European vacation on November 6, 2023.",,
+c5c17ed311f8e054,longmemeval,knowledge-update,(asked on 2023/05/31 (Wed) 07:54) What new kitchen gadget did I invest in before getting the Air Fryer?,Instant Pot,IDK,,
+2742bcefefdf316d,locomo,single_hop,What sparked James' passion for gaming when he was a kid?,Super Mario and The Legend of Zelda games,Super Mario and The Legend of Zelda.,,
+98eb44384d6cbbdc,beam,event_ordering,"Can you walk me through the order in which I brought up different considerations and discussions about choosing and using a laptop throughout our conversations, in order (mention 12 items)?","You mentioned laptop-related considerations in this order: 1) Initial suggestion to attend a writing workshop and asking about a laptop for writing on the go, 2) Discussion of software stability and MacBook Air user experiences, 3) Debating between specific laptop models within a budget, 4) Planning to visit a store to test laptops in person, 5) Concerns about software compatibility for Final Cut Pro and laptop recommendations, 6) Weighing price concerns and financing options for MacBook Air and Lenovo ThinkPad, 7) Discussing a walk with a colleague to decide on a laptop for work and travel, 8) Prioritizing software compatibility versus battery life after project approval, 9) Reviewing advanced editing techniques and considering hardware upgrades like RAM or eGPU, 10) Finalizing laptop choice leaning towards MacBook Air and asking about accessories, 11) Considering laptops for heavy workload and travel after receiving feedback on presentations, 12) Reflecting on colleague feedback and deciding how to integrate it into presentations.","Certainly! Here is the order in which we discussed different considerations and discussions about choosing and using a laptop throughout our conversations:
+
+1. Extended Rest Day and Laptop Purchase Decision (June-06-2024)
+2. Impact of Extended Rest Days on Laptop Purchase Decision (June-06-2024)
+3. Laptop Requirements for Travel and Entertainment (May-28-2024)
+4. Key Features to Consider for Video Editing (May-28-2024)
+5. Recommendations for Video Editing Laptops (May-28-2024)
+6. Prioritizing Factors for Work and Travel (April-20-2024)
+7. Processor Speed and Its Importance (April-20-2024)
+8. RAM and Its Impact on Work and Travel (April-20-2024)
+9. Battery Life and Its Importance (April-20-2024)
+10. Display Quality and Its Impact (April-20-2024)
+11. Portability and Its Importance (April-",,
+982e6798bae7d2fb,longmemeval,single-session-assistant,(asked on 2023/05/30 (Tue) 23:29) Can you remind me of the name of the romantic Italian restaurant in Rome you recommended for dinner?,Roscioli,The romantic Italian restaurant in Rome you recommended for dinner is Roscioli.,,
+cd0e370a55f9fdfb,longmemeval,multi-session,(asked on 2023/01/24 (Tue) 23:56) How many days did it take for my laptop backpack to arrive after I bought it?,5 days. 6 days (including the last day) is also acceptable.,"IDK
+
+Based on the provided memories, there is no specific information about the delivery time of the laptop backpack. The user mentioned they bought it from Amazon on 1/15 but did not provide details about the delivery date or duration.",,
+df403cfe91e1f9e8,locomo,temporal,When did Joanna plan on going to Nate's to watch him play with his turtles?,"10 November, 2022",IDK,,
+211bc2684ef62961,locomo,temporal,When did Deborah start the yoga class in the neighborhood?,"Friday before 13 March, 2023","13 March, 2023",,
+cabc4dfbb9ab8567,locomo,single_hop,What did Jolene and Anna discuss while watching the sunset by the sea?,They realized they inspire each other,They realized they inspire each other.,,
+61f3a0a5dcdfa555,locomo,single_hop,"What workshop did Dave get picked for on 11 August, 2023?",Car mod workshop,A car mod workshop.,,
+639ee415779aaf05,beam,multi_session_reasoning,"Between my goals of becoming a senior editorial leader and leading a cross-functional project, which one am I aiming to achieve first?",You are aiming to lead a cross-functional project first before becoming a senior editorial leader.,Becoming a senior editorial leader.,,
+e210f68db840c6f4,locomo,temporal,When did Evan and Sam decide to paint together?,"Saturday after 11 September, 2023.","Next Saturday, which is after 11 September, 2023.",,
+03d9d65a7115a7a6,locomo,single_hop,What kind of pot did Mel and her kids make with clay?,a cup with a dog face on it,A cup with a dog face.,,
+ad0410181f8fba74,locomo,single_hop,What is special about the bench at the park near Deborah's house?,It holds special memories of conversations with her mom,"Deborah sat on a bench there where she and her mom used to chat, bringing back a lot of emotions.",,
+c2392202af711b64,locomo,single_hop,"According to Sam, what is more important than perfection?",progress,Progress.,,
+b28fd88ea358be9b,locomo,single_hop,"Which book did Tim recommend to John as a good story on 8th December, 2023?","""A Dance with Dragons""",A Dance with Dragons,,
+ed830aa868b4c769,locomo,single_hop,What do Dave and Calvin agree on regarding their pursuits?,It's fulfilling and motivating,Dave and Calvin agree that their respective pursuits (Dave's car modifications and Calvin's music creation) are inspiring and a great way to help people find their creativity and bring joy to others.,,
+5a19dc53dc4612af,longmemeval,multi-session,(asked on 2023/05/30 (Tue) 15:43) How many pieces of jewelry did I acquire in the last two months?,3,IDK,,
+4a77522e40340cd6,locomo,single_hop,How does Jolene plan to involve local engineers in her idea of teaching STEM to underprivileged kids?,As guest speakers for workshops,IDK,,
+3bf90abcb51267dd,locomo,temporal,When did Deborah go to an art show with Anna?,"on 9 April, 2023","9 April, 2023",,
+679e026ceec97f35,locomo,single_hop,"What cool stuff did Jolene accomplish at the retreat on 9 February, 2023?",Came up with neat solutions for her engineering project,IDK,,
+894e0c9db45be126,locomo,single_hop,What kind of music has Calvin been creating lately?,experimenting with different genres,"Electronic music with different genres, experimenting with new elements.",,
+7d1d253bf2c891c1,locomo,single_hop,What is Nate's favorite book series about?,dragons,IDK,,
+b0a7317f8413acd6,locomo,single_hop,What did Joanna take a picture of near Fort Wayne last summer?,Sunset,A sunset.,,
+b551b98ab0ec02be,locomo,single_hop,What sparked James' passion for gaming when he was a kid?,Super Mario and The Legend of Zelda games,Super Mario and The Legend of Zelda.,,
+15a3dbe64dcf071a,locomo,temporal,When did Nate win his second tournament?,"The week before 2 May, 2022.","2 May, 2022",,
+0974dcb0f2f17b9a,locomo,single_hop,Where will Tim be going for a semester abroad?,Ireland,Ireland.,,
+a90f3f1f67a96723,locomo,temporal,When was Sam in the ER?,"weekend before 17 October, 2023.","17 October, 2023.",,
+6929b7c1949172ef,longmemeval,temporal-reasoning,"(asked on 2023/05/29 (Mon) 08:33) Which show did I start watching first, 'The Crown' or 'Game of Thrones'?",'Game of Thrones',You started watching 'Game of Thrones' first.,,
+e4360903ff250e4e,locomo,single_hop,Which Disney movie did Dave mention as one of his favorites?,Ratatouille,Ratatouille,,
+0835d76e5cc91eb6,locomo,single_hop,Which company's headphones did John choose for gaming?,Sennheiser,Sennheiser,,
+4d9efd73c27decf5,beam,temporal_reasoning,I improved my problem-solving speed from 20 minutes to 12 minutes over two sessions; how much time did I reduce per problem between those sessions?,"You reduced your problem-solving time by 8 minutes per problem, going from 20 minutes to 12 minutes.","You reduced your time solving algebraic sequence problems from 20 minutes to 12 minutes over two sessions. The time you reduced per problem between those sessions is:
+
+\( 20 - 12 = 8 \) minutes.",,
+a94a0002ea76b997,longmemeval,single-session-user,(asked on 2023/05/30 (Tue) 21:26) What game did I finally beat last weekend?,Dark Souls 3 DLC,Dark Souls 3,,
+a4ee39bdfaa1c73b,locomo,single_hop,What music pieces does Deborah listen to during her yoga practice?,"Savana, Sleep","Deborah listens to ""Savana"" and the album 'Sleep'.",,
+122e48cb55093bf8,longmemeval,multi-session,(asked on 2023/05/30 (Tue) 15:02) How much did I save on the designer handbag at TK Maxx?,$300,"IDK
+
+The memories provided do not include the original price of the designer handbag or any information about how much you saved compared to its original price. You mentioned that you got the handbag for $200 at TK Maxx, but the original price is not specified.",,
+08b3c13fcd9e6b02,beam,multi_session_reasoning,"Between my goals of becoming a senior editorial leader and leading a cross-functional project, which one am I aiming to achieve first?",You are aiming to lead a cross-functional project first before becoming a senior editorial leader.,Becoming a senior editorial leader.,,
+a46ece0fa740b754,locomo,single_hop,What does Nate love most about having turtles?,They make him feel calm and don't require much looking after,They make him feel calm and they don't require much looking after.,,
+a75b125039e75c92,locomo,single_hop,What type of videos does Calvin usually watch on his television?,"Music videos, concerts, documentaries about artists and their creative process","Calvin usually watches music videos, concerts, and documentaries about artists and their creative process on his television.",,
+cad26dfe8d2332de,longmemeval,temporal-reasoning,"(asked on 2023/02/28 (Tue) 18:07) Which health issue did I deal with first, the persistent cough or the skin tag removal?",Persistent cough,"The persistent cough is mentioned to have started around February 10th, while the skin tag removal procedure was on February 22nd. Therefore, you dealt with the persistent cough first.",,
+8c3c8a630315af16,locomo,single_hop,What inspired Joanna to take a picture of the sunset in the field near Fort Wayne?,The incredible sunset and surrounding beauty,The sunset and the surrounding beauty.,,
+9581ed7048f38faa,locomo,single_hop,How often does John get to see sunsets like the one he shared with Maria?,At least once a week,IDK,,
+aabf76dab30a7935,locomo,single_hop,What does Calvin find energizing during the tour?,Performing and connecting with the crowd,Calvin finds performing and connecting with the crowd energizing during the tour.,,
+d49f641677043e95,locomo,single_hop,"What type of classes did Jolene and her partner check out during their trip to Rio de Janeiro on 30 August, 2023?",Yoga classes,Yoga classes.,,
+98cb9b7e4b13b11b,locomo,single_hop,How did Melanie feel about her family after the accident?,They are important and mean the world to her,"After the accident, Melanie thought a lot about how much she needs her family. They mean the world to her and she's thankful to have them.",,
+13b7592240870fe1,locomo,multi_hop,Do both James and John have pets?,No,"Yes. James has dogs, and John has a pet.",,
+46c0d451a95005e5,beam,information_extraction,Which version of the Facebook SDK did I say I was using in my code example?,You mentioned using Facebook SDK version 3.1.0 in your code example.,"In your code example, you mentioned using Facebook SDK version `3.1.0`.",,
+b7b293fee374af87,locomo,temporal,When did Deborah start the yoga class in the neighborhood?,"Friday before 13 March, 2023","13 March, 2023",,
+6897456c08743c0b,locomo,single_hop,What did Andrew get for Scout to create a safe and fun space for them?,"essentials like a bed, toys, and puppy pads","Andrew got some essentials for Scout's comfort and entertainment, like a bed, toys, and some puppy pads just in case.",,
+3916e6914ca91422,longmemeval,temporal-reasoning,(asked on 2022/12/01 (Thu) 21:26) How many weeks ago did I attend the friends and family sale at Nordstrom?,2,You attended the friends and family sale at Nordstrom 2 weeks ago.,,
+aae956a55e49e960,locomo,single_hop,Where does James get his ideas from?,"books, movies, dreams","Books, movies, and dreams.",,
+45628dc57d0e5ae5,longmemeval,single-session-assistant,(asked on 2023/05/30 (Tue) 08:52) I'm looking back at our previous conversation where you created two sad songs for me. Can you remind me what was the chord progression for the chorus in the second song?,C D E F G A B A G F E D C,The chord progression for the chorus in the second song was: C D E F G A B A G F E D C,,
+32c43c13b2fa958f,beam,multi_session_reasoning,How many photoshoots or events do I have scheduled based on the details I shared?,Four photoshoots or events are scheduled.,"provided, you have at least 3 events or photoshoots scheduled:
+
+1. A joint exhibition with Kendra at New Gary Art Hall in October 2024.
+2. A wedding shoot on June 15, 2024.
+3. James's company event at Saint Helena Conference Center (no specific date mentioned, but it's mentioned in the context of low-light indoor shots).
+
+Additionally, you mentioned adding 45 outdoor portraits to your portfolio on July 6, 2024, but it's not clear if this is a separate event or just an update to your portfolio.",,
+b676af8e0ee23566,locomo,temporal,When did Deborah start the yoga class in the neighborhood?,"Friday before 13 March, 2023","13 March, 2023",,
+cb04d70d93130d82,locomo,commonsense,Does Dave's shop employ a lot of people?,Yes,IDK,,
+267da61162e0cf38,longmemeval,knowledge-update,(asked on 2023/07/15 (Sat) 22:19) What day of the week do I take a cocktail-making class?,Friday,Friday.,,
+93d9c0fde843af0f,locomo,single_hop,What does Nate rely on for cheer and joy?,his turtles,Turtles and winning tournaments.,,
+556f7c0ed3e7247e,locomo,single_hop,What kind of meal did John and his family make together in the photo shared by John?,pizza,Pizza.,,
+7f887558a8cb9118,longmemeval,knowledge-update,(asked on 2023/07/15 (Sat) 22:19) What day of the week do I take a cocktail-making class?,Friday,Friday.,,
+5a86a3852b6b5055,locomo,temporal,When did John and his programming friends host an online programming competition?,Last week before 13 October 2022.,"13 October, 2022",,
+2e2ea86dfe822f84,locomo,single_hop,What sparked James' passion for gaming when he was a kid?,Super Mario and The Legend of Zelda games,Super Mario and The Legend of Zelda.,,
+8937de988436d8ed,beam,contradiction_resolution,Have you ever arranged after-school care for Megan or any of your children?,"I notice you've mentioned contradictory information about this. You said you have arranged full-time after-school care for Megan, but you also mentioned that you've never arranged after-school care for Megan or any of your children. Could you clarify which is correct?","No, I have not arranged after-school care for Megan or any of the children mentioned in the context provided. The information was given to help the user figure out how to arrange after-school care for their children.",,
+0488745f464af138,locomo,temporal,When did Sam and his friend decide to try kayaking?,"October 14, 2023","14 October, 2023",,
+8753ea51fc794f5d,locomo,single_hop,What did Jon say about creating a special experience for customers?,It's the key to making them feel welcome and coming back,"Jon said, ""Creating a special experience for customers is the key to making them feel welcome and coming back.",,
+4c6aacde663d1831,locomo,temporal,When did Maria go to the beach?,December 2022,"Maria went to the beach on 4 May, 2023.",,
+3e85a76f9d213e95,locomo,temporal,When did Deborah lead a meditation session during the sunset?,"week before 16 August, 2023","16 August, 2023",,
+6f01ca20293325e4,locomo,temporal,When did Caroline apply to adoption agencies?,The week of 23 August 2023,"23 August, 2023",,
+6a6a25d1b8c5500d,locomo,single_hop,"What is Andrew planning to do with Scout, Toby, and Buddy?",Take them to a nearby park,"Andrew is planning to take Scout, Toby, and Buddy to a nearby park to have fun and get some fresh air.",,
+3692ca13cd3b7a3d,locomo,single_hop,What did John do that put a strain on his wallet?,His car broke down,"John's car broke down last Friday on his way to work, which put a strain on his wallet.",,
+806597f6f73df0d8,beam,information_extraction,How often did I say Scott is getting tutoring sessions each week?,Scott is getting tutoring twice weekly.,I said Scott is getting tutoring sessions twice weekly.,,
+755735d05bbe0849,beam,contradiction_resolution,Have I ever used a pasta maker to make homemade gluten-free pasta?,"I notice you've mentioned contradictory information about this. You said you have learned to make homemade gluten-free pasta using a pasta maker, but you also mentioned that you've never used a pasta maker for that. Could you clarify which is correct?","No, based on the conversation, you mentioned that you recently learned how to make homemade gluten-free pasta but it seems this is your first time using a pasta maker for this purpose.",,
+10e132925aa4b409,locomo,single_hop,What is John trying out to improve his strength and flexibility after recovery from ankle injury?,yoga,Yoga.,,
+dfc3a668ad64c322,locomo,single_hop,What does Jon tell Gina he won't do?,quit,Jon tells Gina he won't quit.,,
+99e11162b71b351d,longmemeval,single-session-user,(asked on 2023/05/30 (Tue) 21:26) What game did I finally beat last weekend?,Dark Souls 3 DLC,Dark Souls 3,,
+640872c2e544c68b,locomo,single_hop,What were some difficulties James faced during the development of his game?,balancing mechanics and ensuring fairness,James faced challenges in balancing mechanics and ensuring fairness in the game. He mentioned it was a bit challenging to get everything right and that it involved some trial and error.,,
+2ecd5f5edf84130d,beam,knowledge_update,What is the internet speed of my current plan that supports my video calls?,250 Mbps,250 Mbps,,
+60e38ee066a1850e,longmemeval,multi-session,"(asked on 2023/05/30 (Tue) 15:31) How many pieces of furniture did I buy, assemble, sell, or fix in the past few months?",4,"IDK. There is no information about buying, assembling, selling, or fixing any pieces of furniture in the memories provided.",,

@@ -1,0 +1,7 @@
+conv-30::q::13::temporal
+conv-30::q::36::temporal
+conv-48::q::44::temporal
+conv-42::q::41::temporal
+conv-47::q::41::temporal
+conv-41::q::10::temporal
+conv-26::q::73::temporal
