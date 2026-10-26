@@ -80,6 +80,22 @@ def main() -> int:
             retrieved[(r["config"], r["query_id"])] = r
 
     ok = True
+    # duplicates: two jobs writing one file both start from an empty resume
+    # set and each write the full task list. Every key must appear once.
+    keys = [(r["config"], r["query_id"]) for r in res]
+    dup = len(keys) - len(set(keys))
+    print(f"duplicates: {dup} repeated (config, query_id) rows", end="  ")
+    if dup:
+        ok = False
+        print("FAIL (two jobs wrote this file; delete it and rerun one job)")
+        seen_k, uniq = set(), []
+        for r in res:                         # keep the first copy for the checks below
+            k = (r["config"], r["query_id"])
+            if k not in seen_k:
+                seen_k.add(k); uniq.append(r)
+        res = uniq
+    else:
+        print("ok")
     # pairing
     rkeys = {(r["config"], r["query_id"]) for r in res}
     configs = {c for c, _ in rkeys}
