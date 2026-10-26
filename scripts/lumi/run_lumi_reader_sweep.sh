@@ -156,6 +156,11 @@ RESUME="${RESUME:-}"
 # evidence volume. Pinned to the campaign's budget; deliberately not swept.
 TOKEN_BUDGET="${TOKEN_BUDGET:-16000}"
 
+# Which reader_probe.py arms to run. Empty = the script's default, the
+# pre-registered set. ARMS=resident runs only the post hoc resident arm; give
+# it its own OUT_DIR so it never appends to a finished sweep.
+ARMS="${ARMS:-}"
+
 PROMPT_FILE="${PROMPT_FILE:-}"
 if [ -n "$PROMPT_FILE" ]; then
     [ "${PROMPT_FILE#/}" = "$PROMPT_FILE" ] && PROMPT_FILE="$REPO/$PROMPT_FILE"
@@ -244,6 +249,8 @@ cat <<EOF
 [sweep] data dir : $DATA_DIR
 [sweep] ids      : ${IDS_FILE:-<all questions>}
 [sweep] prompt   : ${PROMPT_FILE:-<default>}
+[sweep] arms     : ${ARMS:-<default>}
+[sweep] out      : $OUT_DIR
 [sweep] git      : ${GIT_COMMIT:-unknown}
 [sweep] ─────────────────────────────────────────────────────────────
 EOF
@@ -355,6 +362,7 @@ set +e
                  ${IDS_FILE:+--ids '$IDS_FILE'} \
                  ${RESUME:+--resume} \
                  ${PROMPT_FILE:+--prompt-file '$PROMPT_FILE'} \
+                 ${ARMS:+--arms $ARMS} \
                  ${DATASET:+--dataset '$DATASET'} \
                  $( [ "$LIMIT" -gt 0 ] && echo "--limit '$LIMIT'" ) \
                  --out '$OUT_DIR'" 2>&1 | tee "$PROBE_LOG"
@@ -388,6 +396,7 @@ json.dump({
     "dataset_filter": "$DATASET", "limit": int("$LIMIT"),
     "data_dir": "$DATA_DIR", "ids_file": "$IDS_FILE", "resume": bool("$RESUME"),
     "prompt_file": "$PROMPT_FILE",
+    "arms": "$ARMS".split() or "default",
     "reader_workers_hint": int("$READER_WORKERS"),
     "git_commit": os.environ.get("GIT_COMMIT", "unknown"),
     "slurm_job": "$SLURM_JOB_ID", "restart_count": int("$SLURM_RESTART_COUNT"),

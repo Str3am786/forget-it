@@ -9,11 +9,19 @@ that a run already wrote and asks one reader four questions per query.
     retrieved   what THIS policy delivered at THIS budget, rebuilt from a
                 --dump-retrieval artefact (needs --retrieval).
     gold        the gold items' ORIGINAL (pre-compression) text. The ceiling.
+    resident    the gold items as THIS policy left them at THIS budget: the
+                snapshot's resident_text, rewritten if compressed, absent if
+                evicted. No retrieval step. Opt in with --arms (post hoc, not
+                pre-registered); a question whose gold was all evicted is still
+                asked, with no evidence, so the denominator matches 'retrieved'.
 
 The deltas are the point:
 
     gold - parametric   what the memory system actually contributes.
     gold - retrieved    what this policy lost against perfect retrieval.
+    gold - resident     what forgetting alone lost (no retriever involved).
+    resident - retrieved
+                        what the retriever lost on the surviving gold items.
     parametric - empty  how much real knowledge the IDK instruction suppresses.
 
 TWO THINGS THIS VERSION FIXES, both of which matter more than the speed.
@@ -65,8 +73,11 @@ from forgetit.llm.readers import (                                    # noqa: E4
     ReaderConfig, build_context, build_parametric_context, build_reader, resolve_prompt,
 )
 
-ARMS = ("parametric", "empty", "retrieved", "gold")
+RESIDENT_ARM = "resident"                       # code id; prose name is the thesis's
+ARMS = ("parametric", "empty", "retrieved", "gold", RESIDENT_ARM)
 SHARED_ARMS = ("parametric", "empty", "gold")   # question-only: config invariant
+CONFIG_ARMS = ("retrieved", RESIDENT_ARM)       # depend on policy, budget, retriever
+DEFAULT_ARMS = ("parametric", "empty", "retrieved", "gold")   # pre-registered set
 GOLD_SNAPSHOT = "gold_answer_snapshot.jsonl"
 RETRIEVED_INDEX = "retrieved_index.jsonl"
 EVIDENCE_GLOB = "evidence_items*.jsonl"
@@ -115,6 +126,11 @@ def load_questions(run_dir: Path, dataset_filter: str | None) -> list[dict]:
                 meta[qid] = row
 
     gold: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    # resident is CONFIG dependent: (gold_id, resident_text, was_compressed),
+    # in snapshot order, the same order the gold arm uses. Evicted items carry
+    # empty resident_text and are dropped below, never replaced by anything.
+    resident: dict[str, list[tuple[str, str, bool]]] = defaultdict(list)
+    n_gold_rows: dict[str, int] = defaultdict(int)
     ref: dict[str, str] = {}
     with (run_dir / GOLD_SNAPSHOT).open(encoding="utf-8") as f:
         for line in f:
@@ -128,6 +144,10 @@ def load_questions(run_dir: Path, dataset_filter: str | None) -> list[dict]:
             # compression. resident_text would measure the policy, not the
             # ceiling, and would make this arm config dependent.
             gold[qid].append((r.get("gold_id", ""), r.get("original_text", "")))
+            n_gold_rows[qid] += 1
+            if r.get("resident_text") and not r.get("was_evicted"):
+                resident[qid].append((r.get("gold_id", ""), r["resident_text"],
+                                      bool(r.get("was_compressed"))))
             ref.setdefault(qid, r.get("answer", ""))
 
     out = []
@@ -143,6 +163,8 @@ def load_questions(run_dir: Path, dataset_filter: str | None) -> list[dict]:
             "question_type": m.get("question_type", ""),
             "ref_answer": m.get("ref_answer") or ref.get(qid, ""),
             "gold": [(gid, text) for gid, text in gold[qid] if text],
+            "resident": resident.get(qid, []),
+            "n_gold_rows": n_gold_rows[qid],
         })
     return out
 
@@ -256,6 +278,11 @@ def build_arm_context(task: dict, cfg: ReaderConfig, date_map=None,
                              prompt=cfg.prompt), 0
     if arm == "gold":
         recs = [MemRecord(id=gid, text=t) for gid, t in q["gold"]]
+    elif arm == RESIDENT_ARM:
+        # Dates are looked up by gold_id, so a rewritten item keeps the date
+        # of the item it replaced. An empty list renders the empty arm's
+        # prompt exactly: no evidence survived.
+        recs = [MemRecord(id=gid, text=t) for gid, t, _c in task["resident"]]
     else:                                       # retrieved
         recs = records_from_index(task["index_row"], task["items"])
 
@@ -320,6 +347,13 @@ def row_for(task: dict, out: dict, cfg: ReaderConfig, reader) -> dict:
         "run_token_budget": idx_row.get("run_token_budget"),
         "run_prompt_sha": idx_row.get("run_prompt_sha"),
         "cap_hit": res.meta.get("cap_hit"),
+        # resident arm only: how much of this question's gold survived, and
+        # how much of what survived was rewritten. Blank on the other arms.
+        "n_gold_items": q.get("n_gold_rows") if task["arm"] == RESIDENT_ARM else None,
+        "n_gold_resident": (len(task["resident"])
+                            if task["arm"] == RESIDENT_ARM else None),
+        "n_gold_rewritten": (sum(c for _g, _t, c in task["resident"])
+                             if task["arm"] == RESIDENT_ARM else None),
         "reader": reader.name, "model": getattr(reader.llm, "model", ""),
     }
 
@@ -348,6 +382,12 @@ def report(rows: list[dict]) -> None:
     if {"gold", "retrieved"} <= acc.keys():
         print(f"  gold - retrieved   = {acc['gold'] - acc['retrieved']:+.4f}"
               "   what this policy lost against perfect retrieval")
+    if {"gold", RESIDENT_ARM} <= acc.keys():
+        print(f"  gold - resident    = {acc['gold'] - acc[RESIDENT_ARM]:+.4f}"
+              "   what forgetting lost (pooled over configs)")
+    if {RESIDENT_ARM, "retrieved"} <= acc.keys():
+        print(f"  resident - retrieved = {acc[RESIDENT_ARM] - acc['retrieved']:+.4f}"
+              "   what the retriever lost (pooled over configs)")
     if {"parametric", "empty"} <= acc.keys():
         print(f"  parametric - empty = {acc['parametric'] - acc['empty']:+.4f}"
               "   knowledge the IDK instruction suppresses")
@@ -389,6 +429,10 @@ def main() -> int:
     ap.add_argument("--workers", type=int,
                     default=int(os.environ.get("READER_WORKERS", "32")),
                     help="concurrent reader calls (default 32 or $READER_WORKERS)")
+    ap.add_argument("--arms", nargs="+", choices=ARMS, default=list(DEFAULT_ARMS),
+                    help=f"arms to run (default: {' '.join(DEFAULT_ARMS)}). "
+                         f"'{RESIDENT_ARM}' is opt in and per config. Write it to "
+                         "its own --out: never append it to a finished sweep.")
     ap.add_argument("--skip-shared", action="store_true",
                     help="retrieved arm only; the shared arms are already done")
     ap.add_argument("--dry-run", action="store_true",
@@ -415,13 +459,18 @@ def main() -> int:
 
     # Unique questions across configs. The gold snapshot repeats the same
     # question set in every config, so this is a dedup, not a merge.
+    want_resident = RESIDENT_ARM in args.arms
     unique: dict[str, dict] = {}
     per_config_q: dict[str, list[str]] = {}
+    per_config_res: dict[str, dict[str, list]] = {}
     for d in run_dirs:
         qs = load_questions(d, args.dataset)
         key = config_key(d, args.run_dir)
         per_config_q[key] = [q["query_id"] for q in qs]
+        if want_resident:
+            per_config_res[key] = {q["query_id"]: q["resident"] for q in qs}
         for q in qs:
+            q.pop("resident", None)       # config dependent: never on the shared copy
             unique.setdefault(q["query_id"], q)
     if not unique:
         print("no questions matched", file=sys.stderr)
@@ -499,9 +548,10 @@ def main() -> int:
     tasks: list[dict] = []
     expected: set[tuple[str, str, str]] = set()      # every key this run covers
 
+    shared_arms = [a for a in SHARED_ARMS if a in args.arms]
     if not args.skip_shared:
         for qid in qids:
-            for arm in SHARED_ARMS:
+            for arm in shared_arms:
                 expected.add(("", qid, arm))
                 if ("", qid, arm) in seen:
                     continue
@@ -509,24 +559,45 @@ def main() -> int:
     n_shared = len(tasks)
 
     dangling = 0
-    if args.retrieval is not None:
-        for d in run_dirs:
-            key = config_key(d, args.run_dir)
-            index = load_index_for(d)
-            if not index:
-                print(f"  WARNING: no {RETRIEVED_INDEX} in {key}", file=sys.stderr)
+    want_retrieved = "retrieved" in args.arms and args.retrieval is not None
+    n_res = n_res_unpaired = 0
+    for d in run_dirs:
+        if not (want_retrieved or want_resident):
+            break
+        key = config_key(d, args.run_dir)
+        index = load_index_for(d)
+        if not index:
+            print(f"  WARNING: no {RETRIEVED_INDEX} in {key}", file=sys.stderr)
+            if want_resident:
+                # Pairing with 'retrieved' needs the index: refuse rather than
+                # write resident rows with a denominator nothing can pair.
+                print(f"  REFUSING {RESIDENT_ARM} for {key}: no index to pair with",
+                      file=sys.stderr)
+            continue
+        for qid in per_config_q.get(key, []):
+            row = index.get(qid)
+            if row is None:
+                if want_resident:
+                    n_res_unpaired += 1
                 continue
-            for qid in per_config_q.get(key, []):
-                row = index.get(qid)
-                if row is None:
-                    continue
+            if want_retrieved:
                 dangling += sum(1 for r in row["retrieved"] if r["key"] not in items)
                 expected.add((key, qid, "retrieved"))
-                if (key, qid, "retrieved") in seen:
-                    continue
-                tasks.append({"config": key, "q": unique[qid], "arm": "retrieved",
-                              "index_row": row, "items": items})
-    n_retrieved = len(tasks) - n_shared
+                if (key, qid, "retrieved") not in seen:
+                    tasks.append({"config": key, "q": unique[qid], "arm": "retrieved",
+                                  "index_row": row, "items": items})
+            if want_resident:
+                # Same question set as 'retrieved' in this config, by construction.
+                expected.add((key, qid, RESIDENT_ARM))
+                if (key, qid, RESIDENT_ARM) not in seen:
+                    tasks.append({"config": key, "q": unique[qid], "arm": RESIDENT_ARM,
+                                  "resident": per_config_res[key].get(qid, [])})
+                    n_res += 1
+    n_retrieved = len(tasks) - n_shared - n_res
+    if n_res_unpaired:
+        print(f"  NOTE: {n_res_unpaired} snapshot questions have no index row and "
+              f"were left out of '{RESIDENT_ARM}' (the retrieved arm skips them too)",
+              file=sys.stderr)
 
     if dangling:
         # Dangling keys replay as EMPTY TEXT, which deflates the retrieved arm
@@ -537,8 +608,8 @@ def main() -> int:
               "trustworthy until every evidence_items shard is present.",
               file=sys.stderr)
 
-    print(f"tasks: {n_shared} shared ({'/'.join(SHARED_ARMS)}, once per question) "
-          f"+ {n_retrieved} retrieved (per config) = {len(tasks)}"
+    print(f"tasks: {n_shared} shared ({'/'.join(shared_arms) or 'none'}, once per question) "
+          f"+ {n_retrieved} retrieved + {n_res} {RESIDENT_ARM} (per config) = {len(tasks)}"
           f"{f', {len(seen)} already done' if seen else ''}")
     print(f"workers: {args.workers}   ->  {path}")
 
