@@ -1,0 +1,26 @@
+{
+  "beam": {
+    "abstain": 0.26543,
+    "exact": 0.00869,
+    "reverse": 0.00331,
+    "miss": 0.68347,
+    "contains": 0.02817,
+    "content_words": 0.01093
+  },
+  "locomo": {
+    "exact": 0.03672,
+    "abstain": 0.55968,
+    "miss": 0.29405,
+    "reverse": 0.00214,
+    "contains": 0.08178,
+    "content_words": 0.02563
+  },
+  "longmemeval": {
+    "abstain": 0.42902,
+    "exact": 0.03195,
+    "miss": 0.37591,
+    "contains": 0.15462,
+    "reverse": 0.00122,
+    "content_words": 0.00729
+  }
+}
