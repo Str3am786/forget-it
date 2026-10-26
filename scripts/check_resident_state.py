@@ -40,9 +40,9 @@ def config_dirs(root: Path) -> list[Path]:
     return sorted(out)
 
 
-def item_shards(root: Path) -> list[Path]:
-    probe = root if root.is_dir() else root.parent
-    for _ in range(8):                      # same walk up as reader_probe.py
+def item_shards(start: Path) -> list[Path]:
+    probe = start if start.is_dir() else start.parent
+    for _ in range(12):                     # same walk up as reader_probe.py
         found = sorted(probe.glob(ITEMS))
         if found or probe.parent == probe:
             return found
@@ -55,6 +55,10 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("root", type=Path, help="a workload tree, as passed to reader_probe.py")
     ap.add_argument("--limit-configs", type=int, default=0)
+    ap.add_argument("--items", type=Path, default=None,
+                    help="folder holding evidence_items*.jsonl (the sweep's "
+                         "RETRIEVAL_DIR). Default: walk up from ROOT, then from "
+                         "the real path of the first config dir")
     args = ap.parse_args()
 
     dirs = config_dirs(args.root)
@@ -90,10 +94,17 @@ def main() -> int:
         hits[d] = hs
 
     # Pass 2: stream the item shards, keeping only the texts pass 1 needs.
-    shards = item_shards(args.root)
+    if args.items is not None:
+        shards = sorted(args.items.glob(ITEMS))
+    else:
+        # A curated subset is a tree of symlinks: the shards sit in the
+        # campaign tree the links point into, not above the subset itself.
+        shards = item_shards(args.root) or item_shards(dirs[0].resolve())
     if not shards:
-        print(f"no {ITEMS} at or above {args.root}", file=sys.stderr)
+        print(f"no {ITEMS} found (tried {args.items or args.root} and the real "
+              f"path of {dirs[0]}); pass --items", file=sys.stderr)
         return 2
+    print(f"item shards: {shards[0].parent}  ({len(shards)} file(s))")
     text: dict[str, str] = {}
     for sh in shards:
         with sh.open(encoding="utf-8") as f:
