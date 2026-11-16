@@ -1,70 +1,70 @@
 # Running forget-it on LUMI
 
-No code changes are needed for the LLM: `forgetit.llm` already talks to any
-OpenAI-compatible endpoint via `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL`.
-On LUMI we just stand up a vLLM server on a compute node and point at it.
+One-time setup for the campaign described in the main [README](../../README.md#reproducing-the-thesis). Everything here runs on a **login node**: it has internet, compute nodes do not.
 
-## One-time setup (on a login node — it has internet, compute nodes do not)
+## 1. Repo and data
 
-1. **Clone the repo onto scratch** and create the venv:
-   ```bash
-   cd /scratch/project_465XXXXXX
-   git clone <repo> forget-it && cd forget-it
-   python -m venv .venv && source .venv/bin/activate
-   pip install -e ".[dev]"
-   ```
-2. **Download the dataset** to `data/`:
-   ```bash
-   mkdir -p data
-   wget -P data/ https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json
-   ```
-3. **Pre-download the model weights** to scratch (compute nodes are offline):
-   ```bash
-   HF_HOME=/scratch/project_465XXXXXX/hf_cache \
-     huggingface-cli download meta-llama/Llama-3.1-8B-Instruct \
-       --local-dir /scratch/project_465XXXXXX/models/Llama-3.1-8B-Instruct
-   ```
-4. **Get a ROCm vLLM container** (CUDA wheels will NOT run on MI250X). Pull a
-   ROCm vLLM image to a `.sif` with apptainer, or use a LUMI-provided one, and
-   note its path.
-
-## Run
-
-Edit the `# EDIT` placeholders at the top of `run_lumi.sh` (project account,
-repo path, `.sif` path, model path, `HF_HOME`), then:
+Clone the repo anywhere. The launchers find it from where you submit, and expect the client image as `forgetit.sif` in the folder that holds the repo. Set `CLIENT_SIF` to use another path.
 
 ```bash
-sbatch scripts/lumi/run_lumi.sh
+mkdir -p ~/thesis && cd ~/thesis              # any folder
+git clone https://github.com/Str3am786/forget-it && cd forget-it
+mkdir -p data
+wget -P data/ https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json
+# also place data/locomo10.json and data/beam_500K.jsonl
 ```
 
-This is the single-node design we settled on: one vLLM server + `NUM_SHARDS`
-client processes that each run a slice of the config grid and write their own
-CSVs, merged at the end by `scripts/concat_results.py`. No node-to-node
-networking to get wrong while debugging.
+The reader sweep refuses to start if any of the three files is missing, because the reader prompt looks up session dates in them.
 
-## Useful flags (passed to `run_longmemeval_qa.py`)
+## 2. Client image
 
-- `--shard i --num-shards N` — split the grid across N workers (the sbatch sets these).
-- `--limit N` — replay only the first N examples (quick smoke test).
-- `--no-reader` — retrieval/eviction metrics only; **no LLM endpoint needed**
-  (LLM-driven policies like compression are skipped automatically).
+The client only does retrieval and HTTP calls to vLLM, so it uses the CPU base. The `forgetit` package is not installed in the image: launchers put `<repo>/src` on `PYTHONPATH`, so code edits never need a rebuild.
 
-Smoke test before committing a full run, e.g. interactively:
 ```bash
-LLM_BASE_URL=... LLM_API_KEY=... LLM_MODEL=... \
-  python -m forgetit.experiments.run_longmemeval_qa --limit 3 --num-shards 1 --shard 0
+module load LUMI cotainr
+cotainr build ../forgetit.sif --system=lumi-c --conda-env=scripts/lumi/forgetit-env.yml
 ```
 
-## Scaling beyond one node (later)
+vLLM itself comes from the LUMI AI Factory container. The reader, judge and calibration launchers pin release `lumi-multitorch-u24r70f21m50t210-20260807_115122` (`LAIF_RELEASE` in `env.sh`).
 
-The same `--shard/--num-shards` mechanism maps onto a SLURM **job array**
-(`--shard $SLURM_ARRAY_TASK_ID`) against one persistent vLLM server. Hold off on
-that until the single-node path is solid — it adds cross-node service discovery,
-which is exactly the complexity we're avoiding for now.
+## 3. Model weights
 
-## Two gotchas (not optional)
+**Readers and judge.** Stage the five readers with their exact revisions. This writes `configs/readers.lock.json`, which every launcher checks.
 
-- **Compute nodes have no internet.** Weights must be pre-downloaded to scratch;
-  the launcher sets `HF_HUB_OFFLINE=1` / `TRANSFORMERS_OFFLINE=1` so nothing hangs
-  trying to reach HuggingFace.
-- **Use the ROCm vLLM container**, not a pip install — LUMI-G is AMD MI250X.
+```bash
+export HF_TOKEN=hf_xxx                         # Llama 3.1 and Gemma 3 are gated: accept their licences first
+export MODELS_DIR=/scratch/project_<id>/models
+python3 scripts/lumi/fetch_readers.py --manifest configs/readers.json --require-all
+python3 scripts/lumi/fetch_readers.py --manifest configs/readers.json --check
+```
+
+Never use `--only`: it rewrites the lock with just that reader, and the launchers then refuse the others.
+
+**Stage 1 models.** The state-forming sweep reads two more checkpoints by fixed path:
+
+```bash
+huggingface-cli download Qwen/Qwen2.5-7B-Instruct   --local-dir $MODELS_DIR/Qwen2.5-7B-Instruct
+huggingface-cli download Qwen/Qwen3-Embedding-0.6B --local-dir $MODELS_DIR/Qwen3-Embedding-0.6B
+```
+
+## 4. Each session
+
+```bash
+export SBATCH_ACCOUNT=project_<id>     # never commit this
+cd <repo>                              # submit every job from the repo root
+source scripts/lumi/env.sh             # prints which paths exist
+```
+
+**The committed `configs/readers.lock.json` records the thesis runs**, including model paths on the original project's scratch. Staging the readers on a new project (step 3) rewrites it with your paths. That is expected. The original is in git history.
+
+Then follow the stage table in the main README.
+
+## Things that have gone wrong before
+
+- **Compute nodes are offline.** Launchers set `HF_HUB_OFFLINE=1`, so an unstaged model fails at server start.
+- **Use the ROCm container**, not a pip install of vLLM. LUMI-G is AMD MI250X.
+- **`--generation-config vllm` is required.** Three of the five checkpoints ship a repetition penalty that changes greedy output. Each launcher stops if vLLM reports overridden sampling parameters.
+- **LLM cache on node-local tmpfs.** One small file per call. On home it hits the 100K inode quota, and on scratch it once took 1.44M inodes.
+- **Dirty tree.** Stage 1 refuses to run with uncommitted or untracked files, because every row is stamped with the commit. `FORGETIT_ALLOW_DIRTY=1` is for smoke runs only.
+- **Compute-node Python is 3.6.** Run Python inside the client image, as the launchers do.
+- **`env.sh` only sets defaults.** A value you export before calling a launcher always wins. An earlier version overwrote `SUBSET_ROOT`, and a judge run silently read the wrong subset.
