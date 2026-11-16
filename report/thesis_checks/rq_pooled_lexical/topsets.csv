@@ -1,0 +1,16 @@
+workload,budget,top_set,size
+beam_beam_turn_pair,010,"gdsf_frozen, lfu, salience_decay",3
+beam_beam_turn_pair,025,"compression, gdsf, gdsf_frozen, keep_smallest, lfu, salience_decay, semantic",7
+beam_beam_turn_pair,050,"compression, gdsf, gdsf_frozen, keep_smallest, lfu",5
+beam_beam_turn_pair,075,"compression, ebbinghaus, gdsf, gdsf_frozen, keep_smallest, lfu, random_s42, salience_decay, semantic, semantic_coverage",10
+beam_beam_turn_pair,100,"compression, ebbinghaus, evict_smallest, fifo, gdsf, gdsf_frozen, keep_smallest, lfu, lru, random_s42, salience_decay, semantic, semantic_coverage, semantic_keep",14
+locomo_turn_pair,010,compression,1
+locomo_turn_pair,025,compression,1
+locomo_turn_pair,050,"compression, ebbinghaus, evict_smallest, lfu, lru, semantic",6
+locomo_turn_pair,075,"compression, ebbinghaus, evict_smallest, lfu, lru, random_s42, semantic",7
+locomo_turn_pair,100,"compression, ebbinghaus, evict_smallest, fifo, gdsf, gdsf_frozen, keep_smallest, lfu, lru, random_s42, salience_decay, semantic, semantic_coverage, semantic_keep",14
+longmemeval_turn_pair,010,"compression, ebbinghaus, fifo, gdsf, keep_smallest, lru, random_s42, semantic, semantic_keep",9
+longmemeval_turn_pair,025,"ebbinghaus, fifo, gdsf, keep_smallest, lru, random_s42, semantic, semantic_keep",8
+longmemeval_turn_pair,050,"ebbinghaus, fifo, lru, random_s42, semantic_keep",5
+longmemeval_turn_pair,075,"ebbinghaus, fifo, gdsf, keep_smallest, lfu, lru, semantic_keep",7
+longmemeval_turn_pair,100,"compression, ebbinghaus, evict_smallest, fifo, gdsf, gdsf_frozen, keep_smallest, lfu, lru, random_s42, salience_decay, semantic, semantic_coverage, semantic_keep",14

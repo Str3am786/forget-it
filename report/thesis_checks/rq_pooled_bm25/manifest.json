@@ -1,0 +1,51 @@
+{
+  "commit": "f463eeef4ec6cfa517ad16ed7101efaa127a707b",
+  "describe": "evidence-dated-8-gf463eee",
+  "date": "2026-10-29T01:07:58+00:00",
+  "dirty": true,
+  "render_sha": "98d35e968dcf",
+  "render_sha_parametric": [
+    "1bb9ca1685c7"
+  ],
+  "materiality": 0.03,
+  "alpha": 0.05,
+  "n_boot": 10000,
+  "seed": 42,
+  "routed_tiers": [
+    "miss",
+    "content_words",
+    "reverse"
+  ],
+  "guards": [
+    "contradiction",
+    "abstention"
+  ],
+  "deployable_excludes": [
+    "oracle"
+  ],
+  "judged_dir": "/home/arroyo/lumi_backup/scratch/project_462001123/artifacts/judged5_bm25",
+  "alive_dir": "/home/arroyo/lumi_backup/scratch/project_462001123/artifacts/alive_dated_bm25",
+  "exclude_file": "/home/arroyo/lumi_backup/home/15-08-forgetit/forget-it/configs/locomo_ungradeable_ids.txt",
+  "out_dir": "/home/arroyo/thesis_checks/rq_pooled_bm25",
+  "inputs": [
+    "/home/arroyo/lumi_backup/home/15-08-forgetit/forget-it/configs/locomo_ungradeable_ids.txt",
+    "/home/arroyo/lumi_backup/scratch/project_462001123/artifacts/alive_dated_bm25/store_beam_beam_turn_pair.csv",
+    "/home/arroyo/lumi_backup/scratch/project_462001123/artifacts/alive_dated_bm25/store_locomo_turn_pair.csv",
+    "/home/arroyo/lumi_backup/scratch/project_462001123/artifacts/alive_dated_bm25/store_longmemeval_turn_pair.csv",
+    "/home/arroyo/lumi_backup/scratch/project_462001123/artifacts/judged5_bm25/judged_beam_beam_turn_pair_gemma-3-12b-it.csv",
+    "/home/arroyo/lumi_backup/scratch/project_462001123/artifacts/judged5_bm25/judged_beam_beam_turn_pair_llama-3.1-8b-instruct.csv",
+    "/home/arroyo/lumi_backup/scratch/project_462001123/artifacts/judged5_bm25/judged_beam_beam_turn_pair_qwen2.5-1.5b-instruct.csv",
+    "/home/arroyo/lumi_backup/scratch/project_462001123/artifacts/judged5_bm25/judged_beam_beam_turn_pair_qwen2.5-14b-instruct.csv",
+    "/home/arroyo/lumi_backup/scratch/project_462001123/artifacts/judged5_bm25/judged_beam_beam_turn_pair_qwen2.5-7b-instruct.csv",
+    "/home/arroyo/lumi_backup/scratch/project_462001123/artifacts/judged5_bm25/judged_locomo_turn_pair_gemma-3-12b-it.csv",
+    "/home/arroyo/lumi_backup/scratch/project_462001123/artifacts/judged5_bm25/judged_locomo_turn_pair_llama-3.1-8b-instruct.csv",
+    "/home/arroyo/lumi_backup/scratch/project_462001123/artifacts/judged5_bm25/judged_locomo_turn_pair_qwen2.5-1.5b-instruct.csv",
+    "/home/arroyo/lumi_backup/scratch/project_462001123/artifacts/judged5_bm25/judged_locomo_turn_pair_qwen2.5-14b-instruct.csv",
+    "/home/arroyo/lumi_backup/scratch/project_462001123/artifacts/judged5_bm25/judged_locomo_turn_pair_qwen2.5-7b-instruct.csv",
+    "/home/arroyo/lumi_backup/scratch/project_462001123/artifacts/judged5_bm25/judged_longmemeval_turn_pair_gemma-3-12b-it.csv",
+    "/home/arroyo/lumi_backup/scratch/project_462001123/artifacts/judged5_bm25/judged_longmemeval_turn_pair_llama-3.1-8b-instruct.csv",
+    "/home/arroyo/lumi_backup/scratch/project_462001123/artifacts/judged5_bm25/judged_longmemeval_turn_pair_qwen2.5-1.5b-instruct.csv",
+    "/home/arroyo/lumi_backup/scratch/project_462001123/artifacts/judged5_bm25/judged_longmemeval_turn_pair_qwen2.5-14b-instruct.csv",
+    "/home/arroyo/lumi_backup/scratch/project_462001123/artifacts/judged5_bm25/judged_longmemeval_turn_pair_qwen2.5-7b-instruct.csv"
+  ]
+}

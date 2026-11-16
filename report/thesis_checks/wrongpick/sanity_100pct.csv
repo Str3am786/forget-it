@@ -1,0 +1,10 @@
+workload,retriever,acc_spread,ep_spread
+beam_beam_turn_pair,lexical,0.0,0.0
+locomo_turn_pair,lexical,0.0,0.0
+longmemeval_turn_pair,lexical,0.0,0.0
+beam_beam_turn_pair,bm25,0.0,0.0
+locomo_turn_pair,bm25,0.0009,0.0
+longmemeval_turn_pair,bm25,0.0,0.0
+beam_beam_turn_pair,dense,0.0144,0.0
+locomo_turn_pair,dense,0.0074,0.0
+longmemeval_turn_pair,dense,0.012,0.0

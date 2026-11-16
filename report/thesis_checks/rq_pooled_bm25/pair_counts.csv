@@ -1,0 +1,16 @@
+workload,budget,agrees,both_silent,store_overclaims,store_underclaims
+beam_beam_turn_pair,010,47,23,10,11
+beam_beam_turn_pair,025,50,32,8,1
+beam_beam_turn_pair,050,46,23,12,10
+beam_beam_turn_pair,075,32,25,23,11
+beam_beam_turn_pair,100,0,91,0,0
+locomo_turn_pair,010,26,46,0,19
+locomo_turn_pair,025,45,27,3,16
+locomo_turn_pair,050,52,21,4,14
+locomo_turn_pair,075,39,35,10,7
+locomo_turn_pair,100,0,91,0,0
+longmemeval_turn_pair,010,43,38,8,2
+longmemeval_turn_pair,025,38,33,9,11
+longmemeval_turn_pair,050,15,49,4,23
+longmemeval_turn_pair,075,10,57,7,17
+longmemeval_turn_pair,100,0,91,0,0
