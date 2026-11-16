@@ -22,13 +22,29 @@ import csv
 import glob
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 PROJ = os.environ.get("PROJ", "project_462001123")
-SCRATCH = Path(f"/scratch/{PROJ}/artifacts")
+SCRATCH = Path(os.environ.get("ARTIFACTS_DIR", f"/scratch/{PROJ}/artifacts"))
+
+# The two deterministic guards, copied verbatim from rq_tables.py so that the
+# ceiling decomposed by category and the control arms enforce the same rule.
+# A verdict the judge promoted is demoted again when the reference says the
+# record is contradictory and the reader did not flag it (G1), or when the
+# reader abstained (G2). Without these the category ceiling is not the guarded
+# verdict the chapter reports and BEAM reads about 11.5 points too high.
+ROUTED = ("miss", "content_words", "reverse")
+CONTRA_REF = "contradictory information"
+FLAGS = re.compile(r"contradict|inconsist|conflict|clarif|discrepan", re.I)
+ABSTAIN = re.compile(
+    r"\b(?:idk|i don'?t know|do(?:es)? not contain|no information|"
+    r"not (?:provided|mentioned|specified|available)|cannot determine|"
+    r"unable to (?:determine|find)|"
+    r"don'?t have (?:enough |that )?information)\b", re.I)
 
 RETRIEVERS = ("lexical", "bm25", "dense")
 BUDGETS = ("010", "025", "050", "075", "100")
@@ -133,7 +149,8 @@ def t51_ceiling_by_type(out: Path, judged: dict) -> None:
     uniformly weak. Emitted per reader as well, because a category that is flat
     across a tenfold size range is bounded by something other than the reader.
     """
-    acc = collections.defaultdict(lambda: [0, 0, 0, 0])   # det, guarded, abst, n
+    # det, judged (pre-guard), guarded, abstained, n
+    acc = collections.defaultdict(lambda: [0, 0, 0, 0, 0])
     for ret, d in judged.items():
         if ret != "lexical":          # gold arm is retriever-invariant
             continue
@@ -144,19 +161,30 @@ def t51_ceiling_by_type(out: Path, judged: dict) -> None:
                 k = (r["dataset"], r["question_type"], r["model"])
                 a = acc[k]
                 det = tb(r["correct"])
-                gd = tb(r["judge_correct"]) if r["tier"] in (
-                    "miss", "content_words", "reverse") else det
-                a[0] += det; a[1] += gd; a[2] += tb(r["abstained"]); a[3] += 1
+                # Route to the judge only where a judge verdict exists, the
+                # way rq_tables.py does. An absent verdict keeps the
+                # deterministic tier rather than silently scoring False.
+                jc = (r.get("judge_correct") or "").strip()
+                judged_v = tb(jc) if (r["tier"] in ROUTED and jc) else det
+                ref = str(r.get("ref_answer") or "")
+                ans = str(r.get("reader_answer") or "")
+                g1 = (judged_v and CONTRA_REF in ref.lower()
+                      and not FLAGS.search(ans))
+                g2 = judged_v and bool(ABSTAIN.search(ans))
+                guarded = judged_v and not g1 and not g2
+                a[0] += det; a[1] += judged_v; a[2] += guarded
+                a[3] += tb(r["abstained"]); a[4] += 1
     recs = [{"source": "judged5_lexical", "dataset": k[0], "question_type": k[1],
-             "reader": k[2], "n": v[3],
-             "acc_det": round(v[0] / v[3], 4),
-             "acc_judged": round(v[1] / v[3], 4),
-             "abstain_rate": round(v[2] / v[3], 4)}
-            for k, v in sorted(acc.items()) if v[3]]
+             "reader": k[2], "n": v[4],
+             "acc_det": round(v[0] / v[4], 4),
+             "acc_judged": round(v[1] / v[4], 4),
+             "acc_guarded": round(v[2] / v[4], 4),
+             "abstain_rate": round(v[3] / v[4], 4)}
+            for k, v in sorted(acc.items()) if v[4]]
     write(out, "t51_ceiling_by_type.csv",
           ["source", "dataset", "question_type", "reader", "n", "acc_det",
-           "acc_judged", "abstain_rate"], recs,
-          "gold arm by category and reader")
+           "acc_judged", "acc_guarded", "abstain_rate"], recs,
+          "gold arm by category and reader, guarded verdict")
 
 
 def t51_classifier_determinism(out: Path) -> None:

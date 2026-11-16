@@ -1,347 +1,223 @@
 # forget-it
 
 ![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)
-![status](https://img.shields.io/badge/status-research%20WIP-orange.svg)
+![status](https://img.shields.io/badge/status-thesis%20code-orange.svg)
 
-**A policy-pluggable benchmarking framework for forgetting in local agentic memory under hard storage constraints.**
+**A harness for measuring forgetting policies in byte-bounded agent memory.**
 
-When an AI agent keeps persistent long-term memory, that memory eventually fills up. `forget-it` is the testbench for the decision that follows: *when you are out of room, what do you throw away, and how?* It models an agent's memory as a byte-bounded cache, lets you drop in any forgetting policy — from textbook LRU to LLM-driven summarization to cognitive forgetting curves — and measures, on a real long-conversation benchmark (LongMemEval), which policy keeps the agent able to actually answer questions.
+An agent with persistent memory eventually runs out of room and has to decide what to drop. `forget-it` models that memory as a byte-bounded store. Any forgetting policy can be plugged in, from LRU to LLM summarisation to forgetting curves. Each resulting memory store is then measured twice on the same scored questions:
 
-Its distinguishing trick is **separating two failures most memory benchmarks blur together**: *"the policy deleted the answer"* versus *"the policy kept the answer but retrieval couldn't surface it."* The headline metric, `hit_at_k_given_retained`, conditions retrieval success on survival, so forgetting quality and retrieval quality can be judged independently.
+1. **At the storage layer.** An LLM judge reads only the text that survived and says whether the question can still be answered from it (*answerability*).
+2. **End to end.** A retriever picks the top-k items, five reader LLMs answer from them, and a grading chain produces the *guarded verdict*.
+
+The thesis asks whether choosing a policy by answerability gives the same choice as choosing it by answer accuracy, and how many accuracy points a wrong choice costs.
 
 ---
 
 ## Contents
 
-- [Quickstart](#quickstart)
-- [Current state](#current-state-june-2026)
+- [Quickstart (local, no GPU)](#quickstart-local-no-gpu)
+- [Reproducing the thesis](#reproducing-the-thesis)
+- [The experimental grid](#the-experimental-grid)
 - [How it works](#how-it-works)
-- [Architecture](#architecture)
-- [Running experiments](#running-experiments)
-- [Metrics](#metrics)
+- [Outputs and metrics](#outputs-and-metrics)
 - [Extending the framework](#extending-the-framework)
-- [Concept glossary](#concept-glossary)
-- [License & citation](#license--citation)
+- [Known limitations](#known-limitations)
+- [License and citation](#license-and-citation)
 
 ---
 
-## Quickstart
+## Quickstart (local, no GPU)
 
 Requires **Python 3.12+**.
 
 ```bash
 git clone https://github.com/Str3am786/forget-it
 cd forget-it
+python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-# Smoke test — no dataset, no LLM, runs in seconds
-python -m forgetit.experiments.run_toy
+python -m pytest tests -q                  # ~540 tests, ~15 s
+python -m forgetit.experiments.run_toy     # 5 inserts into a 250-byte store
 ```
 
-`run_toy` inserts a handful of records into a tiny budget, forces evictions, and prints the result — enough to confirm the install works. From there, the [LongMemEval QA benchmark](#longmemeval-qa-benchmark-main-entry-point) is the main entry point.
+### Demo: forgetting on LongMemEval (about 20 seconds, no LLM)
+
+```bash
+mkdir -p data
+wget -P data/ https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json
+
+python -m forgetit.experiments.run_longmemeval_qa \
+    --no-reader --limit 3 \
+    --policies lru lfu fifo oracle \
+    --retrievers bm25 \
+    --budgets 1.0 0.25 \
+    --gold-snapshot \
+    --out-dir artifacts/demo
+```
+
+This replays 3 examples under 4 policies × 2 budgets × 2 itemisers. It prints one line per memory store:
+
+```
+itemiser=turn_pair  store=retention/lru/bm25/budget_100pct  reader=none  gold_survival=1.000 hit@k=1.000
+itemiser=turn_pair  store=retention/lru/bm25/budget_025pct  reader=none  gold_survival=0.333 hit@k=0.333
+itemiser=turn_pair  store=retention/oracle/bm25/budget_025pct  reader=none  gold_survival=1.000 hit@k=1.000
+...
+```
+
+At 100% nothing is evicted, so every policy is at the ceiling. At 25% the policies diverge, and `oracle`, which is told the gold items, stays at the ceiling. Results land in `artifacts/demo/longmemeval/<itemiser>/retention/<policy>/<retriever>/<budget>/none/`.
+
+### Demo with a reader
+
+Point the client at any OpenAI-compatible endpoint (Ollama, vLLM, OpenAI) and drop `--no-reader`:
+
+```bash
+export LLM_BASE_URL="http://localhost:11434/v1"
+export LLM_API_KEY="anything-non-empty"
+export LLM_MODEL="qwen2.5:7b-instruct"
+
+python -m forgetit.experiments.run_longmemeval_qa \
+    --limit 3 --policies lru oracle compression --retrievers bm25 --budgets 1.0 0.25
+```
+
+`compression` uses the same endpoint to summarise items. Add `--dense` for the embedding retriever (it needs `EMBED_BASE_URL` / `EMBED_MODEL`). `run_locomo_qa` and `run_beam` take the same flags and read `data/locomo10.json` and `data/beam_500K.jsonl`.
+
+### Regenerate the Chapter 5 tables (offline, seconds)
+
+The three frozen analysis bundles are committed under `report/rq_dated5_{lexical,bm25,dense}/`. Every Chapter 5 table is derived from them:
+
+```bash
+python scripts/ch5_tables.py --skip-heavy            # → report/ch5/*.csv + README.txt
+```
+
+`--skip-heavy` skips the two tables that stream the raw judged and store rows from LUMI scratch. The script refuses to write its provenance manifest from a dirty working tree. Commit first, or set `ALLOW_DIRTY=1` for a scratch run.
 
 ---
 
-## Current state (June 2026)
+## Reproducing the thesis
 
-This is active research code. The core pipeline is solid and the headline experiment runs end-to-end; a few backends and metrics are still partial (flagged below).
+The full campaign runs on LUMI-G (AMD MI250X) with vLLM in a ROCm container. One-time setup is described in [scripts/lumi/README.md](scripts/lumi/README.md): the client container, pre-downloaded weights, and data in `data/`. Every launcher reads its defaults from `scripts/lumi/env.sh`:
 
-### What works
+```bash
+export SBATCH_ACCOUNT=project_<id>        # never commit this
+source scripts/lumi/env.sh                # prints which paths exist
+```
 
-- **End-to-end benchmark pipeline:** workload → runner → metrics → CSV, with pluggable policies, backends, retrievers, and readers.
-- **Seven forgetting policies implemented and tested:** FIFO, LRU, LFU, Random, Ebbinghaus, and two LLM-driven policies (LLMCompression, MemoryBank). *The default LongMemEval QA grid enables **LRU, LFU, Random, and LLMCompression**; FIFO, Ebbinghaus, and MemoryBank are implemented and tested but commented out of the default sweep — uncomment them in `default_policy_specs` to include them.*
-- **LRU/LFU diverge correctly from FIFO:** the LongMemEval workload interleaves **access-only probe queries** during inserts, so recency/frequency signal exists *before* eviction (they no longer silently collapse into FIFO — a subtle bug, now fixed and regression-tested).
-- **Two-phase compress-to-pack compression:** shrink the least-useful *un-compressed* item to fit more memories; evict only when everything resident is already compressed. Each item is compressed at most once (no re-compression churn), with cost-awareness floors (`min_compress_bytes`, `min_saving_ratio`).
-- **Hard byte-budget enforcement** with per-item accounting and a no-progress stall guard — a policy that frees nothing raises a precise error instead of hanging.
-- **Three-layer evaluation:** policy verdict → retriever verdict → reader verdict (real LLM QA) via `PlainTextReader` / `JsonMemoryReader`.
-- **Deterministic retrieval baselines:** lexical (token overlap) and BM25.
-- **Validation harnesses:** a synthetic workload and an eviction-stress diagnostic that confirms policies actually diverge under pressure before you commit to a real run.
-- **Built to run at scale:** `--shard/--num-shards` split the config grid (one CSV per config), `scripts/concat_results.py` merges them, and `scripts/lumi/` provides a single-node LUMI launcher (vLLM + sharded clients) for the LLM-heavy compression runs.
+Then run the stages in order. Each stage reads the previous stage's output and writes a `manifest.json` that records its commit, model and prompt.
 
-### Known issues & caveats
+| # | Stage | Command | Writes |
+|---|---|---|---|
+| 1 | **State-forming sweep**: every policy × retriever × budget, no reader. Compression uses Qwen2.5-7B and dense uses Qwen3-Embedding-0.6B. | `for ds in longmemeval beam locomo; do DATASETS=$ds sbatch scripts/lumi/run_lumi_full_eval.sh; done` | `artifacts/benchmark_full/` (results, gold snapshots, retrieval dumps, event logs) |
+| 2 | **Subsets**: symlinked views, one per retriever, over turn-pair itemisers, 5 budgets, 15 policies, 1 random seed | `for r in lexical bm25 dense; do bash scripts/lumi/build_subsets.sh --retriever $r; done` | `artifacts/sweep_subset_<retriever>/` |
+| 3 | **Reader sweep**: 5 readers, each in its own array task, replaying the stored retrieval across 4 arms (retrieved / gold / empty / parametric) | `RUN_DIR=.../sweep_subset_bm25 OUT_DIR=.../reader_sweep_bm25 sbatch --array=0-4 scripts/lumi/run_lumi_reader_sweep.sh` | `<OUT_DIR>/<reader>/*.jsonl` |
+| 4 | **Answer judge**: Qwen2.5-14B over the routed tiers | `SWEEP_ROOT=.../reader_sweep_bm25 OUT_DIR=.../judged5_bm25 sbatch scripts/lumi/run_lumi_answer_judge.sh` | `judged_<workload>_<reader>.csv` |
+| 5 | **Answerability**: the same judge over the surviving gold text | `SUBSET_ROOT=.../sweep_subset_bm25 OUT_DIR=.../alive_dated_bm25 sbatch scripts/lumi/run_lumi_gold_alive.sh` | `store_<workload>.csv` |
+| 6 | **Prespecified tests**: guarded verdict, monotonicity, wrong-pick cost, pairwise McNemar + BH, top sets | `JUDGED_DIR=.../judged5_bm25 ALIVE_DIR=.../alive_dated_bm25 python scripts/rq_tables.py --out report/rq_dated5_bm25` | `report/rq_dated5_<retriever>/` |
+| 7 | **Chapter 5 tables** | `python scripts/ch5_tables.py` | `report/ch5/` |
 
-- **No automatic QA-correctness score (yet).** The reader records its raw answer alongside the reference answer and reports abstention rate and latency, but the pipeline does **not** compute answer accuracy — there is no exact-match or LLM-judge step. Treat the QA layer as *"raw answers to grade offline + abstention/latency,"* not a headline accuracy number. This is the most important missing piece if a graded correctness metric is your goal.
-- **Compression vs. surface-token retrieval.** Compression rewrites text, so lexical/BM25 retrieval can miss a *surviving* compressed memory (you will see `gold_survived=True` but `hit@k=0`). A fair evaluation of the compression policies needs an embedding retriever, which is not wired in yet.
-- **`FalkorBackend`** (`backend/falkor.py`) is only partially implemented; the graph migration is deprioritized. All current experiments use `InMemoryBackend`.
-- **LLM-compression is call-heavy** (one LLM call per compression) and slow on a single local GPU — use sharding plus a batching server (vLLM) on a cluster.
-- **Ebbinghaus approximation.** The policy measures elapsed time from `created_at` (age), not time-since-last-recall, because `last_access` is a logical tick counter not comparable to wall-clock `created_at`. Recall boosts strength but does not reset the decay clock — a deliberate approximation, not the literal MemoryBank formula.
+Repeat stages 3–6 for each retriever (`lexical`, `bm25`, `dense`). `...` stands for `/scratch/$PROJ/artifacts`.
+
+**Supporting passes**, each documented in its script header:
+- `run_lumi_calibration.sh` scores the grading chain against hand labels in `corpora/grader/`.
+- `run_preservation.sh` runs `gold_preservation.py` for deterministic containment.
+- `eviction_regret.py` analyses survival and regret from `events.jsonl`.
+- `replay_equivalence.py` checks that a replay is deterministic.
+
+**Before a reader sweep**, run the sync gate at the top of `run_lumi_reader_sweep.sh`: pull, check that `render_sha` prints `98d35e968dcf`, and run the test suite. The tables assume that exact evidence renderer.
+
+---
+
+## The experimental grid
+
+| Axis | Values |
+|---|---|
+| Workloads | LongMemEval (S, cleaned), LoCoMo-10, BEAM-500K |
+| Itemiser | turn pair. Session, turn and batch itemisers also exist. |
+| Budget fraction | 1.0 (no-eviction control), 0.75, 0.50, 0.25, 0.10 of each example's own footprint |
+| Retriever | lexical overlap, BM25, dense (cosine) |
+| Policies (15) | `fifo` `lru` `lfu` `random` `keep_smallest` `evict_smallest` `salience_decay` `gdsf` `gdsf_frozen` `semantic` `semantic_coverage` `semantic_keep` `ebbinghaus` `compression` `oracle` |
+| Readers (5) | qwen2.5-1.5b / 7b / 14b-instruct, llama-3.1-8b-instruct, gemma-3-12b-it (`configs/readers.json`) |
+| Judge | qwen2.5-14b-instruct, the same judge for answerability and for answers |
+
+A **cell** is one workload × budget × retriever. The 1.0 control is excluded, which leaves 3 × 4 × 3 = 36 cells. Within a cell, memory stores differ only in their forgetting policy. `oracle` is told each example's gold items. It is a ceiling, not a candidate, and is excluded from deployable picks. The floor arms (`empty`, `parametric`) and the `gold` arm bound what any policy could achieve.
 
 ---
 
 ## How it works
 
-**The model: memory as a byte-bounded cache.** Each memory is a `MemRecord` with a byte cost. The `RetentionManager` enforces a fixed budget: every `insert()` runs a loop — *while over budget, ask the policy for an action and execute it.* An action is `Evict` (delete), `Compress` (replace text with a shorter summary and recompute bytes), or `Prune`. This reframes "what should an agent forget?" as a cache-eviction problem, which lets the framework borrow the whole vocabulary of cache research (FIFO/LRU/LFU/Random) and add the parts unique to language memory (LLM summarization, cognitive forgetting curves) behind one interface.
-
-**The evaluation: three independent verdicts.** Every scored query is judged at three layers, so failures can be attributed precisely rather than lumped together:
-
-1. **Policy / survival** — did the gold answer item survive eviction at all? (`gold_survived`) This is the ceiling on everything downstream.
-2. **Retriever** — did a gold item land in the top-k? (`hit_at_k`, lexical or BM25)
-3. **Reader** — given what was retrieved, what does a real LLM answer? (`reader_answer`, `abstained`)
-
-The metric that ties it together is **`hit_at_k_given_retained`** — hit rate *conditioned on the item not having been evicted*. It cleanly separates "the policy threw the answer away" from "the policy kept it but search failed to surface it." Most memory benchmarks conflate those two; this one factors them apart.
-
-The design keeps storage, retrieval, and policy fully **decoupled**, and the runner negotiates with whatever capabilities a store exposes (no `isinstance` branching): an introspectable store gets the full metric set, while an opaque external store (Letta/Mem0) degrades gracefully to retrieval-only metrics. New policies, datasets, and backends drop in without touching the pipeline.
-
----
-
-## Architecture
-
-```
-forget-it/
-├── data/                          # Datasets (not in package)
-│   └── longmemeval_s_cleaned.json
-│
-├── artifacts/                     # Pipeline output
-│   └── benchmark/
-│       └── <dataset>/<itemiser>/<store_label>/<reader>/
-│           ├── results.csv        # Per-query EvalResult rows (self-describing)
-│           └── summary.csv        # Aggregated metrics (identified by path)
-│
-├── scripts/
-│   ├── concat_results.py          # Merge per-config/per-shard CSVs → combined_*.csv
-│   └── lumi/                      # LUMI launcher + cotainr env + setup notes
-│       ├── run_lumi.sh
-│       ├── forgetit-env.yml
-│       └── README.md
-│
-├── src/forgetit/
-│   ├── core/
-│   │   ├── schema.py              # MemRecord, MemFeatures, Query, Question, AnswerResult
-│   │   └── logging.py             # BenchmarkLogger, EventLogger protocol
-│   │
-│   ├── memory_system/
-│   │   ├── base.py                # MemorySystem protocol
-│   │   ├── custom_manager.py      # RetentionManager — budget enforcement, evict/compress loop
-│   │   └── wrappers/memgpt_sys.py # LettaWrapper (opaque external store, optional)
-│   │
-│   ├── policies/
-│   │   ├── base.py                # EvictionPolicy / SimpleEvictionPolicy
-│   │   ├── actions.py             # Evict, Compress, Prune
-│   │   ├── baselines.py           # FIFO, LRU, LFU, Random
-│   │   ├── ebbinghaus.py          # EbbinghausPolicy + MemoryBankCompressionPolicy
-│   │   └── llm_compression.py     # LLMCompressionPolicy (two-phase compress-to-pack)
-│   │
-│   ├── backend/
-│   │   ├── backend.py             # Backend ABC
-│   │   ├── in_memory.py           # Dict-based backend (used for all experiments)
-│   │   └── falkor.py              # FalkorDB backend (partial, optional import)
-│   │
-│   ├── retrieval/
-│   │   ├── base.py                # Retriever protocol
-│   │   └── lexical.py             # LexicalOverlapRetriever + BM25Retriever
-│   │
-│   ├── benchmark/                 # ← Evaluation pipeline
-│   │   ├── schema.py              # WorkloadEvent, EvalResult, QueryEval
-│   │   ├── runner_core.py         # Replays workload, produces EvalResult per scored query
-│   │   ├── pipeline.py            # Single-run orchestrator: store → run → metrics → CSV
-│   │   ├── metrics.py             # Aggregation over EvalResult lists
-│   │   └── workloads/
-│   │       ├── base.py            # Workload + Itemiser protocols
-│   │       ├── synthetic.py       # Controlled synthetic workload
-│   │       ├── longmemeval.py     # LongMemEval adapter + Session/TurnPair itemisers
-│   │       └── beam.py            # BEAM workload adapter
-│   │
-│   ├── experiments/               # Entry points (thin scripts that call the pipeline)
-│   │   ├── run_toy.py             # Minimal smoke test (no dataset/LLM)
-│   │   ├── run_synthetic.py       # Policies × budgets on the synthetic workload
-│   │   ├── run_eviction_stress.py # Diagnostic: do policies diverge under pressure?
-│   │   ├── run_longmemeval.py     # LongMemEval sweep (retrieval-focused)
-│   │   ├── run_longmemeval_qa.py  # LongMemEval QA sweep + sharding (main entry point)
-│   │   └── run_beam.py            # BEAM sweep
-│   │
-│   ├── llm/                       # OpenAI-compatible client + readers/
-│   │   └── readers/               # PlainTextReader, JsonMemoryReader
-│   ├── services/                  # MemoryQAService (higher-level orchestration)
-│   └── pipelines/                 # LangGraph wiring (ingest, retrieve, QA nodes)
-│
-└── tests/
-    ├── memory_sys/
-    └── policies/                  # baselines + compression (two-phase) tests
+```mermaid
+flowchart LR
+    W["Workload<br/>(LongMemEval / LoCoMo / BEAM)"] -->|insert, probe, question| RM
+    subgraph RM["RetentionManager (one fresh store per example)"]
+        direction TB
+        B["byte budget = fraction × footprint"]
+        P["Forgetting policy → Evict / Compress"]
+        BE["Backend + Retriever"]
+    end
+    RM -->|surviving gold text| A["Answerability judge<br/>(storage layer)"]
+    RM -->|top-k| R["5 readers"] --> G["Grading chain + guards<br/>(guarded verdict)"]
+    A --> T["rq_tables.py → ch5_tables.py"]
+    G --> T
 ```
 
-### How the benchmark pipeline works
+**Memory as a byte-bounded store.** Each memory is a `MemRecord` with a byte cost. `RetentionManager.insert()` loops: *while over budget, ask the policy for an action and execute it*. The action is `Evict`, which deletes the item, or `Compress`, which rewrites the text shorter, re-embeds it and credits the bytes saved. A guard raises an error if an action frees nothing. Every decision is logged at the moment it is made, with the policy's score, the victim's features, the store occupancy and the decision latency. Scores are never reconstructed afterwards.
+
+**Probes and scored questions.** During ingestion the workload issues access-only probes through `retrieve()`, which updates the recency and frequency signals that LRU, LFU, GDSF and Ebbinghaus read. Scored questions come after the final insert and use the read-only `search()`, so evaluation never changes policy state. `counter_state_hash()` is the check. On LoCoMo and BEAM, probes are drawn from a disjoint, stratified half of the questions (`benchmark/probe_split.py`). On LongMemEval, which has one question per example, a probe repeats the text of an item already in the store.
+
+**Concurrency.** Each example replays on its own fresh store (`run_pipeline_concurrent`), so examples run in parallel without sharing state. Inside an example, every eviction stays serial. The reader is a second pass over the stored contexts.
 
 ```
-Experiment script (e.g. run_longmemeval_qa.py)
-    │  enumerates configs: itemiser × policy × retriever × budget
-    │  (--shard i --num-shards N runs this worker's slice)
-    ▼
-pipeline.run_pipeline()
-    │  builds: RetentionManager(backend, policy, logger) + reader
-    ▼
-runner_core.run(workload, store, k, reader, ...)
-    │  for each WorkloadEvent:
-    │    INSERT  → store.insert(item)          (budget enforced; evict/compress inside)
-    │    RESET   → store.clear()               (per-example isolation)
-    │    QUERY (no gold)  → store.retrieve()   (access-only probe; updates LRU/LFU signal)
-    │    QUERY (gold)     → SCORED:
-    │        1. Policy:    gold_ids ∩ retained → gold_survived, ubf, waste
-    │        2. Retriever: store.retrieve(q,k) → hit@k, mrr, hit@k_given_retained
-    │        3. Reader:    LLM answer → reader_answer / abstained
-    │      → append EvalResult
-    ▼
-list[EvalResult] → metrics.summarize() → dict
-    ▼
-artifacts/<dataset>/<itemiser>/<store_label>/<reader>/{results.csv, summary.csv}
-    ▼
-scripts/concat_results.py → combined_results.csv + combined_summary.csv
-```
-
-### How the memory system works
-
-```
-MemRecord
-    │
-    ▼
-RetentionManager.insert()
-    │  normalize bytes; stamp last_access = monotonic tick; fresh access_count = 0
-    │  while over budget:  action = policy.select_action(store)
-    │      Evict    → drop record, reclaim bytes
-    │      Compress → replace text with summary, recompute bytes, mark meta["compressed"]
-    │  stall guard: raises if an action neither frees bytes nor removes a record
-    ▼
-Backend.upsert()
-    ▼
-RetentionManager.retrieve(query, k)
-    │  Backend.search(); bump access_count + last_access on hits (drives LRU/LFU/Ebbinghaus)
-    ▼
-list[MemRecord]
+src/forgetit/
+├── core/            MemRecord, Query, byte-cost model, event logger, phase timer
+├── memory_system/   MemorySystem protocol, RetentionManager, EmptyStore, Letta wrapper
+├── policies/        baselines, density (GDSF, salience), semantic, ebbinghaus, oracle, llm_compression
+├── backend/         Backend ABC, InMemoryBackend (all experiments), FalkorBackend (partial)
+├── retrieval/       lexical overlap, BM25, embedding
+├── embeddings/      OpenAI-compatible embedder + sqlite cache
+├── llm/             OpenAI-compatible client, disk cache, readers (PlainTextReader, prompt templates)
+├── benchmark/       workloads, runner_core, pipeline, metrics, grading, probe_split, budget
+└── experiments/     run_longmemeval_qa, run_locomo_qa, run_beam (+ toy, synthetic, stress)
+scripts/             analysis passes (gold_alive, judge_reader_answers, rq_tables, ch5_tables, …)
+scripts/lumi/        SLURM launchers for every stage above
+configs/ prompts/ corpora/   reader roster, prompt templates, calibration and judge corpora
+report/              committed analysis bundles (rq_dated5_*) and Chapter 5 tables
 ```
 
 ---
 
-## Running experiments
+## Outputs and metrics
 
-### LLM configuration
+Each configuration writes to `<out_dir>/<dataset>/<itemiser>/<store_label>/<reader>/`:
 
-The QA reader and the LLM-driven policies (compression) need an OpenAI-compatible endpoint. The client reads three env vars (a `.env` in the repo root is also loaded):
-
-```bash
-export LLM_BASE_URL="http://localhost:11434/v1"   # Ollama, vLLM, OpenAI, ...
-export LLM_API_KEY="sk-your-key"                  # any non-empty string for local servers
-export LLM_MODEL="your-model-name"                # must match the served model name
-```
-
-> The model must be instruction-tuned and follow extraction-style prompts. Verified to work: Llama-3-8B-Instruct, Mistral-7B-Instruct, Qwen2.5-7B-Instruct, GPT-4o-mini. Sanity-check the endpoint first:
-> ```python
-> from forgetit.llm import get_llm
-> print(get_llm().generate("What is the capital of France?", max_tokens=10))
-> # Must return something like "Paris." — not a paragraph
-> ```
-
-To run **retrieval/eviction only with no LLM at all**, use `--no-reader`; LLM-driven policies are auto-skipped in that mode.
-
-### Diagnostics & smaller workloads
-
-```bash
-# Eviction stress — do policies actually diverge under pressure?
-python -m forgetit.experiments.run_eviction_stress
-#   Unprobed: all policies collapse to FIFO (no usage signal).
-#   Probed:   LRU/LFU retain gold and beat FIFO/Random.
-#   Run this to confirm policies diverge before a real run.
-
-# Synthetic benchmark — policies × budgets on a controlled stream
-python -m forgetit.experiments.run_synthetic
-```
-
-### LongMemEval QA benchmark (main entry point)
-
-Download the dataset:
-
-```bash
-mkdir -p data
-wget -P data/ https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json
-```
-
-Run:
-
-```bash
-python -m forgetit.experiments.run_longmemeval_qa
-```
-
-Sweeps over itemisers (session, turn_pair) × policies × retrievers (lexical, bm25) × budgets. Useful flags:
-
-| Flag | Effect |
+| File | Contents |
 |---|---|
-| `--shard i --num-shards N` | This worker runs configs `[i::N]`. Each config writes its own CSV (no collisions). Map `--shard` to `$SLURM_ARRAY_TASK_ID`. |
-| `--limit N` | Replay only the first N examples (fast smoke test). |
-| `--no-reader` | Retrieval/eviction metrics only — **no LLM endpoint needed**; LLM policies auto-skipped. |
-| `--out-dir PATH` | Root for per-config CSVs. |
+| `results.csv` | One `EvalResult` row per scored question, with provenance columns (`git_commit`, `config_hash`, prompt SHAs) |
+| `summary.csv`, `summary_by_qtype.csv` | Aggregates from `metrics.summarize()` |
+| `timings.json` | Time per phase (insert, evict_select, evict_exec, retrieve, …) |
+| `gold_answer_snapshot.jsonl` | Original vs. surviving text of every gold item (`--gold-snapshot`) |
+| `retrieved_index.jsonl` | Ranked retrieval per question, which the reader sweep replays (`--dump-retrieval`) |
+| `events.jsonl` | Every insert, evict, compress and decision (`--event-log`) |
 
-### The two LongMemEval entry points
+Headline measures:
+- **Storage layer**
+  - `gold_id_retained`: did a gold item survive.
+  - `answerable_store`: the judge's verdict on the surviving text (`gold_alive.py`).
+  - `useful_byte_fraction`: the share of resident bytes that is gold.
+- **Retrieval**
+  - `gold_ranks`: ranks at full depth, from which hit@k, nDCG@k, recall@k and MRR are recomputed offline.
+  - `hit_at_k_given_retained`: hit@k counted only where the gold item survived.
+  - `query_coverage`: how close the nearest surviving item is to the question.
+- **Answer**
+  - `qa_correct` / `qa_f1`: deterministic grades.
+  - Guarded verdict (`rq_tables.py`): string rules first, then the judge on routed tiers. Two guards demote answers that miss a contradiction (G1) or abstain (G2).
 
-Both run the same pipeline; the difference is how many of the three evaluation layers are switched on.
-
-| | `run_longmemeval.py` | `run_longmemeval_qa.py` (main) |
-|---|---|---|
-| Reader (layer 3) | off (`reader="none"`) | real LLM (`PlainTextReader`), unless `--no-reader` |
-| Measures | survival + retrieval | survival + retrieval + reader answer |
-| Policies | LRU, LFU | LRU, LFU, Random, LLMCompression |
-| Stores | RetentionManager | RetentionManager + Letta (opaque) |
-| Scale flags | none | `--shard`, `--num-shards`, `--limit`, `--no-reader`, `--out-dir` |
-| Needs an LLM endpoint? | no | yes (reader + compression) |
-
-`run_longmemeval.py` is the cheap, deterministic, retrieval-only sibling — good for sweeping eviction behaviour fast with no inference server. `run_longmemeval_qa.py` adds the reader layer and the heavier machinery (compression policies, sharding, cluster runs). Note that `--no-reader` auto-drops the LLM-driven policies, because compression needs the model to summarize even when the reader is off — *"QA mode" and "uses an LLM" are different axes*.
-
-### Example output
-
-The budget→quality tradeoff falls straight out of the summary CSV. From a committed run (exact numbers depend on model, itemiser, and retriever):
-
-| Budget | Evictions | Gold retained | hit@5 |
-|---|---|---|---|
-| 256 KiB | ~23 | 73% | 66% |
-| ≥512 KiB | 0 | — | 88.5% |
-
-At 256 KiB the store is forced to evict and quality degrades; at ≥512 KiB nothing needs evicting and retrieval sits at its ceiling. Sweeping the budget column traces the full degradation curve (`budget_quality_frontier`).
-
-### Combining sharded results
-
-```bash
-python scripts/concat_results.py artifacts/benchmark
-# → artifacts/benchmark/combined_results.csv  (+ combined_summary.csv)
-```
-
-### Running on LUMI
-
-See `scripts/lumi/README.md`. In short: build a CPU client container with cotainr (`forgetit-env.yml`), serve the model with vLLM (ROCm) on a LUMI-G node, and launch `run_lumi.sh` — one vLLM server + N sharded clients + concat, all single-node.
-
----
-
-## Metrics
-
-Every scored query produces one `EvalResult` row (`results.csv`); `summarize()` aggregates them (`summary.csv`). Metrics group by evaluation layer.
-
-**Layer 1 — policy / retention** *(averaged only over introspectable stores)*
-- `gold_survival_rate` — fraction of questions where the gold item survived eviction (the downstream ceiling).
-- `useful_byte_fraction` — of the bytes resident at query time, what fraction is the gold item (memory signal-to-noise).
-- `waste_rate` — `1 − useful_byte_fraction`.
-- `evictions_total_at_query_time`, `compressions` — running counts of what the policy did.
-
-**Layer 2 — retriever**
-- `hit_at_k` — did a gold item land in the top-k? (affected by both eviction *and* retrieval)
-- `hit_at_k_given_retained` — hit rate conditioned on survival; isolates retrieval quality from forgetting quality. **The fairest metric for comparing policies.**
-- `mean_mrr` — mean reciprocal rank of the first gold hit.
-
-**Layer 3 — reader / QA** *(populated only in QA mode)*
-- `reader_answer` — the LLM's actual answer text (stored per row, for offline grading).
-- `abstained` / `abstention_rate` — did / how often the reader declined to answer.
-- `qa_latency_sec` / `mean_qa_latency_sec` — reader latency, tracked separately from retrieval.
-
-**Cost (both modes)**
-- `used_bytes_end` — bytes resident at query time.
-- `mean_latency_sec` — retrieval latency.
-
-**Breakdowns** (`metrics.py`): `budget_quality_frontier` (metric vs. byte budget — the core tradeoff curve), `by_question_type`, and `by_store` (e.g. RetentionManager vs. Letta).
-
-> Reminder (see [caveats](#known-issues--caveats)): the reader layer reports answers, abstention, and latency, **not** an automatic correctness score. Grade `reader_answer` against `ref_answer` offline if you need accuracy.
+Stores that don't expose their contents (Letta, EmptyStore) set `introspectable=False`. For them, the storage-layer columns are placeholder values.
 
 ---
 
 ## Extending the framework
 
-### Adding a new policy
-
-**Delete-only policies** implement `SimpleEvictionPolicy.select_victim`:
+**A delete-only policy** implements `select_victim`. It reads `MemFeatures`, not text, and must record its score:
 
 ```python
 from forgetit.policies.base import SimpleEvictionPolicy
@@ -350,67 +226,37 @@ class MyPolicy(SimpleEvictionPolicy):
     name = "my_policy"
 
     def select_victim(self, store, candidates=None) -> str:
-        for it in store.iter_features():          # MemFeatures(id, bytes, last_access,
-            if candidates is not None and it.id not in candidates:  # access_count, created_at, compressed)
-                continue
-            ...
-        return victim_id
+        feats = [f for f in store.iter_features()
+                 if candidates is None or f.id in candidates]
+        victim = min(feats, key=lambda f: f.access_count)
+        self._note_decision(victim.access_count, len(feats))
+        return victim.id
 ```
 
-The `candidates` filter lets two-phase policies ask "rank only the un-compressed items."
+Stateful policies can also define `on_insert`, `on_access` and `on_evict`, as GDSF does. A policy that compresses implements `select_action` and returns `Compress(id, new_text)` (see `llm_compression.py`). Register the policy in `default_policy_specs` in each entry point, and then `--policies my_policy` selects it.
 
-**Richer policies** (e.g. compress-or-evict) implement `EvictionPolicy.select_action` directly and return an `Evict` or `Compress` action — see `llm_compression.py`.
-
-Add the policy to your experiment's policy list (`default_policy_specs` in the relevant entry point) and run; the pipeline handles the rest.
-
-### Adding a new dataset
-
-1. Write a workload class whose `events()` yields `WorkloadEvent`s (inserts, scored queries with `gold_item_ids`, optional access-only probes, optional `reset`s).
-2. Optionally write an `Itemiser` if the raw data needs chunking.
-3. Create an experiment entry point that passes the workload to `run_pipeline`.
-
-See `workloads/synthetic.py` (simplest) and `workloads/longmemeval.py` (real adapter).
+**A new dataset** needs a workload with `iter_examples()` that yields `(example_id, [WorkloadEvent])`: inserts, access-only probes (`gold_item_ids=[]`) and scored questions. It also needs an `Itemiser`. `workloads/synthetic.py` is the smallest example and `workloads/locomo.py` the most complete.
 
 ---
 
-## Concept glossary
+## Known limitations
 
-**MemRecord** — one unit of memory: text, optional embedding, timestamps, access stats, byte count, and `meta` (e.g. `compressed`).
-
-**RetentionManager** — the budget enforcer. Wraps a Backend + Policy. On every `insert()`, runs the policy's actions until the budget fits; a stall guard turns any no-progress loop into a clear error instead of hanging.
-
-**EvictionPolicy / SimpleEvictionPolicy** — `select_action(store) → Action`; the simple base wraps `select_victim(store, candidates=None) → id` into an `Evict`. Policies see `MemFeatures`, not full text.
-
-**Action** — `Evict` (delete), `Compress` (replace text with a shorter summary), or `Prune` (graph, not implemented).
-
-**Two-phase compression** — `LLMCompressionPolicy` compresses the least-useful *un-compressed* item (keeping it) and only **evicts** once everything resident is already compressed. `compress_selector` / `evict_selector` are pluggable (FIFO/LRU/LFU/…), defaulting to LFU; `selector=` sets both.
-
-**Backend** — raw CRUD + search. `InMemoryBackend` (working), `FalkorBackend` (partial).
-
-**Retriever** — ranks MemRecords for a query, returns top-k. `LexicalOverlapRetriever` (token overlap) and `BM25Retriever`.
-
-**Reader** — takes a question + retrieved records, prompts the LLM, returns an `AnswerResult`. `PlainTextReader`, `JsonMemoryReader`.
-
-**probe (access-only query)** — a `WorkloadEvent` query with empty `gold_item_ids`: it calls `retrieve` (updating recency/frequency) but is not scored. LongMemEval emits these during inserts so LRU/LFU/Ebbinghaus have a usage signal before eviction.
-
-**gold_survived** — did the gold answer item survive eviction? A failure here means the answer was impossible to retrieve regardless of retrieval quality.
-
-**hit_at_k** — did a gold item appear in the top-k retrieval results? Affected by both eviction and retrieval quality.
-
-**hit_at_k_given_retained** — conditional hit rate given the gold item was not evicted. Isolates retrieval quality from eviction behaviour — the most useful metric for comparing policies.
+- `FalkorBackend` is only partially implemented, and `Prune` raises `NotImplementedError`. Every experiment uses `InMemoryBackend`.
+- **Ebbinghaus** measures decay from `created_at`, not from the last recall. Recall increases strength but doesn't reset the clock.
+- **Compression** has to fit its prompt in the model's context (`--compress-context-tokens`). Larger items fall back to the evict selector, and the decision log records that.
+- **The judge is also a reader.** The 14B judge grades its own answers on one fifth of rows. The effect is the same across policies, and the methods chapter declares it.
+- LoCoMo adversarial questions with no gradeable reference are excluded (`configs/locomo_ungradeable_ids.txt`).
 
 ---
 
-## License & citation
+## License and citation
 
-*TODO: add a license file.* This is research code; pick a license before publishing (MIT or Apache-2.0 are common for academic tooling).
-
-If you use `forget-it` in academic work, please cite the accompanying thesis:
+*TODO: add a license file.*
 
 ```bibtex
 @mastersthesis{forgetit2026,
   title  = {Policy-Pluggable Forgetting for Local Agentic Memory under Hard Storage Constraints},
-  author = {TODO},
+  author = {Miguel Arroyo},
   school = {TODO},
   year   = {2026}
 }
