@@ -1,0 +1,7 @@
+tier,rows,share_pct,source
+abstain,886063,44.15,"judged5_*/judged_*.csv, retrieved arm, non-empty reference, 45 files"
+miss,776770,38.7,"judged5_*/judged_*.csv, retrieved arm, non-empty reference, 45 files"
+contains,214950,10.71,"judged5_*/judged_*.csv, retrieved arm, non-empty reference, 45 files"
+exact,76972,3.84,"judged5_*/judged_*.csv, retrieved arm, non-empty reference, 45 files"
+content_words,47337,2.36,"judged5_*/judged_*.csv, retrieved arm, non-empty reference, 45 files"
+reverse,4908,0.24,"judged5_*/judged_*.csv, retrieved arm, non-empty reference, 45 files"

@@ -1,0 +1,7 @@
+source,tier,settled_by,population_share,n_labelled,n_agree,agreement,ci_lo,ci_hi,false_accept,false_reject
+corpora/grader/annotate.csv re-scored at HEAD,abstain,string matching,0.4886,17,17,1.0,0.8157,1.0,0,0
+corpora/grader/annotate.csv re-scored at HEAD,contains,string matching,0.0959,15,13,0.8667,0.6212,0.9626,2,0
+corpora/grader/annotate.csv re-scored at HEAD,content_words,language model,0.0188,4,3,0.75,0.3006,0.9544,0,1
+corpora/grader/annotate.csv re-scored at HEAD,exact,string matching,0.0321,12,12,1.0,0.7575,1.0,0,0
+corpora/grader/annotate.csv re-scored at HEAD,miss,language model,0.3626,71,59,0.831,0.7274,0.9006,8,4
+corpora/grader/annotate.csv re-scored at HEAD,reverse,language model,0.002,1,1,1.0,0.2065,1.0,0,0
